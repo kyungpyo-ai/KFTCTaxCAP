@@ -25,12 +25,17 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         // 탭 라벨에서 거래 구분 코드(501008/800000/902614) 숫자를 뺐다(2026-09-18 사용자 지시 — 균등폭
         // 탭에서 말줄임이 나던 것을 한글 문구만 남겨 줄여서 해결). 코드값 자체는 각 탭의
         // TransactionTypeCode 프로퍼티(PaymentTelegramTabViewModel)로 여전히 확인 가능하다.
+        // 2026-09-28 P30-7 실기 검증 — 902614 #42(키오스크 고유번호)를 설정값으로 채우기 위한 공용
+        // provider(PaymentTelegramTabViewModel._kioskIdProvider 클래스 주석 참고). 501008/800000 탭은
+        // 이 값을 쓰지 않지만(스키마상 #42 자체가 없다), 생성자 시그니처를 셋 다 통일해 둔다.
+        Func<string> kioskIdProvider = () => shopSettingsService.Load().KioskId;
+
         Tabs = new ObservableCollection<PaymentTelegramTabViewModel>
         {
-            new("국고 상세 고지내역 조회", NoticeInquirySchema.Create(), () => PosClient.DefaultResponseTimeout),
-            new("카드 정보 조회", CardInfoInquirySchema.Create(), () => PosClient.DefaultResponseTimeout),
+            new("국고 상세 고지내역 조회", NoticeInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider),
+            new("카드 정보 조회", CardInfoInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider),
             new("국고 신용카드 승인요청", CardApprovalSchema.Create(),
-                () => PosClient.ComputeCardApprovalResponseTimeout(shopSettingsService.Load())),
+                () => PosClient.ComputeCardApprovalResponseTimeout(shopSettingsService.Load()), kioskIdProvider),
         };
 
         // 체크포인트 2 M-2 수정(2026-09-21, 사용자 확정 "통신중일때는 다른 걸 못하게 하는게 맞아") —

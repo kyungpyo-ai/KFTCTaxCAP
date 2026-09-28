@@ -76,6 +76,15 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
 
     private readonly Func<TimeSpan> _responseTimeoutProvider;
 
+    /// <summary>2026-09-28 P30-7 실기 검증 중 발견 — <c>PaymentOrchestrator</c>가 902614 카드 리딩
+    /// 시작 전 <c>#42</c>(키오스크 고유번호)를 실제 설정값(<c>ShopSettings.KioskId</c>)과 대조해
+    /// 불일치하면 <c>E06</c>으로 거부한다(P23-7, PRD §2.3.1/§2.3.2). 이 화면은 원래 모든 kiosk 소유
+    /// 필드를 <see cref="PosRandomValueGenerator"/>로 채우는데, <c>#42</c>는 TelegramFieldChainMap의
+    /// 연쇄 대상도 아니고(가맹점 설정값이지 다른 전문에서 오는 값이 아니다) 그렇다고 임의값이어도 되는
+    /// 필드도 아니어서, 임의값을 그대로 두면 실제 전송 시 항상 E06으로 거부된다. `#4`(거래 구분 코드)를
+    /// 스키마 고정값으로 되돌리는 것과 같은 성격의 보정이다.</summary>
+    private readonly Func<string> _kioskIdProvider;
+
     private PosTelegram _requestTelegram;
     private bool _suppressRowChangeHandling;
 
@@ -85,8 +94,10 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     /// 캐시에 남아 있으면 다른 탭이 그 값을 계속 읽어가는 모순이 생기기 때문이다.</summary>
     private PosTelegram? _lastResponseTelegram;
 
-    public PaymentTelegramTabViewModel(string tabTitle, PosTelegramSchema schema, Func<TimeSpan> responseTimeoutProvider)
+    public PaymentTelegramTabViewModel(
+        string tabTitle, PosTelegramSchema schema, Func<TimeSpan> responseTimeoutProvider, Func<string> kioskIdProvider)
     {
+        _kioskIdProvider = kioskIdProvider;
         TabTitle = tabTitle;
         _schema = schema;
         _ownedByOneCap = new HashSet<int>(schema.FieldsOwnedByOneCap().Select(f => f.Number));
@@ -250,6 +261,14 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                 RandomAmountSource.Next(0, RealisticAmountMaxExclusive8Digits).ToString(CultureInfo.InvariantCulture));
             _requestTelegram.Write(28,
                 RandomAmountSource.Next(0, RealisticFeeMaxExclusive6Digits).ToString(CultureInfo.InvariantCulture));
+
+            // _kioskIdProvider 클래스 주석 참고 — #42는 임의값이면 실기 전송 시 PaymentOrchestrator의
+            // E06(키오스크 고유번호 불일치) 검사에 항상 걸린다. 설정값이 비어 있으면(개발 환경 등) 그냥
+            // 두어 기존 동작(임의값)을 유지한다 — 어차피 그 경우 설정 자체가 비어 있어 원캡도 검사를
+            // 건너뛴다(ShopSettingsService.ResolveKioskId 참고).
+            string kioskId = _kioskIdProvider();
+            if (!string.IsNullOrEmpty(kioskId))
+                _requestTelegram.Write(42, kioskId);
         }
 
         RebuildRequestRows();

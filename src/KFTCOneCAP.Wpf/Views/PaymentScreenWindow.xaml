@@ -166,11 +166,19 @@
                          간격을 "줄이는" 게 아니라 "늘리는" 결과였다(사용자 지적으로 확인). 가장 타이트한
                          상태는 Height를 아예 지정하지 않고 자연 크기에 맡기는 것 — 아래에 Height 속성을
                          두지 않는다. -->
+                    <!-- 2026-09-28 P30-7 실기 검증 중 발견 — 값이 아주 긴 필드(800000 #22/#23 AN60,
+                         #28 AN216 등, Phase 30 이전엔 대부분 공백이라 안 드러났다가 P30-1 스텁 확장
+                         이후 실제로 채워지면서 처음 노출됨)에서 Width="Auto"인 값 칸이 줄바꿈 없이
+                         한 줄 전체 폭으로 측정되어 "*"인 레이블 칸을 거의 0폭으로 밀어내 레이블이
+                         안 보이는 문제가 있었다. MaxWidth를 줘서 Auto 칸의 측정 자체를 그 폭으로
+                         제한한다(WPF Grid는 Auto 칸에 MinWidth~MaxWidth 범위로 측정 가용폭을 넘긴다) —
+                         그래야 TextWrapping="Wrap"이 실제로 작동해 길어도 여러 줄로 접히고 레이블
+                         칸이 밀려나지 않는다. -->
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="Auto" MinWidth="90"/>
+                            <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="200"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{Binding NumberAndName}" FontSize="12"
                                    Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center"
