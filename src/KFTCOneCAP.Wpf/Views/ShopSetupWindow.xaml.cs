@@ -1,8 +1,10 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using KFTCOneCAP.Wpf.ViewModels;
 
 namespace KFTCOneCAP.Wpf.Views;
@@ -15,8 +17,9 @@ namespace KFTCOneCAP.Wpf.Views;
 /// (<see cref="App.SetupScreenGate"/>) 등록/해제만 담당한다 — <c>ReaderSetupWindow.xaml.cs</c>와
 /// 같은 역할 분담이다.
 ///
-/// 워밍업 인스턴스가 없다(development_plan.md P23-4) — 컨트롤 6개뿐이라 최초 오픈 비용이 문제되는
-/// 화면이 아니고, <c>ReaderSetupWindow.IsWarmupInstance</c> 같은 분기를 또 만들 이유가 없다.
+/// 워밍업 인스턴스가 없다(development_plan.md P23-4, Phase 31에서 전표 설정 섹션이 추가돼 컨트롤이
+/// 9개로 늘었지만 이 판단은 그대로다) — 최초 오픈 비용이 문제되는 화면이 아니고,
+/// <c>ReaderSetupWindow.IsWarmupInstance</c> 같은 분기를 또 만들 이유가 없다.
 ///
 /// 2026-09-02 Opus 리뷰(CP1) 개선권장 9(사용자 확정) — "dirty-check 확인창을 만들지 않는다"던 이전
 /// 결정을 뒤집었다. 사용자가 "같은 설정창인데 당연히 있어야지"라고 확정해, <see cref="ReaderSetupWindow"/>와
@@ -32,6 +35,10 @@ public partial class ShopSetupWindow : Window
         InitializeComponent();
         DataContext = ViewModel;
         ViewModel.ResultMessageReady += ViewModel_ResultMessageReady;
+        // Phase 31(P31-3) — 정보(안내) 메시지/포커스 요청은 경고와 다른 처리가 필요해 별도 이벤트로
+        // 받는다(ViewModel은 MessageBox/TextBox를 모른다, 계층 규칙).
+        ViewModel.InfoMessageReady += ViewModel_InfoMessageReady;
+        ViewModel.FocusPrinterPortRequested += ViewModel_FocusPrinterPortRequested;
     }
 
     /// <summary>
@@ -76,6 +83,19 @@ public partial class ShopSetupWindow : Window
     /// </summary>
     private void ViewModel_ResultMessageReady(object? sender, string message) =>
         MessageBox.Show(this, message, "가맹점 설정", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+    /// <summary>Phase 31(P31-3) — 직전거래 전표출력 안내(PRD §2.8.5)는 경고가 아니라 정보 아이콘으로
+    /// 띄운다. 기존 <see cref="ViewModel_ResultMessageReady"/>(Warning 고정)는 그대로 둔다.</summary>
+    private void ViewModel_InfoMessageReady(object? sender, string message) =>
+        MessageBox.Show(this, message, "가맹점 설정", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    /// <summary>Phase 31(P31-3) — 포트 검증 실패 시(PRD §2.8.4) 포트 입력칸에 포커스를 주고 전체
+    /// 선택한다(원본 SlipSetupDlg.cpp:642-643 SetFocus + SetSel(0,-1)과 동일 UX).</summary>
+    private void ViewModel_FocusPrinterPortRequested(object? sender, EventArgs e)
+    {
+        PrinterPortTextBox.Focus();
+        PrinterPortTextBox.SelectAll();
+    }
 
     /// <summary>
     /// 2026-09-02 Opus 리뷰(CP1) C-1 — <c>DialogResult</c> setter는 이 창이 <c>ShowDialog()</c>로
@@ -171,11 +191,13 @@ public partial class ShopSetupWindow : Window
     }
 
     // ===================== 필드 안내 info 팝오버 =====================
-    // 필드 6개(금융결제원 서버/키오스크 고유번호/카드입력 타임아웃/자동 리부팅/자동 업데이트/
-    // 결제 화면 잠금)가 단일 Popup(FieldInfoPopup)을 공유한다 — ReaderSetupWindow.xaml.cs
-    // MultipadInfoButton_Click과 동일 패턴(같은 버튼 재클릭 시 닫히고, 다른 버튼 클릭 시
-    // PlacementTarget과 내용만 바뀐다). 문구 출처: ShopSetupDlg.cpp(원본 MFC) 5개 + PRD.md §2.3
-    // 근거 신규 1개(키오스크 고유번호) — development_plan.md P23-3 절 참고.
+    // 필드 9개(금융결제원 서버/키오스크 고유번호/카드입력 타임아웃/자동 리부팅/자동 업데이트/
+    // 결제 화면 잠금/전표 인쇄 사용/프린터 속도/프린터 포트번호, Phase 31에서 전표 설정 3개 추가)가
+    // 단일 Popup(FieldInfoPopup)을 공유한다 — ReaderSetupWindow.xaml.cs MultipadInfoButton_Click과
+    // 동일 패턴(같은 버튼 재클릭 시 닫히고, 다른 버튼 클릭 시 PlacementTarget과 내용만 바뀐다).
+    // 문구 출처: ShopSetupDlg.cpp(원본 MFC) 5개 + PRD.md §2.3 근거 신규 1개(키오스크 고유번호,
+    // development_plan.md P23-3 절 참고) + SlipSetupDlg.cpp(원본) 2개 + PRD.md §2.8.6 근거 신규 1개
+    // (전표 인쇄 사용, development_plan.md P31-3 절 참고).
     // Popup의 PlacementTarget/IsOpen, TextBlock.Inlines 조작은 시각 요소 배치이며 ViewModel이 다룰
     // 데이터가 아니므로 View에 남는다(ReaderSetupWindow.xaml.cs 클래스 상단 주석과 같은 원칙).
 
@@ -200,6 +222,38 @@ public partial class ShopSetupWindow : Window
 
         FieldInfoPopup.PlacementTarget = button;
         FieldInfoPopup.IsOpen = true;
+    }
+
+    // ===================== 전표 설정 — 포트번호 숫자 입력 제한 (Phase 31, PRD §2.8.4) =====================
+    // 입력 단계에서 숫자 외 문자를 막는다(키 입력·붙여넣기 모두). Space는 PreviewTextInput을 거치지
+    // 않으므로 PreviewKeyDown에서 별도로 막는다. IME 조합 입력은 XAML의
+    // InputMethod.IsInputMethodEnabled="False"로 원천 차단한다(view 책임 — ViewModel은 입력 컨트롤을
+    // 모른다).
+    //
+    // 2026-09-28 CP1 리뷰 M-1 — char.IsDigit는 유니코드 전체를 기준으로 판정해 전각 숫자(예: "３",
+    // U+FF13)나 아랍 숫자("٣") 같은 문자도 "숫자"로 통과시킨다. 그런데 저장 시점의 int.TryParse
+    // (net48)는 이런 문자를 숫자로 읽지 못해, 화면에는 숫자처럼 보이는 값이 뒤에서 조용히
+    // 실패하거나(토글 ON 확인 시 이유를 알 수 없는 "입력값을 확인해주세요.") 레지스트리에 그대로
+    // 저장돼 다음 Load()에서 이상값 취급되는 문제가 있었다. ASCII 0~9인지 직접 확인하는
+    // IsAsciiDigit로 바꿔 이 틈을 막는다(ShopSettingsService.ResolvePrinterPort와 같은 판정 기준).
+    private static bool IsAsciiDigit(char c) => c >= '0' && c <= '9';
+
+    private void PrinterPortTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e) =>
+        e.Handled = !e.Text.All(IsAsciiDigit);
+
+    private void PrinterPortTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Space)
+            e.Handled = true;
+    }
+
+    private void PrinterPortTextBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (!e.DataObject.GetDataPresent(DataFormats.Text) ||
+            !((string)e.DataObject.GetData(DataFormats.Text)).All(IsAsciiDigit))
+        {
+            e.CancelCommand();
+        }
     }
 
     private static (string Title, string[] Lines) GetFieldInfo(string key) => key switch
@@ -248,6 +302,23 @@ public partial class ShopSetupWindow : Window
         {
             "결제 입력창 표시 시 배경 화면을 어둡게 잠금 처리",
             "· 기본값 : 미사용",
+        }),
+        // Phase 31(P31-3) — 전표 설정 섹션(PRD §2.8.6). 원본에 이 항목의 안내가 없어 신규 작성
+        // (PRD.md §5 #18, P31-4에서 사용자 확정 예정 — 그때까지는 초안).
+        "SlipPrintEnabled" => ("전표 인쇄 사용", new[]
+        {
+            "결제 완료 시 전표 출력 여부",
+            "· 기본값 : 미사용",
+        }),
+        // 원본 SlipSetupDlg.cpp:501 문구 그대로.
+        "PrinterSpeed" => ("프린터 속도", new[]
+        {
+            "프린터 통신 속도 선택",
+        }),
+        // 원본 SlipSetupDlg.cpp:500 문구 그대로.
+        "PrinterPort" => ("프린터 포트번호", new[]
+        {
+            "프린터가 연결된 COM 포트 번호를 입력",
         }),
         _ => (string.Empty, Array.Empty<string>()),
     };

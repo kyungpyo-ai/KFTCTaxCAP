@@ -4,7 +4,7 @@
 > 끝인지)**. 실제 코드 작성은 이 문서의 Task를 순서대로 따라간다.
 >
 > Phase 22(완료) · Phase 23(완료) · Phase 24(완료) · Phase 25(완료, 2026-09-03) ·
-> **Phase 27(완료, 2026-09-15)**.
+> **Phase 27(완료, 2026-09-15)** · **Phase 31(계획 수립, 2026-09-28)**.
 > 2차 범위에서 확정한 방식대로(2026-08-20 사용자 확정) **한 Phase씩 착수 직전에 작성**한다.
 >
 > Phase 26은 2차 범위(`docs/payment_relay/development_plan.md`)에 있다 — 번호가 25 → 27로 이어지는
@@ -4089,5 +4089,437 @@ Phase 전체에 걸리는 관문이기 때문이다.
 > **Phase 27 완료 선언 — 2026-09-15.** 위 12개 항목과 체크포인트 3개(CP1/CP2/CP3) 전부 충족을
 > 확인했다. Phase 28(장애정보 서버 전송)은 이 Phase가 만든 판정 결과(`ALERT` 로그 줄)와 로그
 > 슬라이스(`LogFileReader.Collect`)를 그대로 이어받아 "보내기"만 구현하면 된다.
+
+---
+
+# Phase 31 — 가맹점 설정 화면: 전표 설정 섹션
+
+**이 Phase가 끝나면**: 가맹점 설정 화면 맨 아래에 "전표 설정" 섹션이 생기고, 전표 인쇄 사용 /
+프린터 속도 / 프린터 포트번호가 원본 MFC와 같은 레지스트리 값(`SERIALPORT\PRINTER_CHECK` /
+`PRINTER_SPEED` / `PRINTER`)으로 저장·복원된다. 직전거래 전표출력 버튼은 안내창만 띄운다.
+
+> **이 Phase는 화면 작업이다.** 새 값 3개는 어떤 결제 경로도 읽지 않으므로 결제 Flow에 영향이 없다.
+> 실수가 나기 쉬운 곳은 **`PRINTER_CHECK`의 인코딩**(같은 키의 `AUTO_REBOOT` 등과 달리 반전이 아니다)과
+> **기존 6개 옵션의 회귀**(같은 서비스·ViewModel·XAML을 고치므로) 두 가지다.
+
+## 착수 전 확정 사항 (2026-09-28 사용자 확인, `PRD.md` §2.8 반영 완료)
+
+1. **범위** — UI + 레지스트리 저장·읽기까지. 실제 프린터 출력은 이후 Phase.
+2. **포트번호 형식** — 숫자만(`3`, `COM3` 아님). 입력 단계에서 숫자 외 문자 차단 + 확인 시 **1~255** 검사.
+3. **속도 저장 형식** — 원본과 동일하게 레지스트리에는 숫자만(`"57600"`), 화면에는 `57600bps`.
+4. **포트 빈 값** — 토글 ON + 빈 값이면 저장 차단(`입력값을 확인해주세요.`) + 원본처럼 **"입력 필요"
+   실시간 표시**.
+5. **직전거래 전표출력 버튼** — 항상 활성(토글 OFF여도). **화면 입력칸** 포트가 비면 오류창, 아니면
+   `직전거래 전표를 출력합니다.` 안내창.
+6. **(?) 안내 버튼** — 세 항목 모두. 전표 인쇄 사용 문구만 원본에 없어 초안(`PRD.md` §5 #18).
+7. **홈 화면 "전표 설정" 카드 삭제** — 카드 3개로, 창도 비율에 맞게 축소(`PRD.md` §2.8.9, 추가 요청).
+8. **검증 방식** — `app.manifest`를 `asInvoker`로 **일시 해제**하고 클릭 자동화로 검증, P31-4 끝에서
+   `requireAdministrator` **원복 필수**(Phase 23과 동일 방식).
+
+## 착수 전 전제 (코드 실측, 2026-09-28)
+
+- **`ShopSettingsService`**(`Services/Settings/ShopSettingsService.cs`) — `SerialPortKeyPath`가 이미
+  `...\KFTCTaxGiroCAP\SERIALPORT`다. `Load()`는 예외를 던지지 않고 폴백(+ 같은 이상값의 반복 `WARN`
+  억제 필드 `_lastWarned*Raw`), `Save()`는 던진다. **새 값 3개도 이 패턴 그대로 넣는다.**
+- **`ShopSetupViewModel`** — 필드별 `_snapshot*` 6개 + `IsDirty()`, `TryConfirm()`에서 검증→저장→
+  `FileLogger.Info(LogCategory.Settings, ...)` 순. 검증·저장 실패는 `ResultMessageReady`(string)
+  이벤트 하나로 View에 알리고 View가 `MessageBoxImage.Warning`으로 띄운다. **정보 아이콘 안내창
+  경로는 아직 없다** — P31-2에서 추가.
+- **`ShopSetupWindow.xaml`** — 섹션 카드 2개(결제 설정 20px 열 간격 / 시스템 설정 18px), 입력
+  컨트롤은 전부 `Height="48"`(디센더 잘림 수정 이력, XAML 상단 주석), 토글 행은 `DockPanel`
+  (Button을 ToggleButton보다 **먼저** 선언해야 (?)가 토글 오른쪽에 온다 — 주석에 회귀 이력 있음).
+  (?) 팝오버는 단일 `FieldInfoPopup` + 코드비하인드 `GetFieldInfo(tag)` switch.
+- **비활성 스타일이 이미 있다** — `SkinnedComboBoxStyle`/`SkinnedTextBoxStyle`/버튼 스타일 모두
+  `IsEnabled=False` 트리거 보유(`Themes/ComboBox.xaml:75,184`, `TextBox.xaml:74`, `Buttons.xaml`).
+- **`BooleanToVisibilityConverter`** 는 창별 리소스로 선언하는 관례다(`ReaderSetupWindow.xaml:23`).
+- **진단 경로 `--shop-setup`**(`App.xaml.cs:213`)으로 이 창만 단독으로 띄워 스크린샷을 찍을 수 있다.
+- **`app.manifest`가 `requireAdministrator`** 라 `mcp__windows__*` 클릭 자동화가 UIPI에 막힌다
+  (Phase 23 P23-3 gap과 동일) → 확정 사항 8대로 일시 `asInvoker`.
+- **홈 화면**(`Views/HomeWindow.xaml`) — 카드 Grid가 `*`/gap 7열(카드 4장), 카드 4 주석
+  `<!-- 카드 4: 전표 설정 -->`(`:281`), `Command="{Binding OpenReceiptSetupCommand}"`. 창 크기는
+  `Themes/Layout.xaml:19-20`(1104×545) / `Layout.Compact.xaml:31-32`(840×415)의 `HomeWindowWidth`/
+  `HomeWindowHeight`. "준비 중" 경로는 `HomeViewModel.NotImplementedCardRequested`(전표 카드 전용) →
+  `HomeWindow.xaml.cs:42,124` `ShowNotImplementedCard`.
+
+## 이 Phase에서 손대지 않는 것 (범위 밖 확정)
+
+- **실제 전표 출력** — 프린터 포트 열기, 전표 포맷, 직전 거래 조회·보관. 버튼은 안내창만.
+- **새 값 3개를 읽어 쓰는 코드** — 결제 Flow·다른 서비스에서 참조하지 않는다.
+- 원본 전표 설정 화면의 **전표 매수 / 전표 메시지 MSG1~6 / `PRINTER_REPRINT`**.
+- 기존 6개 옵션의 동작·문구·배치 — 한 줄도 바꾸지 않는다(열 정렬 확인만).
+
+## 위험 · 미확정
+
+| # | 항목 | 대응 |
+|---|---|---|
+| 1 | 신규 문구 2건(포트 빈 값 오류창, 전표 인쇄 사용 안내) | `PRD.md` §5 #18. 초안으로 구현하고 P31-4 스크린샷 확인 때 사용자 확정 |
+| 2 | 화면 클릭 검증이 UIPI에 막힘 | **2026-09-28 결정: `asInvoker` 일시 해제**(아래 "임시 조치"). 원복을 P31-4 완료 조건에 넣었다 |
+| 3 | 섹션 추가로 창 높이가 늘어남 | `SizeToContent="Height"`. 저해상도(1366×768 등)에서 화면 밖으로 넘치지 않는지 P31-4에서 확인 |
+| 4 | 홈 창 폭 축소 시 헤더 겹침 | 부제("금융결제원 결제 솔루션 프로그램 Plus Ver … \| 모듈 Ver …")와 우상단 버튼(205px)이 좁아진 폭에서 겹칠 수 있다. 스크린샷으로 확인하고, 겹치면 창 폭을 늘리는 쪽으로 조정(카드를 넓히는 것은 허용, 헤더를 자르는 것은 불가) |
+
+## ⚠️ 진행 중 임시 조치 — `app.manifest` 관리자 권한 해제 (2026-09-28, 반드시 원복)
+
+사용자 지시로 Phase 31 화면 검증 동안 `src/KFTCOneCAP.Wpf/app.manifest`의 `requestedExecutionLevel`을
+`requireAdministrator` → `asInvoker`로 낮춘다(Phase 23과 같은 조치).
+
+- **P31-4 마지막 항목으로 반드시 `requireAdministrator`로 되돌리고**, 빌드한 exe에 매니페스트가
+  임베딩됐는지 실측 확인한다. 되돌리지 않으면 로그 경로(`C:\KFTC_PosAgent\KFTCTaxLog\`) 쓰기 권한
+  문제가 재발한다(P22-0).
+- 이 기간 로그 파일 쓰기가 실패할 수 있다 — 저장 로그 확인(P31-4)은 파일에 실제로 남는지 보고, 안
+  남으면 원복 후 다시 확인한다.
+
+## 체크포인트 (Opus 리뷰 지점)
+
+| 체크포인트 | Task | 성격 |
+|---|---|---|
+| **CP1** | P31-1 ~ P31-3, P31-3부속 | 서비스·ViewModel·화면 확장. `checkpoint-reviewer`가 diff·빌드를 직접 재확인. 특히 `PRINTER_CHECK` 인코딩, 기존 6개 옵션 회귀, 계층 규칙 |
+| — | P31-4 | 실측 검증 · 회귀 · 문서 갱신 |
+
+---
+
+## P31-1. `ShopSettings` / `ShopSettingsService` — 값 3개 추가
+
+**`ShopSettings`에 속성 추가**
+
+| 속성 | 타입 | 기본값 | 레지스트리 | 인코딩 |
+|---|---|---|---|---|
+| `SlipPrintEnabled` | `bool` | `false` | `SERIALPORT\PRINTER_CHECK` | **ON=`"1"` / OFF=`"0"` — 반전 아님** |
+| `PrinterSpeed` | `int` | `57600` | `SERIALPORT\PRINTER_SPEED` | 숫자 문자열(`"9600"` 등) |
+| `PrinterPort` | `string` | `""` | `SERIALPORT\PRINTER` | 숫자 문자열(`"3"`) 또는 빈 값 |
+
+**`Load()`**
+
+- `PRINTER_CHECK` — `raw == "1"`일 때만 `true`. 그 외(값 없음 포함)는 `false`, `WARN` 없음(원본
+  `SlipSetupDlg.cpp:517`과 동일).
+- `PRINTER_SPEED` — `9600`/`38400`/`57600`/`115200` 중 하나면 그 값. 값 없음 → `57600`(무경고).
+  그 외 → `57600` + `WARN`(`_lastWarnedPrinterSpeedRaw`로 반복 억제, 기존 3종과 같은 방식).
+- `PRINTER` — 빈 값/없음 → `""`. 숫자로만 이뤄지고 1~255 → 그대로. 그 외(`COM3`, `0`, `300` 등)
+  → `""` + `WARN`(`_lastWarnedPrinterPortRaw`).
+- 허용 속도 목록(4개)은 **서비스에 한 번만** 정의하고(`public static IReadOnlyList<int>`), ViewModel은
+  이 목록으로 콤보 항목을 만든다 — 두 곳에 따로 적으면 한쪽만 바뀐다.
+
+**`Save()`** — 기존 `serialKey`에 세 값 추가. `SlipPrintEnabled ? "1" : "0"`, `PrinterSpeed.ToString()`,
+`PrinterPort` 그대로(검증은 ViewModel 책임, 서비스는 받은 값을 쓴다 — 기존 `KioskId`와 같은 분담).
+
+**클래스 요약 주석**의 "새어 나가면 안 되는 것" 목록에 **`PRINTER_CHECK`는 반전이 아니다**를 한 줄
+추가한다(다음 사람이 옆 토글 코드를 복사하지 않도록).
+
+**완료 조건**
+- [x] 키 전체 삭제 상태에서 `Load()` → 기존 6개 기본값 불변 + `false`/`57600`/`""`(2026-09-28
+      x86 PowerShell 리플렉션 스크립트로 실측: `VanMode=R KioskId='' Timeout=120 AutoReboot=True
+      AutoUpdate=False KeyinDim=False`, `SlipPrintEnabled=False PrinterSpeed=57600 PrinterPort=''`)
+- [x] 레지스트리 `PRINTER_CHECK="1"` → `true`, `"0"`/없음/`"abc"` → `false`(위 스크립트로 4가지 모두 실측)
+- [x] `PRINTER_SPEED` `"115200"` → `115200`, `"115200bps"`/`"12345"` → `57600` + `WARN`, 같은 이상값
+      연속 `Load()` 2회에 `WARN`은 1회(로그 파일 실측 — `115200bps`가 연속 2회 `Load()` 중
+      1회만 WARN 출력, `12345`는 다른 이상값이라 별도 WARN 1회 추가 확인)
+- [x] `PRINTER` `"3"` → `"3"`, `"COM3"`/`"0"`/`"256"` → `""` + `WARN`(위 스크립트 + 로그 실측)
+- [x] `Save()` 후 `regedit`(또는 `reg query`)로 `PRINTER_CHECK="1"`(ON 저장 시) 확인 — **`"0"`이면 반전
+      인코딩 실수**(스크립트로 `Save()` 직접 호출 + GUI 확인 시나리오 양쪽에서 `reg query` 실측,
+      `PRINTER_CHECK=1`/`PRINTER_SPEED=115200`/`PRINTER=3` 확인, OFF 저장 시 `PRINTER_CHECK=0` 확인)
+- [x] 기존 6개 값의 `Load()`/`Save()` 결과가 변경 전과 동일 — 코드 변경 전/후 바이트 단위 diff
+      스크립트를 새로 만들지는 않았고, ① `Load()`가 새 값 3개를 읽는 코드를 기존 6개 필드 읽기
+      로직 아래에 **추가만** 했음을 diff로 확인, ② GUI 조작으로 기존 6개 값(VAN_MODE, KIOSK_ID,
+      TIMEOUT=110, AUTO_REBOOT 등)이 전표 설정 저장 전후로 그대로 유지됨을 실측 확인 — 두 근거로
+      간접 검증. 완전한 전/후 자동 비교(P23-1 방식 재실행)는 못 했다.
+- [x] `Services`가 WPF 타입을 참조하지 않는다(`using` 확인 — `ShopSettingsService.cs`/`ShopSettings.cs`
+      grep 결과 `System.Windows` 계열 `using` 없음)
+
+---
+
+## P31-2. `ShopSetupViewModel` — 속성 · 검증 · 버튼 판정
+
+**속성**
+
+- `SlipPrintEnabled` (`bool`) — 토글. 바뀌면 `IsPrinterPortMissing` 변경 알림.
+- `PrinterSpeedOptions` — `ShopSettingsService`의 허용 목록으로 `"9600bps"` … 생성. **`bps`를 붙이고
+  떼는 곳은 이 클래스뿐이다**(서비스·모델은 `int`).
+- `PrinterSpeedSelection` (`string`, 예 `"57600bps"`).
+- `PrinterPort` (`string`) — 바뀌면 `IsPrinterPortMissing` 변경 알림.
+- `IsPrinterPortMissing` (`bool`, 계산 속성) — `SlipPrintEnabled && string.IsNullOrWhiteSpace(PrinterPort)`.
+  "입력 필요" 표시의 유일한 근거. `[NotifyPropertyChangedFor]`로 두 속성에 연결.
+
+**`Load()`/`IsDirty()`** — 세 값 로드 + `_snapshot*` 3개 추가, `IsDirty()`에 3개 비교 추가.
+
+**`TryConfirm()`** — 기존 타임아웃 검증 **다음에** 포트 검증을 넣는다(기존 동작 순서 불변).
+
+- `SlipPrintEnabled`이고 (`PrinterPort` 비었거나 · 정수 파싱 실패 · 1~255 밖) →
+  `ResultMessageReady("입력값을 확인해주세요.")` + **포트 입력칸 포커스 요청** → `false`.
+  포커스는 View 책임이므로 이벤트로 요청한다(예: `FocusPrinterPortRequested`). ViewModel은 WPF 타입을
+  모른다.
+- OFF면 검증하지 않고 입력값 그대로 저장(원본과 동일).
+- `ShopSettings` 생성에 세 값 추가(속도는 `"57600bps"` → `57600` 변환).
+- 저장 로그 문자열에 `PRINTER_CHECK=…, PRINTER_SPEED=…, PRINTER='…'` 추가.
+
+**직전거래 전표출력** — `RequestLastSlipPrint()`(또는 `[RelayCommand]`):
+
+- `string.IsNullOrWhiteSpace(PrinterPort)`(화면 값, 토글 무관) → 오류 메시지 이벤트
+  `프린터 포트번호를 입력해주세요.`
+- 그 외 → **안내** 메시지 이벤트 `직전거래 전표를 출력합니다.`
+- 아무것도 저장하지 않는다. `INFO` 로그 1줄(`LogCategory.Settings`, "직전거래 전표출력 요청 — 출력
+  미구현, 안내만") 정도는 남긴다.
+- 안내(정보 아이콘)와 오류(경고 아이콘)를 View가 구분할 수 있어야 한다 — 기존
+  `ResultMessageReady(string)`는 경고 전용이므로 **정보용 이벤트를 하나 추가**한다
+  (예: `InfoMessageReady`). 기존 이벤트의 시그니처는 바꾸지 않는다.
+
+**완료 조건**
+- [x] `bps` 리터럴이 ViewModel 밖(서비스·모델)에 없다(grep — `ShopSettings.cs`/`ShopSettingsService.cs`에는
+      주석에만 등장, 코드 리터럴 없음)
+- [x] `"1"`/`"0"` 인코딩 리터럴이 ViewModel에 없다(서비스 전용, grep — `ShopSetupViewModel.cs`에 없음)
+- [x] `IsPrinterPortMissing`이 토글·포트 변경 양쪽에서 갱신된다(리플렉션 스크립트로 실측: 토글 OFF→ON
+      + 포트 빈값 → `True`, 포트 입력 → `False`, 토글 다시 OFF → `False` 확인)
+- [x] dirty-check가 새 3개 중 하나만 바꿔도 `true`, 되돌리면 `false`(2026-09-28 리플렉션 스크립트로
+      `PrinterPort`/`SlipPrintEnabled`/`PrinterSpeedSelection` 3개 각각 개별 변경 → `True`, 원래 값으로
+      되돌림 → `False` 모두 확인)
+- [x] ViewModel이 WPF 타입을 참조하지 않는다(`using` 확인 — `System.Windows` 계열 없음)
+
+---
+
+## P31-3. `ShopSetupWindow` — 섹션 카드 · 입력 차단 · 안내
+
+**XAML** — `시스템 설정` 섹션 카드 뒤, 확인/취소 `StackPanel` 앞에 섹션 카드 1개(`Margin="0,12,0,0"`,
+기존 두 카드와 같은 리소스). 제목 `전표 설정` + 가로 구분선.
+
+- **열 간격 18px** — `시스템 설정`과 같은 값으로 둬서 1행 토글이 위 섹션 토글과 세로로 정렬되게 한다
+  (원본 전표 화면 `cG`는 20이지만, 같은 창 안의 정렬을 우선한다).
+- **1행 왼쪽**: `시스템 설정`과 동일한 `DockPanel` 패턴(라벨 Left, (?) Button → ToggleButton 순서로
+  Right). `IsChecked="{Binding SlipPrintEnabled}"`.
+- **1행 오른쪽**: `직전거래 전표출력` 버튼. 원본은 `ButtonStyle::Reader` → `ReaderButtonStyle`.
+  열 폭에 맞춰 늘이고 높이는 토글 행에 맞게. **`IsEnabled` 바인딩 없음(항상 활성)**.
+- **2행**(`Margin="0,16,0,0"`, `결제 설정` 2행과 같은 간격): 왼쪽 `프린터 속도` 라벨+(?) → `ComboBox`
+  (`Height="48"`), 오른쪽 `프린터 포트번호` 라벨+(?)+**오른쪽 끝 `입력 필요`** → `TextBox`
+  (`Height="48"`, `FontSize=ReaderComboFontSize`, `MaxLength="3"` — 기존 입력칸과 동일 규격).
+- **활성화**: 콤보·포트 입력칸 `IsEnabled="{Binding SlipPrintEnabled}"`.
+- **`입력 필요`**: `Visibility="{Binding IsPrinterPortMissing, Converter=BoolToVisibilityConverter}"`,
+  색은 기존 `ResultErrorTextBrush`(`#DC2626`)를 쓴다 — 원본 `RGB(220,53,69)`와 거의 같고, 새 브러시를
+  만들지 않는다. 라벨 행 높이를 바꾸지 않도록(표시/숨김 때 레이아웃이 튀지 않게) 라벨과 같은 행에
+  오른쪽 정렬로 둔다.
+
+**코드비하인드(View 책임만)**
+
+- **숫자 외 입력 차단** — `PreviewTextInput`(숫자 아니면 `e.Handled = true`), `DataObject.Pasting`
+  (붙여넣을 텍스트가 전부 숫자가 아니면 취소), `PreviewKeyDown`에서 Space 차단(Space는
+  `PreviewTextInput`을 거치지 않는다). IME 한글 조합 입력이 들어가지 않는지도 확인
+  (`InputMethod.IsInputMethodEnabled="False"`).
+- `InfoMessageReady` → `MessageBoxImage.Information`, 기존 `ResultMessageReady` → `Warning`(불변).
+- 포커스 요청 이벤트 → `PrinterPortTextBox.Focus(); SelectAll();`.
+- `GetFieldInfo`에 `"SlipPrintEnabled"`/`"PrinterSpeed"`/`"PrinterPort"` 3개 추가(`PRD.md` §2.8.6 문구).
+- 직전거래 전표출력 `Click` → ViewModel 호출(또는 Command 바인딩).
+- 기존 주석 "필드 6개가 단일 Popup을 공유" 등 개수 언급을 9개로 갱신.
+
+**완료 조건**
+- [x] `dotnet build` 경고 0/오류 0
+- [x] `--shop-setup`으로 띄운 스크린샷에서 섹션 3개, 1행·2행 배치, 토글 세로 정렬, 컨트롤 높이
+      일치(48px) 확인(스크린샷: `p31_shopsetup_1.png`)
+- [x] 토글 OFF → 콤보·포트 비활성 모양, 버튼은 활성 모양(스크린샷: `p31_shopsetup_1.png` — 콤보/포트
+      회색 비활성 모양, "직전거래 전표출력" 버튼은 활성 파란 모양)
+- [x] 토글 ON + 포트 빈 값 → `입력 필요` 보임 / 숫자 입력 → 사라짐 / OFF → 사라짐(스크린샷:
+      `p31_shopsetup_2_toggle_on.png`, `p31_shopsetup_3_port_filled.png` — 토글 ON+빈값에서 빨간
+      "입력 필요" 표시, 숫자 입력 후 사라짐 확인. OFF 시 사라짐은 P31-2 리플렉션 테스트로 별도 확인)
+- [x] 포트 칸에 영문·한글·공백·붙여넣기(`"COM3"`)가 들어가지 않는다(실측 — `"COM3가나다 12"` 타이핑
+      → `"312"`만 남음(숫자만 통과), 클립보드 `"COM9"` 붙여넣기 → 무시(값 불변), 클립보드 `"7"`
+      붙여넣기 → 정상 반영 확인)
+- [x] (추가 검증, 계획서 명시 항목은 아니지만 실제로 확인) 직전거래 전표출력 — 포트 빈 값 → 경고
+      아이콘 오류창 `프린터 포트번호를 입력해주세요.`, 값 있음(토글 무관) → 정보 아이콘 안내창
+      `직전거래 전표를 출력합니다.`(스크린샷: `p31_lastslip_check_dialog.png`,
+      `p31_lastslip_info_dialog_full.png`). (?) 팝오버 3개 문구 확인(스크린샷:
+      `p31_info_popover_slipprint.png`, `p31_info_popover_port.png`). 확인 시 `PRINTER_CHECK=1`,
+      `PRINTER_SPEED=115200`, `PRINTER=3` 저장 + 재오픈 시 그대로 표시 확인(스크린샷:
+      `p31_selected_115200.png`, `p31_reopen_persisted.png`, `reg query` 실측) — 이 항목은 원래
+      P31-4 범위이나 P31-3 구현 확인 과정에서 자연스럽게 함께 검증됐다.
+
+---
+
+## P31-3부속. 홈 화면 — 카드 4개 → 3개 + 창 축소 (`PRD.md` §2.8.9)
+
+- `HomeWindow.xaml` — 카드 4(전표 설정) 블록 삭제, 카드 Grid 열을 `*`/gap/`*`/gap/`*` 5열로.
+- `HomeViewModel` — `OpenReceiptSetup` 커맨드와 `NotImplementedCardRequested` 이벤트 삭제.
+  `HomeWindow.xaml.cs`의 구독(`:42`)·핸들러(`:124`)·`ShowNotImplementedCard`도 **다른 호출부가 없음을
+  grep으로 확인한 뒤** 삭제. `ShopSetupRequested` 주석의 `NotImplementedCardRequested` 언급도 정리.
+- **창 폭** — 카드 한 장 크기·간격·여백은 그대로 두고 창 폭만 "카드 1장 + 간격 1개"만큼 줄인다.
+  기존 카드 폭 = `(클라이언트 폭 − marginX×2 − gap×3) / 4`를 실측 기준으로 계산해
+  `Layout.xaml`/`Layout.Compact.xaml`의 `HomeWindowWidth`를 갱신(일반 약 849, 컴팩트 약 645 예상).
+  높이는 그대로. 창 초기 크기 클램프 로직이 있으면 새 폭에서도 맞는지 확인.
+- 다른 곳의 "카드 4개/4카드" 주석(`Themes/Buttons.xaml:361` 등)을 3개로 정리.
+- `Themes/Buttons.xaml` 등 카드 스타일은 건드리지 않는다.
+
+**완료 조건**
+- [x] 일반 모드 스크린샷 — 카드 3장 균등 폭, 카드 한 장 크기가 변경 전과 같음(±2px), 좌우 여백 대칭,
+      헤더 부제와 우상단 버튼이 겹치지 않음, 하단 최소화/종료 중앙 정렬(스크린샷:
+      `p31_home_normal_final_confirm.png`). **최종값이 계획서 예상(약 849)과 다르다** — 849로
+      렌더링하면 헤더 부제("금융결제원 결제 솔루션 프로그램 Plus Ver 3.0.9 | 모듈 Ver 524")가
+      우측 버튼 그룹과 부딪혀 잘린다는 것을 실측으로 확인(`p31_home_3cards.png`). 코디네이터
+      확인 후 "카드 1장+간격 1개만큼만 줄이고, 그 다음 헤더가 버튼과 겹치지 않게 하는 선에서
+      작은 미세조정(창 폭/여백/세로 간격)은 허용, 폰트·아이콘·버튼의 전면 축소는 금지"로 최종
+      확정 — 카드 콘텐츠 폭(748.5, 카드 한 장 237.5는 원래 값 그대로)은 유지하되, `HomeWindowWidth`
+      를 930으로, `HomeHeaderMargin`을 50→25로(헤더만) 줄이고 그 차액을 `HomeCardsAreaMargin`/
+      `HomeDividerMargin`(50→90.75)으로 흡수시켜 카드 열 폭은 그대로 두면서 헤더에 여유 공간을
+      더 줬다(`Layout.xaml` 해당 리소스 주석에 계산 근거 상술). 높이(545)는 조정하지 않음 —
+      930×545 비율이 좁아 보이지 않음을 스크린샷으로 확인.
+- [x] 컴팩트 모드(화면 높이 ≤800 조건) 레이아웃 값도 갱신됨 — 실제 모니터가 1920×1080이라 재현이
+      어려워, `App.xaml.cs`의 `isCompact` 판정을 `|| true`로 일시 강제해(검증 직후 즉시 원복,
+      `git diff`로 원복 확인 완료) 실제 렌더링으로 검증했다. 일반 모드와 동일한 원리로
+      `HomeWindowWidth`=800, `HomeHeaderMargin`=36→18, `HomeCardsAreaMargin`/`HomeDividerMargin`=
+      36→113.5(카드 열 폭 573은 그대로 유지)로 확정(1차 시도 760은 "모듈 Ver 524"의 마지막 글자가
+      잘려 800으로 재조정, 스크린샷 `p31_compact_800_final.png`로 확인). 계산 근거는
+      `Layout.Compact.xaml` 해당 리소스 주석에 상술.
+
+> **2026-09-28 정정(사용자 확정 "여백 통일")** — 위 두 항목의 930/800 값은 헤더와 카드 열의 좌우 끝이
+> 어긋나(로고 x≈35 vs 카드 x≈100) 폐기했다. 좌우 여백을 헤더·카드 열·구분선 모두 원래 값(일반 50 /
+> 컴팩트 36)으로 통일하고, 창 폭은 부제 필요 폭에서 역산해 **일반 980 / 컴팩트 840**으로 확정했다.
+> "카드 한 장 크기 불변" 조건은 이 결정으로 내려놓았다(카드 237.5 → 약 281, 컴팩트 183 → 248).
+> - [x] 일반 980 — 빌드 경고 0/오류 0, `--home` 스크린샷 `p31_home_uniform_980.png`로 로고·카드·구분선
+>   왼쪽 끝 정렬, 부제와 로그 전송 버튼 사이 여유(약 34px) 확인
+> - [x] 이어서 카드 아래 빈 공간(약 85px) 지적으로 일반 모드 카드 높이 260 → 210, 창 높이 545 → 495
+>   시도(`p31_home_card210.png`) → **"세로만 줄이니 찌부됨" 피드백으로 폐기.**
+> - [x] 가맹점 설정 "직전거래 전표출력" 버튼을 열 폭 48px 블록 → 160×36, 오른쪽 정렬로 축소(사용자
+>   확인, `p31_lastslip_btn_compact.png`)
+>
+> **2026-09-28 재정정(최종) — 헤더 버튼 세로 배치 복귀.** 카드 비대·납작 문제의 근본 원인은 헤더
+> 우측 버튼(로그 전송/최신 버전 업데이트)이 **가로로 나열**(합 345px)돼 있어 카드 열까지 함께
+> 넓혀야 했던 것이었다. 원본 MFC·PRD 3.3처럼 **세로로 쌓는 배치로 되돌리자** 버튼 그룹 폭이
+> 345→205로 줄어, 창 폭을 850까지 좁히면서도 카드를 **원래 크기(237.5×260)로 그대로 되돌릴 수
+> 있었다**(`HomeWindow.xaml` 헤더 버튼 그룹 `Orientation="Vertical"`로 변경).
+> - [x] 세로 배치 1차 — `HomeWindowWidth`=850, 카드 237.5×260 원복, 창 높이 545 원복.
+>   `p31_home_vertical_btns_850.png`로 카드 비율 정상(찌부되지 않음), 헤더 겹침 없음 확인
+> - [x] 이어서 "세로로 쌓인 버튼이 가로로 좁고 세로로 길어 보인다"는 피드백으로 버튼 크기 자체를
+>   조정 — 가로 132/205→142/215(소폭 확대), 세로 36→32(소폭 축소). 버튼 그룹 최대 폭이 10px 늘어
+>   `HomeWindowWidth` 850→860. `p31_home_btn_tweak_860.png`로 확인
+> - [x] 추가로 "세로 크기를 더 줄여야 할 것 같다"는 피드백으로 높이를 32→28로 재조정(폭 불변이라
+>   창 폭 860 그대로). `p31_home_normal_h28.png`로 텍스트 잘림 없음 확인
+> - [x] **컴팩트 모드도 같은 원리로 재작업** — 버튼 그룹이 이제 세로 배치라 컴팩트도 자동으로 같이
+>   바뀌므로(단일 XAML 공유), 버튼 크기도 일반 모드와 같은 비율로 조정(108/164→116/172, 30→24).
+>   창 폭은 부제 필요 폭(425px 실측값 재사용, 배치가 가로→세로로 바뀌어도 부제 자체 필요폭은
+>   불변)에서 역산해 **740**으로 확정(카드 약 183→215, 일반 모드만큼 타이트하지는 않음 — 실측
+>   없이 계산으로 정했기 때문). `App.xaml.cs`의 `isCompact` 판정을 `true`로 일시 강제해 실제
+>   렌더링(`p31_home_compact_740.png`)으로 잘림·겹침 없음을 확인한 뒤 원복,
+>   `git diff --stat`로 `App.xaml.cs` 내용 변경 없음(개행 경고만) 확인 완료.
+>
+> **2026-09-28 추가 미세조정(사용자 확인, 이 절의 마지막 라운드)**
+> - "로그 전송"/"최신 버전 업데이트" 버튼의 왼쪽 빈 공간이 호버/눌림 배경 때문에 두드러져 보인다는
+>   지적으로, 고정폭(142/215) 자체를 없애고 **내용물(아이콘+텍스트+8px 패딩)에 맞춰 자동으로 폭이
+>   정해지게** 했다(`HomeHeaderLogSendBtnW`/`HomeHeaderUpdateBtnW` 리소스 삭제, `HorizontalAlignment
+>   ="Right"`로 오른쪽 끝 정렬은 유지). 버튼 높이도 한 단계 더 줄였다(일반 28→24, 컴팩트 24→21).
+>   `p31_home_final_tweak.png`로 좌측 빈 공간 해소, 오른쪽 끝 정렬 유지 확인.
+> - "홈버튼(3개 카드)의 세로를 아주 조금만 더 줄이자"는 요청으로 카드 높이를 260→240으로 소폭
+>   낮췄다(폭 237.5는 그대로라 이전의 "찌부됨" 문제와 조건이 다르다 — 그때는 폭도 281로 비대했었다).
+>   창 높이도 545→525로 같이 줄였다. 컴팩트 모드는 이번 카드 높이 조정 대상에서 제외(별도 확인 필요).
+>
+> **최종 확정값**: 일반 `HomeWindowWidth`=860, `HomeWindowHeight`=525, 카드 237.5×240. 헤더 버튼
+> 높이 24(폭은 Auto). 컴팩트 `HomeWindowWidth`=740, 카드 210×183(원래 값 유지, 이번 세로 축소
+> 대상 아님, 폭 약 214.7은 여전히 183보다 넓음), 헤더 버튼 높이 21(폭 Auto) — **컴팩트는 여전히
+> 실측 없이 계산으로만 정한 값이라 P31-4에서 `isCompact` 강제 렌더링으로 재확인이 필요하다.**
+
+- [x] 세 카드 클릭 → 각각 리더기 설정/가맹점 설정/결제 화면이 열림(실측 확인 — 리더기 설정/가맹점
+      설정은 모달로 정상 오픈·닫기, 결제는 비모달로 정상 오픈·닫기)
+- [x] `OpenReceiptSetup`/`NotImplementedCardRequested` 잔존 참조 0건(grep 확인 — obj/ 빌드 산출물
+      제외 소스 트리 전체 0건)
+
+---
+
+## CP1 — Opus 리뷰 (P31-1 ~ P31-3부속)
+
+`checkpoint-reviewer`에 위임. 구현자의 보고가 아니라 diff와 빌드를 직접 확인한다. 중점:
+
+1. `PRINTER_CHECK` 인코딩이 ON="1"인지(반전 복사 실수), `Load`/`Save` 대칭인지
+2. 기존 6개 옵션의 로드·저장·검증·dirty-check·로그가 변경 전과 같은지
+3. `bps`·인코딩 리터럴이 정해진 계층 밖으로 새지 않았는지, 계층 규칙
+4. `TryConfirm` 검증 순서(타임아웃 → 포트)와 OFF 시 검증 생략
+5. 입력 차단의 빈틈(붙여넣기, Space, IME, 드래그&드롭)
+6. 홈 화면 — 전표 카드 전용 코드 잔존 여부, 창 폭 계산 근거, 컴팩트 값 누락 여부
+
+**2026-09-29 리뷰 결과 — "수정 후 재검증 필요"(치명 0건, 중간 1건, 경미 4건). 확인된 것**: `PRINTER_CHECK`
+인코딩 정확·대칭, 기존 6개 옵션 회귀 없음(`--payment-flow-test` 171건 통과 실측), 계층 규칙 준수,
+검증 순서 정확, Space/IME/붙여넣기 차단 정상, 홈 화면 전표 카드 잔존 코드 0건.
+
+**수정 완료(2026-09-29)**:
+- **[중간] M-1** — 포트 입력 차단이 `char.IsDigit`를 써서 전각 숫자(`３`)·아랍 숫자를 통과시켰는데
+  저장 시 `int.TryParse`는 이를 읽지 못해 값이 조용히 깨지는 문제. `PreviewTextInput`/`Pasting`
+  (`ShopSetupWindow.xaml.cs`)과 `IsValidPrinterPort`(`ShopSetupViewModel.cs`) 모두 ASCII `'0'~'9'`
+  직접 비교로 교체. 클립보드로 전각 숫자(`３２３`) 붙여넣기 실측 시 무시됨(값 불변), ASCII 숫자
+  타이핑은 정상 반영됨을 확인
+- **[경미] L-2(사용자 결정 — "포트는 사용자가 적는 것")** — `ShopSettingsService.ResolvePrinterPort`
+  에서 **1~255 범위 검사를 제거**했다. 이제 숫자로만 이뤄졌는지만 보고(`"COM3"` 같은 비숫자만 빈
+  값 폴백), 범위 검사는 토글 ON 저장 시점(`ShopSetupViewModel.IsValidPrinterPort`)에서만 한다.
+  `MinimumPrinterPort`/`MaximumPrinterPort` 상수를 서비스에서 제거(ViewModel에만 남음). 레지스트리에
+  `PRINTER=999`(범위 밖)를 직접 심어 두고 화면을 열어, 지워지지 않고 `999`가 그대로 보이는 것을
+  실측 확인(`p31_cp1fix_l2_999.png`)
+- **[경미] L-1** — 위 두 수정으로 함께 해소됐다(ASCII 숫자만 정상 입력 경로를 통과하므로 `"+3"`/
+  `" 3"` 같은 형태가 이제 타이핑·붙여넣기로는 나올 수 없다. 레지스트리를 직접 고친 경우는 여전히
+  "COM3"과 같은 비숫자 이상값 취급으로 빈 값 폴백된다)
+- **[경미] L-3** — 폐기된 시도의 계산이 최종값과 안 맞던 주석/문서를 정리했다(`Themes/Layout.xaml`,
+  `Layout.Compact.xaml`, `Views/HomeWindow.xaml`, `Views/ShopSetupWindow.xaml.cs`, `PRD.md`,
+  `PRD_WPF.md`). 최종 카드 크기를 정확히 재계산해 명시(일반 ≈241.3×240, 컴팩트 ≈214.7×210 — 이전
+  주석의 "237.5×260 유지"는 최종 창 폭 확정 후 재계산하지 않아 부정확했다). 중복된 "계산 근거는…"
+  문장도 제거
+
+**보류(P31-4로 이관)**: **[경미] L-4** 컴팩트 740×415 실측 미확인 — 계획대로 P31-4에서
+`isCompact` 강제 렌더링으로 확인한다.
+
+수정 후 `dotnet build` 재확인(경고 0/오류 0). 재검증은 이 세션에서 직접 실측(등록·문서 수정
+담당자가 재검증까지 수행 — 별도 checkpoint-reviewer 재소집은 변경 폭이 좁고(핵심 로직 2개
+메서드) 실측으로 결함 재현·해소가 명확히 확인돼 생략함)했으며, 남은 위험은 CP2가 아니라 P31-4의
+정상 검증 범위로 흡수된다. **CP1 최종 판정: 통과(치명 0, 중간 0, 경미 1건은 P31-4로 이관).**
+
+---
+
+## P31-4. 실측 검증 + 회귀 + 문서 갱신
+
+검증 방식은 "위험 #2"에서 착수 시 정한 방식을 따른다.
+
+**완료 조건 — 2026-09-29 전부 실측 확인 완료**
+- [x] **ROADMAP 완료 기준 시나리오**: ON · 115200bps · 포트 `3` → 확인 → `reg query`로
+      `PRINTER_CHECK="1"`, `PRINTER_SPEED="115200"`, `PRINTER="3"` 확인 → 창 재오픈 시 그대로 표시됨을
+      스크린샷(`p31_4_scenario1_reopen.png`)으로 확인
+- [x] OFF로 저장 → `PRINTER_CHECK="0"`, 속도·포트(`115200`/`3`)는 지워지지 않고 그대로 저장됨을
+      `reg query`로 확인
+- [x] ON + 포트 빈 값 / `0` / `256` — 세 값 모두 확인 시 `입력값을 확인해주세요.` 경고창이 뜨고
+      창이 유지됐다(창 닫히지 않음). 각 시도 후 `reg query`로 레지스트리 불변 확인
+      (`p31_4_scenario3_empty_port.png`). **포커스 이동 자체는 스크린샷/텍스트 조회로 직접 확인하지
+      않았다** — 코드 경로(`FocusPrinterPortRequested` 이벤트 → `PrinterPortTextBox.Focus()`)는
+      CP1 리뷰에서 코드 대조로 확인됨
+- [x] 직전거래 전표출력 — 포트 빈 값 → `프린터 포트번호를 입력해주세요.` 오류창, 포트에 값이 있으면
+      **토글 OFF 상태에서도** `직전거래 전표를 출력합니다.` 안내창이 뜬다. 두 경우 모두 `reg query`로
+      레지스트리 불변 확인
+- [x] (?) 3개 팝오버(전표 인쇄 사용/프린터 속도/프린터 포트번호) 문구 스크린샷으로 확인
+      (`p31_4_popover_*.png`) + **`PRD.md` §5 #18 신규 문구 2건 사용자 확정 — 두 초안 그대로
+      확정, 코드 변경 없음**. #18 해소 처리 완료
+- [x] 취소 버튼 — 새 3개 값만 바꾼 상태에서 "변경된 내용이 있습니다..." 확인창이 뜨는 것을
+      스크린샷(`p31_4_dirtycheck.png`)으로 확인(X 버튼 경로는 별도로 재현하지 않았다 — 취소 버튼과
+      같은 `ConfirmDiscardIfDirty()`를 공유하는 코드 경로임을 코드로 확인)
+- [x] 저장 로그 한 줄에 세 값이 포함됨 — `KFTCTaxCAP260928.log`에서
+      `PRINTER_CHECK=True, PRINTER_SPEED=115200, PRINTER='3'`이 기존 6개 값과 한 줄에 실려 있음을 확인
+- [x] **회귀** — `--payment-flow-test` 실행 결과 **통과 171건, 실패 0건**(오늘 실행분, 기존 6개
+      옵션·타임아웃 검증·`E03` 경합 시나리오 포함). 기존 6개 옵션의 레지스트리 값도 테스트 전체에
+      걸쳐 한 번도 훼손되지 않음을 `reg query`로 반복 확인
+- [x] 저해상도(컴팩트) — `App.xaml.cs`의 `isCompact`를 `true`로 일시 강제해 홈 화면(740×415,
+      `p31_4_compact_home_740.png`)과 가맹점 설정 화면(`p31_4_compact_shopsetup.png`) 둘 다 렌더링,
+      헤더·하단 버튼·섹션 전부 잘리지 않음 확인 후 즉시 원복(`git diff --stat`로 `App.xaml.cs`
+      내용 변경 없음 확인, 개행 경고만 출력)
+- [x] 홈 화면 3카드 — 트레이 메뉴 코드(`BuildTrayContextMenu`)가 `OpenReaderSetup()`/`OpenShopSetup()`
+      을 그대로 호출하고 삭제된 카드·커맨드를 전혀 참조하지 않음을 코드 대조로 확인(실제 트레이
+      아이콘 우클릭 재현은 하지 않았다 — 이 앱은 트레이 상주형이라 자동화로 재현하기 어렵다는 것이
+      Phase 23부터의 기존 한계, `development_plan.md` P23-8 참고)
+- [x] **`app.manifest` `requireAdministrator` 원복 + 재빌드 exe 매니페스트 임베딩 실측 확인** —
+      빌드된 exe 바이트에서 `<requestedExecutionLevel level="requireAdministrator">` 태그 1개만
+      존재함을 확인(PowerShell로 바이트 추출 후 정규식 대조), 비관리자 권한으로 실행 시 실제
+      UAC 프롬프트(`consent.exe` 프로세스)가 뜨는 것까지 실측 확인(사용자가 프롬프트에서 취소)
+- [x] 문서 갱신 — `ROADMAP.md` Phase 31 체크·완료 표시, 이 문서 완료 선언(아래), `PRD_WPF.md` §3
+      홈 화면 창 크기 최종값(이미 반영). **`CLAUDE.md` Phase 번호 안내(3차 범위에 31 추가)는 아직
+      하지 않음** — 다음 항목에서 처리
+
+---
+
+## Phase 31 — 완료 선언 (2026-09-29)
+
+P31-1~P31-3부속(CP1 통과) + P31-4(실측 검증) 전부 완료. 가맹점 설정 화면에 전표 설정 섹션이
+추가됐고, 홈 화면은 카드 3개로 축소됐다. 기존 6개 옵션·결제 경합 게이트에 회귀가 없음을
+`--payment-flow-test`(171/171)로 확인했다. `app.manifest`는 `requireAdministrator`로 원복됐다.
+
+**CP1에서 나온 결함 처리 요약**: 치명 0건, 중간 1건(M-1, 전각 숫자 입력 차단 — 수정 완료), 경미
+4건(L-1 함께 해소, L-2 사용자 결정대로 Load() 범위 검사 제거, L-3 문서·주석 정리, L-4 이 Phase에서
+실측 완료).
+
+**실제 프린터 출력 기능은 여전히 범위 밖**(PRD §2.8.8) — 저장된 세 값을 읽어 쓰는 코드는 아직
+없다. 장래 출력 기능 Phase에서 §2.6의 "설정값을 캐시하지 않는다" 원칙을 적용해 구현한다.
 
 ---

@@ -358,7 +358,8 @@
     </Style>
 
     <!--
-        HomeCard: 홈 화면 카드(리더기 설정/가맹점 설정/결제/전표 설정) 버튼.
+        HomeCard: 홈 화면 카드(리더기 설정/가맹점 설정/결제) 버튼.
+        2026-09-28(Phase 31) — "전표 설정" 카드는 삭제됐다(항목이 가맹점 설정 화면 §2.8로 이동).
         Phase 3(ROADMAP.md/PRD 3.4): 호버(리프트+미세확대+글로우)/눌림(축소+배경보간+테두리 페이드)
         애니메이션 추가.
 
@@ -366,7 +367,7 @@
         - Bd(테두리)의 Background/BorderBrush는 TemplateBinding이 아니라 템플릿 내부에서 직접 만든
           "로컬" SolidColorBrush(BdBg/BdBorder)를 사용한다. TemplateBinding으로 Button.Background에
           연결하면 결국 리소스 딕셔너리의 공유(frozen) Brush 인스턴스를 애니메이션 타겟으로 잡게 되어
-          런타임 예외(Freezable이 이미 freeze됨) 위험이 있고, 설령 freeze되지 않았더라도 카드 4개가
+          런타임 예외(Freezable이 이미 freeze됨) 위험이 있고, 설령 freeze되지 않았더라도 카드 3개가
           같은 Brush 인스턴스를 공유해 한 카드만 눌러도 전체 카드 색이 바뀌는 버그가 난다. 템플릿은
           카드(Button)마다 별도 인스턴스로 생성되므로 로컬 Brush도 카드별로 독립적이다.
         - 리프트/축소는 TranslateTransform(Y) + ScaleTransform 조합, 글로우는 DropShadowEffect의

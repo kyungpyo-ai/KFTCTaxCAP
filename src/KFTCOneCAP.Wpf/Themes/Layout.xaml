@@ -15,9 +15,36 @@
         수치를 그대로 채택함.)
     -->
 
-    <!-- 창 크기 (고정, ResizeMode=NoResize) — 2026-08-19 세로 비율 최적화(545) -->
-    <sys:Double x:Key="HomeWindowWidth">1104</sys:Double>
-    <sys:Double x:Key="HomeWindowHeight">545</sys:Double>
+    <!--
+        창 크기 (고정, ResizeMode=NoResize).
+        2026-09-28(Phase 31, PRD §2.8.9) — 홈 화면 카드가 4개→3개로 줄면서(전표 설정 카드 삭제,
+        항목이 가맹점 설정 화면 §2.8로 이동) 창 폭을 여러 차례 시도 끝에 재조정했다. 아래는 **최종
+        결정 경위만 간추린 기록**이다 — 중간 계산이 최종값과 어긋나 있던 이전 판(2026-09-29 CP1
+        리뷰 L-3 지적)을 정리했다. 폐기된 값들의 상세 계산은 git 이력을 참고한다.
+
+        1. 카드 폭은 헤더 한 줄(로고+부제+버튼 그룹)의 최소 폭에 종속된다 — 버튼 2개가 가로로
+           나열(345px)돼 있으면 부제("금융결제원 결제 솔루션 프로그램 Plus Ver 3.0.9 | 모듈 Ver
+           524", 실측 필요폭 약 466px)까지 넣으려고 창을 980까지 넓혀야 했고, 그러면 카드가
+           237.5→약 281로 비대해졌다("찌부됨" 피드백으로 폐기).
+        2. 헤더 버튼 2개를 원본 MFC·PRD 3.3처럼 **세로로 쌓는 배치**로 되돌리자(HomeWindow.xaml
+           헤더 주석) 버튼 그룹 폭이 345→205로 줄어, 창을 850까지만 좁혀도 됐다(카드 폭 ≈238,
+           원래 237.5와 사실상 동일했다).
+        3. 버튼 크기 자체를 조정했다 — 가로 폭을 소폭 늘리고(142/215) 세로 높이를 세 차례 줄였다
+           (36→32→28→24). 폭이 늘어난 만큼 창 폭도 850→860으로 늘렸다가, 마지막에는 **버튼 폭
+           고정값 자체를 없애 내용물(아이콘+텍스트+8px 패딩)에 맞춰 자동으로 정해지도록** 바꿔
+           호버/눌림 배경이 텍스트보다 커 보이던 문제를 없앴다(HomeHeaderLogSendBtnW/
+           HomeHeaderUpdateBtnW 리소스는 삭제, 아래 헤더 버튼 높이 리소스 참고). 이 변경은
+           HomeWindowWidth 자체에는 더 영향을 주지 않았다(860 유지).
+        4. 카드 높이를 한 차례 더 줄였다(260→240, "세로를 아주 조금만 더 줄이자"는 요청 — 아래
+           HomeCardVisualHGridLength 참고). 창 높이도 같은 20px만큼 줄였다(545→525).
+
+        **최종값**: HomeWindowWidth=860, HomeWindowHeight=525. marginX=50/gap=18 기준으로 실제
+        카드 크기를 역산하면 폭 = (860-100-18*2)/3 ≈ 241.3, 높이 240 — 원래 4카드 시절(237.5×260)
+        보다 약간 크지만, 중간에 시도했던 281×210 같은 값보다는 원래 비율에 훨씬 가깝다.
+    -->
+    <sys:Double x:Key="HomeWindowWidth">860</sys:Double>
+    <!-- 545 → 525(카드 높이 260 → 240과 같은 폭으로 축소, 아래 HomeCardVisualHGridLength 주석). -->
+    <sys:Double x:Key="HomeWindowHeight">525</sys:Double>
 
     <!--
         좌우 여백(50) / 헤더 상단 여백(38) — PRD 3.3 marginX/헤더 상단 수치. 개별 Width/Height
@@ -39,7 +66,15 @@
         미사용 sys:Double 버전 HomeCardGap/HomeCardVisualH 제거).
     -->
     <GridLength x:Key="HomeCardGapGridLength">18</GridLength>
-    <GridLength x:Key="HomeCardVisualHGridLength">260</GridLength>
+    <!--
+        2026-09-28(Phase 31, 사용자 확인) — 260 → 240. 헤더 버튼을 세로 배치로 바꾸며 카드 폭을
+        원래 값(237.5)에 가깝게(최종 ≈241.3) 되돌린 뒤(위 HomeWindowWidth 주석), "세로를 아주
+        조금만 더 줄이자"는 요청으로 작은 폭만 낮췄다(이전에 시도했다가 "찌부됨"으로 폐기한 210은
+        카드 폭이 281로 비대해진 상태에서 나온 결과라 이번(폭 ≈241.3 + 소폭 축소)과는 조건이 다르다).
+        창 높이도 같은 20px만큼 줄였다(545→525, 아래 HomeWindowHeight). 컴팩트 모드는 이번 조정
+        대상이 아니다.
+    -->
+    <GridLength x:Key="HomeCardVisualHGridLength">240</GridLength>
 
     <!--
         2026-08-19 수정(UI/UX 개선):
@@ -66,11 +101,16 @@
     -->
     <GridLength x:Key="HomeCardIconTitleGapGridLength">24</GridLength>
 
-    <!-- 헤더 버튼 (로그 전송 / 최신 버전 업데이트) -->
-    <sys:Double x:Key="HomeHeaderLogSendBtnW">132</sys:Double>
-    <sys:Double x:Key="HomeHeaderLogSendBtnH">36</sys:Double>
-    <sys:Double x:Key="HomeHeaderUpdateBtnW">205</sys:Double>
-    <sys:Double x:Key="HomeHeaderUpdateBtnH">36</sys:Double>
+    <!--
+        헤더 버튼 (로그 전송 / 최신 버전 업데이트) 높이 — 2026-09-28(Phase 31, 사용자 확인) 세로 배치
+        전환 후 세 차례에 걸쳐 줄였다(36→32→28→24). **폭 키(HomeHeaderLogSendBtnW/HomeHeaderUpdateBtnW)
+        는 삭제했다** — 버튼이 고정폭일 때 텍스트 왼쪽에 빈 공간이 생겨 호버/눌림 배경이 어색하게
+        커 보인다는 지적으로, HomeWindow.xaml에서 Width 자체를 없애 내용물(아이콘+텍스트+8px 패딩)에
+        맞춰 자동으로 크기가 정해지게 했다(주석 참고). HomeWindowWidth(860)는 버튼 그룹이 세로 배치로
+        바뀌며 정한 값이라 이 높이 조정과 무관하게 그대로 유지한다.
+    -->
+    <sys:Double x:Key="HomeHeaderLogSendBtnH">24</sys:Double>
+    <sys:Double x:Key="HomeHeaderUpdateBtnH">24</sys:Double>
 
     <!--
         하단 버튼(최소화/종료) — 간격(16)은 HomeFooterBtnMargin(아래) Thickness로만 쓰여
@@ -83,6 +123,10 @@
         복합 Margin(Thickness) 리소스 — XAML 속성 하나에 여러 {StaticResource}를 섞어 쓸 수 없어
         (마크업 확장은 속성 값 전체를 단일 확장으로 파싱) 개별 치수를 조합한 Thickness를 완제품
         키로 둔다. 값의 출처는 PRD 3.3 marginX(50)/헤더 상단(38)/하단버튼 간격(16).
+    -->
+    <!--
+        2026-09-28(Phase 31, P31-3부속) — 헤더/카드 열/구분선 좌우 여백 50으로 통일(위 HomeWindowWidth
+        주석 "최종" 참고).
     -->
     <Thickness x:Key="HomeHeaderMargin">50,38,50,0</Thickness>
     <Thickness x:Key="HomeCardsAreaMargin">50,0,50,0</Thickness>

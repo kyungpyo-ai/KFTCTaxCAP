@@ -1,11 +1,11 @@
 namespace KFTCOneCAP.Wpf.Services.Settings;
 
 /// <summary>
-/// 가맹점 설정 화면(Phase 23, docs/operations/development_plan.md P23-1)이 다루는 6개 옵션.
-/// 레지스트리의 반전 인코딩(AUTO_REBOOT/AUTO_UPDATE/KEYIN_DIM: ON→"0", OFF→"1")과 "0=미설정" 규칙
-/// (<see cref="CardReadTimeoutSeconds"/>)은 <see cref="ShopSettingsService"/> 안에서만 다루고, 이
-/// 모델은 화면에 그대로 보여줄 값만 담는다(docs/payment_relay/development_plan.md P7-1의
-/// ReaderSettings와 동일한 패턴).
+/// 가맹점 설정 화면(Phase 23, docs/operations/development_plan.md P23-1)이 다루는 옵션 9개
+/// (Phase 31, P31-1에서 전표 설정 3개 추가). 레지스트리의 반전 인코딩(AUTO_REBOOT/AUTO_UPDATE/
+/// KEYIN_DIM: ON→"0", OFF→"1")과 "0=미설정" 규칙(<see cref="CardReadTimeoutSeconds"/>)은
+/// <see cref="ShopSettingsService"/> 안에서만 다루고, 이 모델은 화면에 그대로 보여줄 값만 담는다
+/// (docs/payment_relay/development_plan.md P7-1의 ReaderSettings와 동일한 패턴).
 /// </summary>
 public sealed class ShopSettings
 {
@@ -30,4 +30,16 @@ public sealed class ShopSettings
 
     /// <summary>결제 화면 잠금(PRD §2.5). 값 저장만.</summary>
     public bool KeyinDim { get; set; }
+
+    /// <summary>전표 인쇄 사용(PRD §2.8.2). ON="1"/OFF="0" — 같은 SERIALPORT 키의 AutoReboot 등과
+    /// 달리 반전 인코딩이 아니다(인코딩은 <see cref="ShopSettingsService"/> 안에서만 다룬다).</summary>
+    public bool SlipPrintEnabled { get; set; }
+
+    /// <summary>프린터 속도(PRD §2.8.2, bps 단위). 저장값은 숫자만(<c>9600</c>/<c>38400</c>/
+    /// <c>57600</c>/<c>115200</c>) — 화면 표시용 "bps" 접미사는 ViewModel 안에서만 붙이고 뗀다.</summary>
+    public int PrinterSpeed { get; set; } = 57600;
+
+    /// <summary>프린터 포트번호(PRD §2.8.2). 숫자 문자열(예: <c>"3"</c>) 또는 빈 값. <c>COM3</c> 같은
+    /// 접두사 없이 숫자만 저장한다(2026-09-28 사용자 확정).</summary>
+    public string PrinterPort { get; set; } = string.Empty;
 }

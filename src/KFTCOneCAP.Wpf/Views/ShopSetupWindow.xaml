@@ -13,6 +13,11 @@
         Loaded="ShopSetupWindow_Loaded"
         Closed="ShopSetupWindow_Closed"
         Closing="ShopSetupWindow_Closing">
+    <Window.Resources>
+        <!-- Phase 31(P31-3) — "입력 필요" 표시(PRD §2.8.4). 창별 리소스로 선언하는 관례
+             (ReaderSetupWindow.xaml:23)를 그대로 따른다. -->
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Window.Resources>
     <!--
         가맹점 설정 화면(Phase 23, docs/operations/development_plan.md P23-3).
         원본 MFC(docs/operations/screenshots/shop_setup.png)는 탭 4개짜리 화면이지만, PRD.md §2.1
@@ -290,6 +295,112 @@
                 </StackPanel>
             </Border>
 
+            <!--
+                ===================== 전표 설정 (Phase 31, PRD §2.8) =====================
+                시스템 설정 섹션과 같은 18px 2열 간격을 써서 1행 토글이 위 섹션의 토글과 세로로
+                정렬되게 한다(원본 전표 화면의 cG=20이 아니라, 같은 창 안의 정렬을 우선한다 —
+                development_plan.md P31-3). 1행: 전표 인쇄 사용 토글 / 직전거래 전표출력 버튼.
+                2행: 프린터 속도 콤보 / 프린터 포트번호 입력칸("입력 필요" 실시간 표시 포함).
+            -->
+            <Border Background="{StaticResource ReaderSubCardBgBrush}"
+                    CornerRadius="{StaticResource ReaderSubCardCornerRadius}"
+                    Padding="{StaticResource ReaderSubCardPadding}"
+                    Margin="0,12,0,0">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border Width="{StaticResource ReaderSectionBarWidth}" Height="{StaticResource ReaderSectionBarHeight}"
+                                Background="{StaticResource Blue500Brush}" CornerRadius="2" VerticalAlignment="Center"/>
+                        <TextBlock Text="전표 설정" Style="{StaticResource ReaderSectionTitleTextStyle}" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    <Border Height="1" Background="{StaticResource FooterDividerBrush}" Margin="0,0,0,10"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!--
+                            1행 왼쪽 — 시스템 설정과 동일한 DockPanel 패턴(라벨 Left, (?) Button →
+                            ToggleButton 순서로 Right, LastChildFill="False"). Button을 ToggleButton
+                            보다 먼저 선언해야 (?)가 토글 오른쪽에 온다(위 시스템 설정 섹션 주석의
+                            회귀 이력 참고).
+                        -->
+                        <DockPanel Grid.Row="0" Grid.Column="0" LastChildFill="False">
+                            <TextBlock DockPanel.Dock="Left" Text="전표 인쇄 사용" Style="{StaticResource ReaderLabelTextStyle}" VerticalAlignment="Center"/>
+                            <Button x:Name="SlipPrintEnableInfoButton" DockPanel.Dock="Right" Style="{StaticResource InfoButtonStyle}"
+                                    Margin="{StaticResource ReaderToggleInfoGapMargin}" VerticalAlignment="Center"
+                                    Tag="SlipPrintEnabled" Click="FieldInfoButton_Click"/>
+                            <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ModernToggleSwitchStyle}" VerticalAlignment="Center"
+                                          IsChecked="{Binding SlipPrintEnabled, Mode=TwoWay}"/>
+                        </DockPanel>
+
+                        <!--
+                            1행 오른쪽 — 직전거래 전표출력 버튼. 원본은 ButtonStyle::Reader
+                            (ReaderButtonStyle에 대응). IsEnabled 바인딩 없음(PRD §2.8.3 — 토글과
+                            무관하게 항상 활성).
+                            2026-09-28 정정(사용자 확인) — 열 폭을 꽉 채운 48px 블록이 설정 컨트롤보다
+                            눈에 더 띄어, 원본 폭(140)에 가까운 보통 크기 버튼으로 줄이고 열 오른쪽 끝에
+                            붙였다(설정 줄 옆의 부가 동작으로 보이게). 높이는 토글 줄에 맞춘다.
+                        -->
+                        <Button Grid.Row="0" Grid.Column="2" x:Name="LastSlipPrintButton" Content="직전거래 전표출력"
+                                Style="{StaticResource ReaderButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Width="160" Height="36" Command="{Binding RequestLastSlipPrintCommand}"/>
+
+                        <!-- 2행 왼쪽 — 프린터 속도 -->
+                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,16,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="프린터 속도" Style="{StaticResource ReaderLabelTextStyle}"/>
+                                <Button x:Name="PrinterSpeedInfoButton" Style="{StaticResource InfoButtonStyle}"
+                                        Margin="{StaticResource ReaderToggleInfoGapMargin}" VerticalAlignment="Center"
+                                        Tag="PrinterSpeed" Click="FieldInfoButton_Click"/>
+                            </StackPanel>
+                            <ComboBox x:Name="PrinterSpeedCombo" Height="48" Margin="0,8,0,0"
+                                      IsEnabled="{Binding SlipPrintEnabled}"
+                                      ItemsSource="{Binding PrinterSpeedOptions}"
+                                      SelectedItem="{Binding PrinterSpeedSelection, Mode=TwoWay}"/>
+                        </StackPanel>
+
+                        <!-- 2행 오른쪽 — 프린터 포트번호("입력 필요"는 라벨과 같은 행 오른쪽 끝) -->
+                        <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,16,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="프린터 포트번호" Style="{StaticResource ReaderLabelTextStyle}"/>
+                                    <Button x:Name="PrinterPortInfoButton" Style="{StaticResource InfoButtonStyle}"
+                                            Margin="{StaticResource ReaderToggleInfoGapMargin}" VerticalAlignment="Center"
+                                            Tag="PrinterPort" Click="FieldInfoButton_Click"/>
+                                </StackPanel>
+                                <!--
+                                    PRD §2.8.4 — 토글 ON이고 포트번호가 비어 있을 때만 표시. 라벨과
+                                    같은 행(Grid, 별도 RowDefinition 없음)에 둬서 표시/숨김 때 2행
+                                    전체 높이가 튀지 않는다.
+                                -->
+                                <TextBlock Grid.Column="1" Text="입력 필요" VerticalAlignment="Center"
+                                           Foreground="{StaticResource ResultErrorTextBrush}"
+                                           Visibility="{Binding IsPrinterPortMissing, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </Grid>
+                            <TextBox x:Name="PrinterPortTextBox" Style="{StaticResource SkinnedTextBoxStyle}"
+                                     FontSize="{StaticResource ReaderComboFontSize}" Height="48" MinHeight="48" Margin="0,8,0,0"
+                                     MaxLength="3" IsEnabled="{Binding SlipPrintEnabled}"
+                                     InputMethod.IsInputMethodEnabled="False"
+                                     PreviewTextInput="PrinterPortTextBox_PreviewTextInput"
+                                     PreviewKeyDown="PrinterPortTextBox_PreviewKeyDown"
+                                     DataObject.Pasting="PrinterPortTextBox_Pasting"
+                                     Text="{Binding PrinterPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- ===================== 확인 / 취소 (ReaderSetupWindow.xaml과 동일한 위쪽 여백) ===================== -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
                 <Button x:Name="ConfirmButton" Content="확인" Style="{StaticResource PrimaryButtonStyle}"
@@ -305,10 +416,10 @@
         </StackPanel>
 
         <!--
-            필드 안내 info 팝오버 — 필드 6개가 단일 Popup을 공유하고, 클릭한 버튼의 Tag에 따라
-            제목/본문을 코드비하인드에서 갈아끼운다(ReaderSetupWindow.xaml MultipadInfoPopup과 동일
-            패턴). 필드마다 Popup을 따로 두지 않은 이유는 XAML 중복(Border/CornerRadius/Padding 등
-            동일 껍데기가 6번 반복)을 피하기 위함 — Views/ShopSetupWindow.xaml.cs
+            필드 안내 info 팝오버 — 필드 9개(Phase 31에서 전표 설정 3개 추가)가 단일 Popup을 공유하고,
+            클릭한 버튼의 Tag에 따라 제목/본문을 코드비하인드에서 갈아끼운다(ReaderSetupWindow.xaml
+            MultipadInfoPopup과 동일 패턴). 필드마다 Popup을 따로 두지 않은 이유는 XAML 중복
+            (Border/CornerRadius/Padding 등 동일 껍데기가 반복)을 피하기 위함 — Views/ShopSetupWindow.xaml.cs
             FieldInfoButton_Click 참고.
         -->
         <Popup x:Name="FieldInfoPopup" AllowsTransparency="True" StaysOpen="False" Placement="Bottom">

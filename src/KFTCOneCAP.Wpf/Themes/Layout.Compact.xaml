@@ -27,8 +27,30 @@
           동일한 방법론, Layout.xaml 해당 키 주석 참고) — 실측 절차: 아래 검증 참고.
     -->
 
-    <!-- 창 크기 (고정, ResizeMode=NoResize) — 2026-08-19 세로 비율 최적화(415) -->
-    <sys:Double x:Key="HomeWindowWidth">840</sys:Double>
+    <!--
+        창 크기 (고정, ResizeMode=NoResize).
+        2026-09-28(Phase 31, PRD §2.8.9) — 일반 모드(Layout.xaml HomeWindowWidth 주석)와 같은 경위로
+        재조정했다. 아래는 최종 결정 경위만 간추린 기록이다(2026-09-29 CP1 리뷰 L-3 정리 — 이전
+        판의 "카드 콘텐츠 폭(573)은 바뀌지 않는다"는 최종값과 맞지 않아 정정했다).
+
+        1. 헤더 버튼 2개를 세로로 쌓는다(HomeWindow.xaml, 일반/컴팩트 공용 XAML이라 이 변경은
+           양쪽에 함께 적용된다). 컴팩트 폰트(13.33) 기준 부제("금융결제원 결제 솔루션 프로그램
+           Plus Ver 3.0.9 | 모듈 Ver 524") 실측 필요폭은 가로 배치 시절(버튼 그룹 280px) 측정값
+           425px를 그대로 재사용한다(버튼 배치가 세로/가로든 부제 자체에 필요한 폭은 바뀌지 않는다).
+        2. 버튼 크기도 일반 모드와 같은 비율로 조정했다 — 가로 폭은 조금 늘리고(108→116, 164→172),
+           세로 높이는 두 차례 줄였다(30→24→21). **폭 고정값은 일반 모드와 함께 삭제**했고
+           (HomeHeaderLogSendBtnW/HomeHeaderUpdateBtnW 없음, 아래 헤더 버튼 높이 리소스만 남음),
+           HomeWindowWidth 계산에는 삭제 전 마지막 폭(172)을 버튼 그룹 최대 폭으로 썼다.
+        3. 창 폭 역산: 36*2(marginX) + 44(로고) + 15(간격) + 425(부제) + 172(버튼 그룹) = 692 →
+           여유 48px을 더해 **740**으로 확정했다(일반 모드처럼 실측 없이 계산만으로 정한 값 —
+           **P31-4에서 isCompact 강제 렌더링으로 반드시 재확인**).
+
+        **최종값**: HomeWindowWidth=740, HomeWindowHeight=415(원래 값 유지, 이번 세로 축소는 일반
+        모드에만 적용). marginX=36/gap=12 기준으로 카드 크기를 역산하면 폭 = (740-72-12*2)/3 ≈
+        214.7, 높이 210(원래 값 유지) — 원래 폭 183보다 넓어졌다. 일반 모드(≈241.3, 원래 237.5
+        대비 오차 작음)만큼 타이트하게 맞추지는 못했다 — 실측 없이는 이 이상 정밀화 곤란하다.
+    -->
+    <sys:Double x:Key="HomeWindowWidth">740</sys:Double>
     <sys:Double x:Key="HomeWindowHeight">415</sys:Double>
 
     <!--
@@ -61,20 +83,19 @@
     <!-- 카드 내부 아이콘-제목 간격 — Layout.xaml 24를 cardVisualH 비율(0.808)로 근사 -->
     <GridLength x:Key="HomeCardIconTitleGapGridLength">19</GridLength>
 
-    <!-- 헤더 버튼(로그 전송 / 최신 버전 업데이트) — PRD 3.3 컴팩트 리터럴 -->
     <!--
-        헤더 버튼(로그 전송 / 최신 버전 업데이트)
-        2026-08-19 수정: 컴팩트 모드에서 글자가 절대 잘리지 않도록 안전 폭 적용(108px / 164px, 높이 30px)
+        헤더 버튼(로그 전송 / 최신 버전 업데이트) 높이 — 일반 모드(Layout.xaml)와 같은 원리로 세로
+        배치 전환 + 높이 축소(30→24→21). **폭 키는 일반 모드와 함께 삭제** — 버튼이 내용물에 맞춰
+        자동으로 크기가 정해지므로(HomeWindow.xaml, Width 속성 제거) 더 이상 필요 없다.
     -->
-    <sys:Double x:Key="HomeHeaderLogSendBtnW">108</sys:Double>
-    <sys:Double x:Key="HomeHeaderLogSendBtnH">30</sys:Double>
-    <sys:Double x:Key="HomeHeaderUpdateBtnW">164</sys:Double>
-    <sys:Double x:Key="HomeHeaderUpdateBtnH">30</sys:Double>
+    <sys:Double x:Key="HomeHeaderLogSendBtnH">21</sys:Double>
+    <sys:Double x:Key="HomeHeaderUpdateBtnH">21</sys:Double>
 
     <!-- 하단 버튼(최소화 / 종료) — PRD 3.3 컴팩트 리터럴, 간격(12)은 HomeFooterBtnMargin만 실사용 -->
     <sys:Double x:Key="HomeFooterBtnW">156</sys:Double>
     <sys:Double x:Key="HomeFooterBtnH">34</sys:Double>
 
+    <!-- 2026-09-28(Phase 31, P31-3부속) — 좌우 여백 36 통일(위 HomeWindowWidth 주석 "최종" 참고). -->
     <Thickness x:Key="HomeHeaderMargin">36,27,36,0</Thickness>
     <Thickness x:Key="HomeCardsAreaMargin">36,0,36,0</Thickness>
     <Thickness x:Key="HomeDividerMargin">36,0,36,0</Thickness>

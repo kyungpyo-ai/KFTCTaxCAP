@@ -263,6 +263,12 @@
   전체 완료·ERROR 0건(11:24:09), payment-flow-test 171/171(11:25:28, 902614 응답에서 #38이 #14/#36과
   동일하게 위치 기반 마스킹됨을 확인), random-value-generator-test 종합=통과(11:26:54)를 로그로
   확인한 즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-09-29] Phase 31(가맹점 설정 화면 전표 설정 섹션, docs/operations/development_plan.md
+  "진행 중 임시 조치" 절) 화면 클릭 자동화 검증을 위해 2026-09-28에 asInvoker로 낮췄다. P31-4
+  최종 검증(전표 설정 시나리오·회귀 171/171·컴팩트 모드 렌더링) 완료 직후
+  requireAdministrator로 되돌렸고, 빌드된 exe의 임베딩 매니페스트를 바이트 검색으로 재확인한 뒤
+  비관리자 권한 실행 시 실제 UAC 프롬프트(consent.exe)가 뜨는 것까지 실측 확인했다.
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">

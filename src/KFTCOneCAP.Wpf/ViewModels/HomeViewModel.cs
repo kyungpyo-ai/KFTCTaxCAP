@@ -20,12 +20,9 @@ public sealed partial class HomeViewModel : ObservableObject
     public event EventHandler? ReaderSetupRequested;
 
     /// <summary>가맹점 설정 카드 클릭(Phase 23, docs/operations/development_plan.md P23-4) — 실제
-    /// 창 생성/오픈은 View가 담당한다. <see cref="NotImplementedCardRequested"/>를 쓰던 시절의
-    /// "준비 중" 안내에서 실제 화면 오픈으로 바뀌었다.</summary>
+    /// 창 생성/오픈은 View가 담당한다. "준비 중" 안내에서 실제 화면 오픈으로 바뀌었다(전표 설정
+    /// 카드가 Phase 31에서 삭제되며 그 시절 안내 이벤트도 함께 정리했다).</summary>
     public event EventHandler? ShopSetupRequested;
-
-    /// <summary>범위 밖 카드(전표 설정) 클릭 — 카드 이름을 실어 알린다.</summary>
-    public event EventHandler<string>? NotImplementedCardRequested;
 
     /// <summary>결제 카드 클릭(Phase 29, docs/payment_relay/development_plan.md P29-7, PRD.md §12.1) —
     /// 실제 창 생성/오픈은 View가 담당한다.</summary>
@@ -39,7 +36,4 @@ public sealed partial class HomeViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenTrans() => PaymentScreenRequested?.Invoke(this, EventArgs.Empty);
-
-    [RelayCommand]
-    private void OpenReceiptSetup() => NotImplementedCardRequested?.Invoke(this, "전표 설정");
 }

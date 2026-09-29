@@ -39,7 +39,6 @@ public partial class HomeWindow : Window
         DataContext = ViewModel;
         ViewModel.ReaderSetupRequested += OnReaderSetupRequested;
         ViewModel.ShopSetupRequested += OnShopSetupRequested;
-        ViewModel.NotImplementedCardRequested += OnNotImplementedCardRequested;
         ViewModel.PaymentScreenRequested += OnPaymentScreenRequested;
         SourceInitialized += HomeWindow_SourceInitialized;
     }
@@ -113,15 +112,6 @@ public partial class HomeWindow : Window
     /// </summary>
     private void OnPaymentScreenRequested(object? sender, EventArgs e) =>
         Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(OpenPaymentScreen));
-
-    /// <summary>
-    /// 전표 설정 카드는 여전히 본 프로젝트 범위 밖 화면이다(PRD 1.3 비범위, PRD 6장 미확정 사항 #5).
-    /// "결제" 카드는 Phase 29(P29-7)부터 <see cref="OnPaymentScreenRequested"/>로 분리됐다. 임의로
-    /// 실동작을 만들지 않고 "준비 중" 안내만 표시한다(카드 자체를 비활성화하지 않은 이유: 원본 화면에서
-    /// 카드가 눌리지 않는 것처럼 보이는 것도 임의 판단이라 UX상 더 이상하다고 판단 — PM 확인 시 이
-    /// 처리 방식은 재검토 필요).
-    /// </summary>
-    private void OnNotImplementedCardRequested(object? sender, string cardName) => ShowNotImplementedCard(cardName);
 
     /// <summary>
     /// Phase 16(docs/payment_relay/development_plan.md P16-5) — 거래가 진행 중이면 리더기 설정 화면을
@@ -248,16 +238,6 @@ public partial class HomeWindow : Window
             // 워밍업은 순수 최적화 목적 — 실패해도 실제 카드 클릭 시 정상 경로(OpenReaderSetup)로
             // 창이 열리므로 조용히 무시한다.
         }
-    }
-
-    private void ShowNotImplementedCard(string name)
-    {
-        MessageBox.Show(
-            this,
-            $"{name} 화면은 이 프로젝트의 구현 범위 밖입니다.\n(docs/home_reader_setup/PRD_WPF.md 1.3 비범위 참고)",
-            name,
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
     }
 
     // ===================== 최소화 / 종료 =====================

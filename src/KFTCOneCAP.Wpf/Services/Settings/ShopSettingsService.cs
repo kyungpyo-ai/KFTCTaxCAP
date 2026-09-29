@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Win32;
 using KFTCOneCAP.Wpf.Services.Diagnostics;
 
@@ -15,16 +16,22 @@ namespace KFTCOneCAP.Wpf.Services.Settings;
 /// <c>SERIALPORT</c>다. <c>KIOSK_ID</c>만 원본 MFC에 없던 신규 항목이라 VAN Mode와 같은 `TCP`로
 /// 모았다 — 코드 수정 시 이 매핑을 추측하지 말고 PRD.md §2.2~§2.5 표를 확인한다.
 ///
-/// <b>이 클래스 밖으로 새어 나가면 안 되는 것 3가지</b>(PRD §2.2/§2.4/§2.5):
+/// <b>이 클래스 밖으로 새어 나가면 안 되는 것 4가지</b>(PRD §2.2/§2.4/§2.5/§2.8.2):
 /// <list type="bullet">
-/// <item>AUTO_REBOOT/AUTO_UPDATE/KEYIN_DIM의 반전 인코딩(ON→"0", OFF→"1").</item>
+/// <item>AUTO_REBOOT/AUTO_UPDATE/KEYIN_DIM의 반전 인코딩(ON→"0", OFF→"1"). <b>단, 같은
+/// SERIALPORT 키의 PRINTER_CHECK(전표 인쇄 사용, Phase 31)는 반전이 아니다</b> — ON="1"/OFF="0"이
+/// 원본(SlipSetupDlg.cpp:517,563)부터 그렇다. 옆의 세 값을 복사해 반전으로 구현하면 틀린다.</item>
 /// <item><b>카드입력 타임아웃의 "0=미설정" 규칙</b> — 레지스트리 값이 <c>0</c>이거나 아예 없으면
 /// <see cref="Load"/>가 <c>120</c>을 돌려준다(2026-09-01 사용자 확정, PRD §2.4). 무제한이 아니다.
 /// <c>Save</c>는 이 변환을 하지 않는다 — 사용자가 입력한 값을 그대로 쓴다(다시 열었을 때 방금 입력한
 /// <c>0</c>이 그대로 보여야 한다).</item>
 /// <item>레지스트리에 손으로 써넣은 이상값 처리 — <c>TIMEOUT</c>이 숫자가 아니거나 1~29(화면 검증이
 /// 막는 범위), <c>VAN_MODE</c>가 R/OT/IT 외의 값, <c>KIOSK_ID</c>가 20자 초과인 경우 각각 안전한
-/// 기본값으로 폴백하고 <c>WARN</c> 로그를 남긴다(이 계획서 P23-1 판단 — PRD에 명시 없음).</item>
+/// 기본값으로 폴백하고 <c>WARN</c> 로그를 남긴다(이 계획서 P23-1 판단 — PRD에 명시 없음). Phase 31의
+/// PRINTER_SPEED/PRINTER도 같은 원칙(허용 목록/범위 밖 → 폴백 + WARN).</item>
+/// <item><b>프린터 속도의 "bps" 표시 접미사</b> — 레지스트리에는 숫자만 저장한다(PRD §2.8.2). "bps"를
+/// 붙이고 떼는 것은 <c>ShopSetupViewModel</c>의 책임이고, 이 서비스와 <see cref="ShopSettings"/>는
+/// <c>int</c>만 다룬다.</item>
 /// </list>
 ///
 /// WPF 타입에 의존하지 않는다(ViewModels → Services → Protocol → Interop 계층 규칙).
@@ -47,12 +54,27 @@ public sealed class ShopSettingsService
     private const int DefaultCardReadTimeoutSeconds = 120;
     private const int MinimumConfigurableTimeoutSeconds = 30;
 
+    private const int DefaultPrinterSpeed = 57600;
+    // 2026-09-28 CP1 리뷰 L-2 — 범위(1~255) 검사는 이 서비스에서 하지 않기로 해(ResolvePrinterPort
+    // 주석 참고) MinimumPrinterPort/MaximumPrinterPort 상수를 제거했다. 범위 검사는
+    // ShopSetupViewModel의 동명 상수만 쓴다(토글 ON 저장 시점 전용).
+
+    /// <summary>PRD §2.8.2 — 프린터 속도 허용 목록 4개. 서비스에 한 번만 정의하고
+    /// <c>ShopSetupViewModel</c>은 이 목록을 그대로 써서 콤보 항목을 만든다(원본 SlipSetupDlg.cpp:209-212와
+    /// 동일 순서).</summary>
+    public static IReadOnlyList<int> AllowedPrinterSpeeds { get; } = new[] { 9600, 38400, 57600, 115200 };
+
     // 개선권장 2(CP2 Opus 리뷰) — 직전에 WARN으로 남긴 이상값(raw) 3종. null이면 "아직 이 이상값으로
     // 경고한 적 없음"을 뜻한다. 정상값으로 돌아오면 각 Resolve*가 이 필드를 다시 null로 되돌려, 같은
     // 이상값이 나중에 재발해도 다시 한번 WARN이 찍히게 한다(완전 무음이 되지 않도록).
     private string? _lastWarnedVanModeRaw;
     private string? _lastWarnedKioskIdRaw;
     private string? _lastWarnedTimeoutRaw;
+
+    // Phase 31(P31-1) — 전표 설정 이상값 2종(PRINTER_SPEED/PRINTER)도 같은 원칙으로 반복 WARN을 억제한다.
+    // PRINTER_CHECK는 원본(:517)과 동일하게 "1"만 ON, 그 외는 전부 OFF로 조용히 처리하므로 WARN이 없다.
+    private string? _lastWarnedPrinterSpeedRaw;
+    private string? _lastWarnedPrinterPortRaw;
 
     public ShopSettings Load()
     {
@@ -62,6 +84,9 @@ public sealed class ShopSettingsService
         string? autoReboot = null;
         string? autoUpdate = null;
         string? keyinDim = null;
+        string? printerCheck = null;
+        string? printerSpeedText = null;
+        string? printerPortText = null;
 
         try
         {
@@ -79,6 +104,9 @@ public sealed class ShopSettingsService
                 autoReboot = serialKey.GetValue("AUTO_REBOOT") as string;
                 autoUpdate = serialKey.GetValue("AUTO_UPDATE") as string;
                 keyinDim = serialKey.GetValue("KEYIN_DIM") as string;
+                printerCheck = serialKey.GetValue("PRINTER_CHECK") as string;
+                printerSpeedText = serialKey.GetValue("PRINTER_SPEED") as string;
+                printerPortText = serialKey.GetValue("PRINTER") as string;
             }
         }
         catch
@@ -94,6 +122,10 @@ public sealed class ShopSettingsService
             AutoReboot = autoReboot != "1",
             AutoUpdate = autoUpdate == "0",
             KeyinDim = keyinDim == "0",
+            // PRD §2.8.2 — "1"만 ON, 그 외(값 없음 포함)는 전부 OFF. 원본(:517)과 동일하게 WARN 없음.
+            SlipPrintEnabled = printerCheck == "1",
+            PrinterSpeed = ResolvePrinterSpeed(printerSpeedText),
+            PrinterPort = ResolvePrinterPort(printerPortText),
         };
     }
 
@@ -123,6 +155,12 @@ public sealed class ShopSettingsService
         serialKey.SetValue("AUTO_REBOOT", settings.AutoReboot ? "0" : "1", RegistryValueKind.String);
         serialKey.SetValue("AUTO_UPDATE", settings.AutoUpdate ? "0" : "1", RegistryValueKind.String);
         serialKey.SetValue("KEYIN_DIM", settings.KeyinDim ? "0" : "1", RegistryValueKind.String);
+
+        // PRD §2.8.2 — PRINTER_CHECK는 ON="1"/OFF="0"(반전 아님, 위 세 값과 다름). 검증(범위 등)은
+        // ShopSetupViewModel 책임이고, 이 서비스는 받은 값을 그대로 쓴다(KioskId와 같은 분담).
+        serialKey.SetValue("PRINTER_CHECK", settings.SlipPrintEnabled ? "1" : "0", RegistryValueKind.String);
+        serialKey.SetValue("PRINTER_SPEED", settings.PrinterSpeed.ToString(), RegistryValueKind.String);
+        serialKey.SetValue("PRINTER", settings.PrinterPort, RegistryValueKind.String);
     }
 
     /// <summary>PRD §2.2 이상값 폴백 — 알 수 없는 Mode는 운영("R")로 폴백한다. 테스트 서버로 조용히
@@ -223,5 +261,85 @@ public sealed class ShopSettingsService
 
         _lastWarnedTimeoutRaw = null; // 정상값으로 복구.
         return seconds;
+    }
+
+    /// <summary>PRD §2.8.2 — 허용 목록 4개 중 하나가 아니면 57600으로 폴백한다(원본 SlipSetupDlg.cpp:544
+    /// 와 동일 기본값). 값이 없을 때도 조용히(WARN 없이) 57600을 쓴다 — 이상값(값이 있는데 목록에
+    /// 없는 경우)만 WARN 대상이다.</summary>
+    private int ResolvePrinterSpeed(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+        {
+            _lastWarnedPrinterSpeedRaw = null; // 정상값(미설정)으로 복구.
+            return DefaultPrinterSpeed;
+        }
+
+        foreach (var allowed in AllowedPrinterSpeeds)
+        {
+            if (raw == allowed.ToString())
+            {
+                _lastWarnedPrinterSpeedRaw = null; // 정상값으로 복구.
+                return allowed;
+            }
+        }
+
+        if (raw != _lastWarnedPrinterSpeedRaw)
+        {
+            FileLogger.Warn(LogCategory.Settings, $"[ShopSettingsService] PRINTER_SPEED 이상값 '{raw}' — {DefaultPrinterSpeed}로 폴백", code: null, transactionId: null);
+            _lastWarnedPrinterSpeedRaw = raw;
+        }
+
+        return DefaultPrinterSpeed;
+    }
+
+    /// <summary>
+    /// PRD §2.8.2 — 값이 숫자로만 이뤄졌는지만 검사한다("COM3" 같은 비숫자는 빈 값으로 폴백). **1~255
+    /// 범위는 여기서 검사하지 않는다**(2026-09-28 CP1 리뷰 L-2, 사용자 결정 "포트는 사용자가 적는
+    /// 것"). 토글 OFF 상태에서는 §2.8.3에 따라 <see cref="ShopSetupViewModel.TryConfirm"/>이 검증 없이
+    /// 그대로 저장하므로, `999`나 `0`처럼 범위 밖인데도 정상적으로 저장된 값이 있을 수 있다 — 그
+    /// 값을 여기서 "이상값"으로 오인해 지우면 사용자가 방금 저장한 값이 다음에 열었을 때 사라지는
+    /// 모순이 생긴다(CP1 L-2). 범위 검사는 토글 ON 상태에서 저장할 때만
+    /// <see cref="ShopSetupViewModel"/>의 <c>IsValidPrinterPort</c>가 한다 — 이 메서드는 그 대칭이
+    /// 아니라 "레지스트리 값이 숫자 문자열인가"만 보는 순수성 검사다.
+    ///
+    /// 숫자 판정은 <c>int.TryParse</c>가 아니라 **ASCII 0~9로만 이뤄졌는지 직접** 확인한다
+    /// (2026-09-28 CP1 리뷰 L-1) — <c>int.TryParse</c>는 부호(<c>"+3"</c>)나 공백(<c>" 3"</c>)이
+    /// 섞인 문자열도 통과시켜, 입력 단계에서는 절대 나올 수 없는 형태가 화면에 그대로 노출되는
+    /// 문제가 있었다. 값이 원래 없던 경우(빈 값)는 WARN 없이 조용히 처리한다(다른 이상값 폴백과
+    /// 동일 원칙).
+    /// </summary>
+    private string ResolvePrinterPort(string? raw)
+    {
+        // net48 BCL의 string.IsNullOrEmpty에는 NotNullWhen 어노테이션이 없어 null 가능성 분석이
+        // 이어지지 않는다 — is null 패턴으로 직접 좁힌다(ResolveKioskId와 동일 패턴, CS8603 방지).
+        if (raw is null || raw.Length == 0)
+        {
+            _lastWarnedPrinterPortRaw = null; // 정상값(미설정)으로 복구.
+            return string.Empty;
+        }
+
+        bool isAllAsciiDigits = true;
+        foreach (char c in raw)
+        {
+            if (c < '0' || c > '9')
+            {
+                isAllAsciiDigits = false;
+                break;
+            }
+        }
+
+        if (isAllAsciiDigits)
+        {
+            _lastWarnedPrinterPortRaw = null; // 정상값으로 복구.
+            return raw;
+        }
+
+        if (raw != _lastWarnedPrinterPortRaw)
+        {
+            FileLogger.Warn(LogCategory.Settings, $"[ShopSettingsService] PRINTER 이상값 '{raw}' — 빈 값으로 폴백", code: null, transactionId: null);
+            _lastWarnedPrinterPortRaw = raw;
+        }
+
+        return string.Empty;
     }
 }
