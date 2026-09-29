@@ -184,20 +184,32 @@ internal sealed class KeyDownloadVanClient : IKeyDownloadVanClient
         // 필요는 없다.
         string mode = _loadSettings().VanMode;
         string requestText = DecodeAscii(request);
+        // P32-5 — hostCode 토큰 추가(0100/0120 둘 다 KftcGiroNative.HostCodeKeyDownload로 고정,
+        // 민감정보 아님, 마스킹 대상 아님).
         FileLogger.Info(LogCategory.Keydown,
-            $"[KeyDownloadVanClient] 전문={telegramName} mode={mode} 요청 원문={requestText} FNAISCRDVAN 호출");
+            $"[KeyDownloadVanClient] 전문={telegramName} mode={mode} hostCode={KftcGiroNative.HostCodeKeyDownload} 요청 원문={requestText} FNAISCRDVAN 호출");
 
         FnaisCrdVanInvokeResult invokeResult;
         try
         {
             invokeResult = await FnaisCrdVanInvoker.InvokeAsync(
-                mode, request, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
+                mode, KftcGiroNative.HostCodeKeyDownload, request, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
         }
         finally
         {
             // 조립한 요청 바이트(SIGN/HASH/RND/암호화 데이터 포함, P-28/P-29)는 invoker 호출 직후
             // 더 필요 없다 — best-effort 클리어(2026-09-02 사용자 확정, 위 클래스 주석 참고).
             SecureClear.Clear(request);
+        }
+
+        if (invokeResult.IsArgumentRejected)
+        {
+            // P32-5 — hostCode 사전 검증에 걸려 DLL을 호출하지 않은 경로. HostCodeKeyDownload는 상수값
+            // ("GIROKEYDOWN", 11바이트)이라 실제로는 도달하지 않아야 정상이다(방어적 분기 — 결과 분기를
+            // 비워 두지 않는다).
+            FileLogger.Error(LogCategory.Keydown,
+                $"[KeyDownloadVanClient] 전문={telegramName} hostCode 검증 실패: {invokeResult.ArgumentRejectionReason}");
+            return KeyDownloadVanCallOutcome.CommunicationFailure($"hostCode 검증 실패: {invokeResult.ArgumentRejectionReason}");
         }
 
         if (invokeResult.Threw)

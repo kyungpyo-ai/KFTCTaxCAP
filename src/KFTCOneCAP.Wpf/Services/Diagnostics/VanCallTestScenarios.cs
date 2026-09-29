@@ -37,6 +37,7 @@ internal static class VanCallTestScenarios
 
             await Scenario1_ThreeTelegramTypesCallWithoutCrash().ConfigureAwait(false);
             await Scenario2_RepeatedCallsStayConsistent().ConfigureAwait(false);
+            await Scenario3_HostCodePreValidation().ConfigureAwait(false);
 
             FileLogger.Info($"[van-call-test] 완료 — 통과 {_passCount}건, 실패 {_failCount}건. " +
                 "DLL 부재 시나리오(P20-3 완료조건 3)는 이 하네스가 자동으로 재현할 수 없다 — " +
@@ -94,6 +95,67 @@ internal static class VanCallTestScenarios
 
         Check("902614를 10회 연속 호출해도 매번 통신 실패로 일관되고 프로세스가 살아 있음", allConsistent);
     }
+
+    /// <summary>P32-6 — hostCode 사전 검증(<see cref="FnaisCrdVanInvoker.InvokeAsync"/>의
+    /// null/빈 값/12바이트 초과/비ASCII 방어)이 실제로 <b>DLL을 호출하지 않고</b> 걸러내는지 확인한다.
+    /// <c>VanService</c>를 거치지 않고 invoker를 직접 호출한다 — <c>VanService</c>는 항상 유효한
+    /// hostCode만 넘기므로(P32-4 매핑) 이 경로를 거치지 않는다.
+    ///
+    /// <b>판별 기준은 <see cref="FnaisCrdVanInvokeResult.IsArgumentRejected"/>다</b> — 서버가 없는
+    /// 환경이라 정상 호출도 항상 통신 실패로 끝나므로, "실패했다"는 사실만으로는 "DLL을 호출은 했으나
+    /// 통신에 실패했다"와 "hostCode 검증에 걸려 DLL을 아예 호출하지 않았다"를 구분할 수 없다.
+    /// 정확히 12바이트인 대조군(<c>"GIROCARDAPRV"</c>)이 <c>IsArgumentRejected == false</c>(=DLL까지
+    /// 실제로 도달해 <c>nRet</c>을 받음)로 나오는 것을 함께 확인해야 이 판별 기준 자체의 판별력이
+    /// 증명된다 — 대조군이 없으면 검증 로직이 모든 입력을 무조건 거부하도록 잘못 구현돼도 이 시나리오가
+    /// 전부 통과해버릴 수 있다.</summary>
+    private static async Task Scenario3_HostCodePreValidation()
+    {
+        await CheckRejected("null", null);
+        await CheckRejected("빈 문자열", string.Empty);
+        await CheckRejected("13바이트(12바이트 초과)", "GIROCARDAPRVX");
+        // "?"(0x3F) 치환으로 통과해버리지 않는지 확인 — Encoding.ASCII.GetBytes는 비ASCII 문자를
+        // '?'로 치환해버리는데, 그 결과 얻어지는 바이트 배열이 우연히 유효한 길이/ASCII 조건을
+        // 통과해버리면 안 된다(개선#1과 같은 함정 패턴, 여기서는 검증 로직이 원본 string의 문자
+        // 단위로 비ASCII를 판정하는지 확인한다).
+        await CheckRejected("비ASCII(\"GIRO한글\")", "GIRO한글");
+
+        await CheckAccepted("정확히 12바이트 대조군(\"GIROCARDAPRV\")", "GIROCARDAPRV");
+    }
+
+    /// <summary>hostCode가 거부돼야 하는 입력 — <c>IsArgumentRejected == true</c>이고
+    /// <c>Threw == false</c>(DLL을 호출하지 않았으니 예외도 발생하지 않는다)를 확인한다.</summary>
+    private static async Task CheckRejected(string label, string? hostCode)
+    {
+        FnaisCrdVanInvokeResult result = await FnaisCrdVanInvoker.InvokeAsync(
+            KftcGiroNative.ModeExternalTest, hostCode!, BuildMinimalBody(), KftcGiroNative.DefaultTimeoutSeconds)
+            .ConfigureAwait(false);
+
+        Check($"hostCode 사전 검증 — {label}: IsArgumentRejected == true", result.IsArgumentRejected);
+        Check($"hostCode 사전 검증 — {label}: Threw == false(DLL 미호출이라 예외 없음)", !result.Threw);
+
+        if (result.IsArgumentRejected)
+        {
+            FileLogger.Info($"[van-call-test] hostCode 사전 검증 — {label}: ArgumentRejectionReason='{result.ArgumentRejectionReason}'");
+        }
+    }
+
+    /// <summary>대조군 — 정확히 12바이트인 유효한 hostCode는 검증을 통과해 DLL까지 실제로 도달해야
+    /// 한다(<c>IsArgumentRejected == false</c>). 서버가 없으므로 <c>nRet</c> 자체는 통신 실패(-1)가
+    /// 정상이다 — 이 시나리오가 확인하는 것은 "DLL을 호출은 했다"는 사실이지 통신 성공 여부가 아니다.</summary>
+    private static async Task CheckAccepted(string label, string hostCode)
+    {
+        FnaisCrdVanInvokeResult result = await FnaisCrdVanInvoker.InvokeAsync(
+            KftcGiroNative.ModeExternalTest, hostCode, BuildMinimalBody(), KftcGiroNative.DefaultTimeoutSeconds)
+            .ConfigureAwait(false);
+
+        Check($"hostCode 사전 검증 — {label}: IsArgumentRejected == false(DLL까지 도달)", !result.IsArgumentRejected);
+        FileLogger.Info($"[van-call-test] hostCode 사전 검증 — {label}: Threw={result.Threw}, ReturnCode(도달 시)={(result.IsArgumentRejected ? "N/A" : result.ReturnCode.ToString())}");
+    }
+
+    /// <summary>hostCode 사전 검증 시나리오 전용 최소 본문 — <c>FnaisCrdVanInvoker.InvokeAsync</c>는
+    /// hostCode를 body보다 먼저 검증하므로(구현 확인) 이 시나리오는 본문 내용/길이를 검증하지 않는다.
+    /// 임의의 짧은 배열이면 충분하다.</summary>
+    private static byte[] BuildMinimalBody() => new byte[16];
 
     private static async Task<VanRelayOutcome> CallOnce(VanService van, string transactionType, bool logEachCall = true)
     {

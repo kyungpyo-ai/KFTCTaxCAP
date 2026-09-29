@@ -825,6 +825,10 @@ M-1은 서버 없이 검증 불가능한 대응이라 보류 확정). `--van-cal
 `nRet=-1`(`out_szRetCode='0004'`)로 빠르게 응답한다는 새 사실도 확인됐다. 서버 준비 후 해야 할 일
 목록은 `development_plan.md` Phase 20 "남은 미검증"(7개 항목) 참고.
 
+> **2026-09-29 — Phase 32에서 시그니처 변경.** `KFTC_GIRO.dll` 교체로 `FNAISCRDVAN`에 6번째 인자
+> `in_hostCode`가 추가됐다. 위 체크리스트의 "5인자" 선언과 "`KFTC_GIROPOS.ini` 미확보" 서술은 Phase 32
+> 이후 기준으로는 맞지 않는다 — 현재 계약은 PRD §2.3, 변경 작업은 Phase 32 절 참고.
+
 ---
 
 ## Phase 21 — 통합 검증 & 안정성
@@ -1077,6 +1081,60 @@ M-1은 서버 없이 검증 불가능한 대응이라 보류 확정). `--van-cal
 
 ---
 
+## Phase 32 — `KFTC_GIRO.dll` 교체 (`FNAISCRDVAN` `in_hostCode` 추가, PRD §2.3)
+
+**목표**: 새 `KFTC_GIRO.dll`(2026-09-14 빌드)의 6인자 시그니처에 맞춰 P/Invoke와 호출부를 고치고, 전문별
+`in_hostCode`(501008=`GIROINQUIRY`, 800000=`GIROCARDINFO`, 902614=`GIROCARDAPRV`, 키다운로드=`GIROKEYDOWN`)를
+정확히 넘긴다.
+
+**왜 필요한가**: DLL이 `__stdcall` 6인자로 바뀌어(`ret 0x14`→`ret 0x18`) **DLL만 교체하고 코드를 그대로 두면
+호출 직후 스택이 깨진다.** 또 hostCode를 빈 값으로 넘기면 DLL이 조용히 `GIROKEYDOWN`으로 대체해 결제
+전문이 키다운로드 호스트로 잘못 나가고, NULL·12바이트 초과는 DLL 안에서 크래시·오버플로를 낸다(DLL이
+검사하지 않음 — 역어셈블로 확인, PRD §2.3). 부수적으로 새 DLL은 `KFTC_GIROPOS.ini`를 읽지 않게 됐다.
+
+**범위**: `Interop/KftcGiroNative.cs`, `Services/Van/FnaisCrdVanInvoker.cs`(유일한 호출 지점),
+`Services/Van/VanService.cs`(결제 3전문), `Services/Van/KeyDownloadVanClient.cs`(키다운로드, 운영 기능 §3과
+교차), `--van-call-test` 하네스, `vendor/KftcGiro/KFTC_GIRO.dll` 교체. POS 전문·스키마·Orchestrator는
+건드리지 않는다(hostCode는 전문 필드가 아니라 DLL 인자다). `App.xaml.cs`의 `StubVanRelayService` 배선도
+그대로다 — 결제 경로의 실 VAN 전환은 이 Phase 범위가 아니다.
+
+- [x] P32-1 DLL 교체(vendor 덮어쓰기, 해시·로드 스모크 확인)
+- [x] P32-2+3 P/Invoke 6인자 + Invoker `hostCode` 인자·DLL 호출 전 검증(빈 값/NULL/12바이트 초과/비ASCII →
+      DLL 미호출 실패)
+- [x] P32-4+5 `VanService` 거래구분→hostCode 매핑 1곳 + 방어 경로(D02), `KeyDownloadVanClient` `GIROKEYDOWN`,
+      호출 로그에 `hostCode=` 토큰
+- [x] P32-6 `--van-call-test`에 hostCode 검증 시나리오 추가, `--keydown-test` 회귀
+- [x] 체크포인트 1(`checkpoint-reviewer`)
+- [x] P32-7 키다운로드 실서버 검증(실 리더기 + 실 VAN `GIROKEYDOWN` 호스트)
+
+**완료 기준**: 빌드 성공, `--van-call-test`에서 3전문·반복 호출이 크래시 없이 성립하고 전문별 hostCode가
+로그로 확인되며 잘못된 hostCode는 DLL 미호출로 거부된다. **키다운로드는 실서버 end-to-end(0100 상호인증 →
+0120 Key Bundling → 리더기 반영) 성공.** 3전문의 실서버 `nRet==0` 응답은 **서버 측 해당 호스트가 아직
+개발되지 않아(2026-09-29 확인) 미검증으로 남긴다.**
+
+**✅ Phase 32 완료(2026-09-29)** — P32-1~P32-7, 체크포인트 1 전부 완료. 키다운로드 실서버 검증
+(P32-7)은 `mode=OT`로 먼저 시도해 `nRet=-1 out_szRetCode='0005'`(통신 실패, 서버 미도달)를 실측한 뒤,
+사용자가 `mode=R`(운영)로 직접 전환해 재시도 — 0100/0120 모두 `nRet=0 out_szRetCode='0000'`, 5단계
+전체(①~⑤) 끝까지 완주, `hostCode=GIROKEYDOWN`이 실서버 왕복으로 실증됐다(17:41:14~18, 상세는
+`development_plan.md` P32-7 절). OT 미도달은 새 DLL만의 문제가 아니라 구 DLL 시절(Phase 24 P24-7,
+2026-09-02)에도 동일했던 환경 패턴이다.
+
+### 선행 조건 / 열린 항목
+
+- **3전문 hostCode 실서버 검증** — 서버 측 `GIROINQUIRY`/`GIROCARDINFO`/`GIROCARDAPRV` 개발 후.
+- **`int_iTimeout` 무효 추정** — 역어셈블상 구·신 DLL 모두 소켓 타임아웃에 쓰지 않는다(내장 5/10/13/10초).
+  PRD §10.1 M-1(DLL 멈춤 시 워커 정지) 판단의 전제가 바뀔 수 있으므로 실서버 실측 때 함께 확인한다.
+  **참고**: P32-7 실측에서 `mode=R` 정상 응답(0100/0120)이 각각 75ms/70ms로 매우 빨라, 60초 타임아웃과는
+  거리가 멀었다 — 이 관찰만으로는 DLL 멈춤 시나리오 자체를 검증하지 못한다.
+- ~~**DLL 자체 로그 폴더**~~ — **해소(2026-09-29, P32-7)**. `fopen(..., "ab+")` 코드는 있지만, **이
+  환경에서는 서버 왕복 실패(`mode=OT`)든 성공(`mode=R`, 5단계 전체 완주)이든, 프로세스 생존 중이든
+  정상 종료 후든 `\LOG\` 폴더에 파일이 전혀 생성되지 않는 것을 확인했다.** 프로세스 생존 중이라 CRT
+  버퍼가 안 비워진 것이라는 가설은 정상 종료 후에도 파일이 없어 기각됐다 — 원인은 불명(DLL 내부 문제로
+  이 저장소 범위 밖)이지만, **결과적으로 카드/키 자재가 DLL 자체 로그에 평문으로 남을 위험은 이
+  환경에서는 없다.**
+
+---
+
 ## 남은 미확정 사항
 
 로드맵 작성 중 발견한 항목 대부분은 2026-08-18에 확정되어 `PRD.md` §10.1 표에 정리됐다(결제 포트 선택,
@@ -1090,8 +1148,9 @@ baudRate, 포트 생명주기, 리더기 이중화, 무결성 2대 처리, 재�
 3. **`#51` 비밀번호 SEED 암호화 방식** (Phase 18) — 적용 예정이나 방식 미정. 외부 대상 없이 우리
    (KFTC/원캡) 측이 직접 결정할 사항이다(2026-09-22 확인). 확정 전까지 평문 4자리를 그대로 채우고,
    교체 지점을 함수 1곳으로 격리해 둔다.
-4. **VAN 서버 / `KFTC_GIROPOS.ini`** (Phase 20) — 서버가 아직 개발 중이라 접속 불가(2026-08-26 확인). INI도
-   미확보. 실응답 검증은 서버 준비 후로 미룬다.
+4. **VAN 서버** (Phase 20, Phase 32) — 서버가 아직 개발 중이라 접속 불가(2026-08-26 확인). 2026-09-29 기준
+   `GIROKEYDOWN`(키다운로드) 호스트만 개발 완료 — 3전문 호스트의 실응답 검증은 서버 준비 후로 미룬다.
+   ~~`KFTC_GIROPOS.ini` 미확보~~는 **해소**: 새 DLL(Phase 32)은 INI를 읽지 않는다(PRD §2.3).
 5. ~~**상태 조회 전문의 `#4` 거래구분 코드**~~ (Phase 26) — **해소(2026-09-22 재확인)**. N6, 기존
    `501008`/`800000`/`902614`와 중복 불가 조건을 만족하는 `999999`로 확정됐다(외부 배정이 아니라
    우리가 SPEC에 직접 정한 값). `TransactionStatusInquirySchema.FixedTransactionType`/

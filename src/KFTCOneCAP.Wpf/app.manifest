@@ -269,6 +269,51 @@
   최종 검증(전표 설정 시나리오·회귀 171/171·컴팩트 모드 렌더링) 완료 직후
   requireAdministrator로 되돌렸고, 빌드된 exe의 임베딩 매니페스트를 바이트 검색으로 재확인한 뒤
   비관리자 권한 실행 시 실제 UAC 프롬프트(consent.exe)가 뜨는 것까지 실측 확인했다.
+
+  [원복 완료, 2026-09-29] Phase 32 P32-1 완료 조건(NativeDllLoadSmokeTest 실측 로그) 확인을 위해
+  asInvoker로 낮췄다 — 이 시점엔 KftcGiroNative.FNAISCRDVAN 선언이 아직 5인자(새 DLL은 6인자
+  요구)라 이 앱을 관리자 권한으로 UAC 승인까지 거쳐 띄우는 대신 무인 자동화로 짧게 실행해 로드
+  스모크 로그만 확인하고 즉시 종료했다(FNAISCRDVAN을 실제로 호출하는 하네스는 이 상태에서 실행하지
+  않았다). 로그(KFTCTaxCAP260929.log, 10:50:37.222) "DLL 로드 스모크 성공: KFTC_GIRO.dll (핸들
+  획득)"을 확인한 즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-09-29] Phase 32 P32-2+3(FNAISCRDVAN 6인자 P/Invoke + Invoker hostCode 사전 검증)
+  완료 조건 확인을 위해 van call test(하이픈 두 개 인자, 표기 생략 - 매니페스트 XML 주석에 하이픈
+  연속 금지)를 무인 자동화로 두 차례 실행해야 해서 한시적으로 asInvoker로 낮췄다. 3전문 + 902614
+  10회 반복 전부 통과 4건/실패 0건, out_szRetCode='0005'로 일관, AV·크래시 없음을 로그로 확인한
+  즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-09-29] 코디네이터(Opus)가 P32-2+3 구현 에이전트의 보고를 그대로 믿지 않고 직접
+  재현하기 위해 van call test(표기 생략)를 다시 실행하려고 asInvoker로 낮췄다. 501008/800000/902614
+  3전문과 902614 반복 호출까지 크래시 없이 nRet=-1/out_szRetCode='0005'로 일관됨을 로그
+  (11:05:42~11:06:00)로 직접 확인한 즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-09-29] Phase 32 P32-4+5(VanService 거래구분→hostCode 매핑, KeyDownloadVanClient
+  마무리) 완료 조건 확인을 위해 van call test·keydown test·payment flow test(표기 생략) 세 하네스를
+  무인 자동화로 실행해야 해서 한시적으로 asInvoker로 낮췄다. van call test에서 501008=GIROINQUIRY/
+  800000=GIROCARDINFO/902614=GIROCARDAPRV 매핑이 로그에 정확히 찍힘(통과 4건/실패 0건), keydown
+  test 128건/실패 0건, payment flow test 171건/실패 0건을 로그로 확인한 즉시 requireAdministrator로
+  되돌렸다.
+
+  [원복 완료, 2026-09-29] 코디네이터(Opus)가 P32-4+5 구현 에이전트의 보고를 그대로 믿지 않고 hostCode
+  로그 토큰을 직접 재현하기 위해 van call test(표기 생략)를 다시 실행하려고 asInvoker로 낮췄다.
+  501008=GIROINQUIRY, 800000=GIROCARDINFO, 902614=GIROCARDAPRV가 로그(11:18:02~11:18:20)에 정확히
+  찍힘을 확인한 즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-09-29] Phase 32 P32-6(van-call-test 하네스에 hostCode 사전 검증 시나리오 추가)
+  완료 조건 확인을 위해 van call test·keydown test·payment flow test(표기 생략) 세 하네스를 무인
+  자동화로 실행해야 해서 한시적으로 asInvoker로 낮췄다. van call test 신규 시나리오(null/빈 문자열/
+  13바이트/비ASCII → IsArgumentRejected==true, Threw==false / 12바이트 대조군 → IsArgumentRejected
+  ==false, DLL까지 도달)가 로그(11:21:26~11:21:27)에 기대대로 찍힘(통과 13건/실패 0건), keydown test
+  128건/실패 0건, payment flow test 171건/실패 0건을 로그로 확인한 즉시 requireAdministrator로
+  되돌렸다.
+
+  [원복 완료, 2026-09-29] 코디네이터(Opus)가 P32-6 구현 에이전트의 보고를 그대로 믿지 않고
+  `VanCallTestScenarios.cs`의 diff를 직접 읽어 Scenario3 로직(판별 기준·대조군)을 확인하고, van call
+  test(표기 생략)를 재실행해 501008=GIROINQUIRY/800000=GIROCARDINFO/902614=GIROCARDAPRV 매핑이 재빌드
+  후에도 회귀 없이 유지됨을 확인했다(11:27:03~). Scenario3 자체 출력은 같은 파일의 11:21:26~11:21:27
+  기록(에이전트가 같은 세션에서 실행한 결과)으로 직접 대조 확인했다. 확인 즉시 requireAdministrator로
+  되돌렸다.
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">

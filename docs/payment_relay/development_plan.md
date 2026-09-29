@@ -8934,3 +8934,382 @@ P30-4(캐시+자동채움) → P30-5(재생성 분리) → P30-6(색 구분) →
 결과를 눈으로 확인할 수 없다(연쇄 필드가 전부 공백으로 보인다). P30-2/P30-3은 화면과 독립적인 순수
 로직이라 단위 검증으로 먼저 닫고, 화면 작업(P30-4~6)에서 "로직이 틀렸는지 화면이 틀렸는지" 두 가지를
 동시에 의심하지 않도록 한다.
+
+---
+
+# Phase 32 실행계획서 — `KFTC_GIRO.dll` 교체 (`FNAISCRDVAN` `in_hostCode` 추가)
+
+> **근거**: `PRD.md` §2.3(새 시그니처·hostCode 표·제약 — 역어셈블 확인 결과 포함), §10.1 "`FNAISCRDVAN`
+> `in_hostCode` 추가" 행 · `ROADMAP.md` Phase 32 · `docs/operations/PRD.md` §3(키다운로드)
+
+**이 Phase가 끝나면**: 새 DLL로 교체된 상태에서 3전문과 키다운로드가 각자의 hostCode로 `FNAISCRDVAN`을
+호출하고, 잘못된 hostCode는 DLL에 닿기 전에 막힌다. **실 VAN의 `GIROKEYDOWN` 호스트로 키다운로드가
+끝까지 성공한다.**
+
+## 이 Phase의 성격
+
+기능 추가가 아니라 **네이티브 계약 변경 대응**이다. 코드 변경량은 작지만 틀렸을 때의 결과가 크다 —
+stdcall 인자 수가 어긋나면 스택 손상(즉시 또는 지연 크래시), hostCode가 12바이트를 넘으면 DLL 내부 스택
+오버플로, NULL이면 AV, 빈 값이면 **조용히 엉뚱한 호스트(`GIROKEYDOWN`)로 전송**된다. 마지막 것은 크래시가
+아니라 오동작이라 가장 늦게 발견된다. 그래서 "DLL 호출 전 검증"을 유일한 호출 지점(`FnaisCrdVanInvoker`)
+한 곳에 둔다.
+
+## 착수 전 전제 (2026-09-29 코드·DLL 확인)
+
+1. `FNAISCRDVAN` 호출 지점은 `Services/Van/FnaisCrdVanInvoker.InvokeAsync` **한 곳뿐**이고(P24-3), 그 호출자는
+   `VanService.RelayAsync`(결제)와 `KeyDownloadVanClient.InvokeAndParseAsyncCore`(키다운로드) 둘이다.
+2. `IKeyDownloadVanClient`/`IVanRelayService` 인터페이스는 hostCode를 몰라도 된다 — 매핑은 구현체 내부
+   책임이므로 인터페이스·가짜 구현(`FakeKeyDownloadVanClient`, `StubVanRelayService`,
+   `CapturingVanRelayService`)은 바뀌지 않는다.
+3. 매핑 없는 거래구분은 이미 두 겹으로 걸러진다 — `PosRequestTelegram.Parse`의 `E41`(`PosSchemaRegistry`
+   미등록), `PaymentOrchestrator`의 999999 독립 경로 + switch `_` 예외. `VanService`의 매핑 누락 분기는
+   **도달 불가능한 방어 코드**다.
+4. 운영 앱의 결제 경로는 여전히 `StubVanRelayService`다(`App.xaml.cs`, 결정 1) — 3전문이 실제 DLL을 타는
+   곳은 `--van-call-test`뿐이다. 키다운로드는 운영 배선(P24-6)에서 **실제 `KeyDownloadVanClient`**를 쓴다.
+5. 앱 시작 시 `NativeDllLoadSmokeTest.RunAll`(`App.xaml.cs:129`)이 두 DLL의 LoadLibrary를 확인한다.
+6. VAN 서버 측은 `GIROKEYDOWN` 호스트만 개발 완료(2026-09-29 사용자 확인).
+
+## 이 Phase에서 손대지 않는 것
+
+- POS 전문·스키마(`Protocol/Pos/**`), `PaymentOrchestrator`/`TransactionQueue`/`PosSocketServer` — hostCode는
+  전문 필드가 아니다. **이 파일들이 `git diff`에 나타나면 설계를 잘못 잡은 것이다.**
+- `App.xaml.cs`의 `StubVanRelayService` → `VanService` 전환 — 3전문 서버 준비 후.
+- `int_iTimeout` 값(60 유지), 응답 절단·H-1/L-1 방어·마스킹 로깅 — 기존 동작 그대로.
+- `NativeDllLoadSmokeTest` 로직 — DLL 이름이 같으므로 그대로 재사용.
+
+## 작업 방식 — Task별 사이클과 에이전트 배정
+
+모든 코드 Task는 **구현 → 자체 테스트 → Opus 검증 → 수정** 사이클을 통과해야 다음 Task로 넘어간다.
+
+1. **구현 + 자체 테스트(구현 에이전트)** — 각 Task의 "Task 테스트"를 직접 실행하고 명령·출력 요약을 보고서에
+   붙인다. 실패하면 그 자리에서 고쳐 통과시킨 뒤에만 보고한다.
+2. **검증(Opus)** — 보고를 그대로 믿지 않는다. 해당 Task의 diff를 직접 읽고 "Opus 확인 포인트"를 대조하며,
+   핵심 명령 1개는 직접 재실행한다.
+3. **수정** — 결함은 같은 구현 에이전트에 SendMessage로 이어서 맡기고, Opus는 수정분만 재확인한다.
+4. **체크포인트 1** — Task 사이클이 모두 끝난 뒤 `checkpoint-reviewer`가 Phase 전체를 종합 검증한다(Task
+   검증을 대체하지 않고 한 겹 더한다).
+
+| Task | 담당 | 위임 단위 | 위임 프롬프트에 넣을 근거 |
+|---|---|---|---|
+| P32-1 DLL 교체 | **Opus 직접** | — | — (파일 복사·해시 확인뿐, 삭제는 사용자 확인 후) |
+| P32-2 P/Invoke 6인자 | **`reader-dll-integration-developer`** (Sonnet) | P32-2+3 한 번에 | PRD §2.3 전체(시그니처·hostCode 제약), 이 실행계획서 P32-2/P32-3 절, `KftcGiroNative.cs` 클래스 주석(byte[] 마샬링 방침). **KFTC_GIRO 계약 근거는 PRD §2.3뿐이며 `reader-pinpad-spec-expert`는 쓰지 말 것**(ReaderSerial 전용)을 명시 |
+| P32-3 Invoker hostCode·사전 검증 | 위와 같음 | (P32-2와 묶음) | — |
+| P32-4 `VanService` 매핑 | **`csharp-wpf-developer`** (Sonnet) | P32-4+5 한 번에 | PRD §2.3 hostCode 표·"매핑 없는 거래구분" 단락, §10.1 해당 행, 이 실행계획서 P32-4/P32-5 절, P32-2+3 결과 요약(새 `InvokeAsync` 시그니처·`IsArgumentRejected`) |
+| P32-5 `KeyDownloadVanClient` | 위와 같음 | (P32-4와 묶음) | — |
+| P32-6 진단 하네스 | `csharp-wpf-developer` — **P32-4+5 에이전트에 SendMessage로 이어서** | 단독 | 이 실행계획서 P32-6 절 |
+| 체크포인트 1 | **`checkpoint-reviewer`** (Opus, **같은 세션 서브에이전트**) | P32-1~6 전체 | **중립 프롬프트**: diff 범위(`git diff <Phase 32 착수 커밋>..HEAD`), PRD §2.3, 이 실행계획서의 체크포인트 1 확인 항목만. Opus의 결론·"여기는 괜찮다" 판단은 넣지 않는다 |
+| 체크포인트 결함 수정 | 해당 Task 구현 에이전트(SendMessage) → Opus 재확인 | — | 리뷰어 지적 원문 |
+| P32-7 키다운로드 실서버 | **Opus 직접 + 사용자** | — | — (UIPI로 에이전트가 관리자 권한 앱 GUI를 조작할 수 없음 — 사용자가 클릭, Opus가 로그 판독) |
+
+`pos-onecap-spec-expert`는 쓰지 않는다 — POS 전문 필드는 이 Phase에서 바뀌지 않는다.
+
+**`app.manifest` 주의**: 하네스 실행을 위해 `requireAdministrator`를 일시적으로 `asInvoker`로 낮췄다면
+Task 보고 전에 반드시 원복하고 `git diff`로 확인한다(Phase 30 선례). 현재 작업 트리에 이미 `app.manifest`
+변경이 있으므로(Phase 32 착수 전 상태), **착수 시점의 diff를 기록해 두고 그 상태로 되돌린다.**
+
+---
+
+## P32-1. DLL 교체
+
+### 구현할 것
+
+- 루트의 새 `KFTC_GIRO.dll`(SHA256 `8c7a8f1777d2455abd301dd08793a02f84b809e077fe858bd3ba1b29ff7c4a0b`)로
+  `vendor/KftcGiro/KFTC_GIRO.dll`을 덮어쓴다. 구 DLL(`9e1eacbf…5f4c`)은 git 이력에 남는다.
+- csproj 복사 규칙(`KFTCOneCAP.Wpf.csproj`의 `vendor\KftcGiro\KFTC_GIRO.dll` → `KFTC_GIRO.dll` 링크)은 그대로.
+- 루트의 `KFTC_GIRO.dll`·`KFTC_GIRO hostcode 값.txt`(미추적 파일)는 **사용자 확인 후** 삭제한다.
+
+### Task 테스트
+
+- vendor DLL SHA256 = 위 값.
+- `dotnet build` 후 `bin/<구성>/net48/KFTC_GIRO.dll` SHA256 = 위 값(구 DLL이 bin에 남아 있지 않음).
+- 이 시점에는 P/Invoke가 아직 5인자라 **DLL을 호출하는 하네스를 돌리면 안 된다**(스택 손상) — 로드 스모크
+  (앱 시작 로그의 `NativeDllLoadSmokeTest` 결과)까지만 확인한다.
+
+### Opus 확인 포인트
+
+- Debug/Release 양쪽 bin의 DLL이 새 것인지(증분 빌드가 복사를 건너뛰지 않았는지).
+
+### 완료 조건
+
+- [x] **2026-09-29 완료.** `vendor/KftcGiro/KFTC_GIRO.dll`을 새 DLL로 덮어쓰고 루트의
+      `KFTC_GIRO.dll`·`KFTC_GIRO hostcode 값.txt`(사용자 확인 후)를 삭제. vendor·Debug bin·Release bin
+      3곳의 SHA256이 모두 `8c7a8f17…4a0b`로 일치(`dotnet build` 경고 0/오류 0, 양쪽 구성 각각 재확인).
+      **로드 스모크 실측 완료** — 사용자 확인(2026-09-29, "관리자권한을 해제 하고 해도 상관없는데?")에
+      따라 `app.manifest`를 일시 `asInvoker`로 낮추고 재빌드해 무인 자동화로 앱을 짧게 실행(LoadLibrary
+      만 확인, `FNAISCRDVAN` 호출 하네스는 실행하지 않음), 로그
+      `KFTCTaxCAP260929.log`(10:50:37.222) "DLL 로드 스모크 성공: KFTC_GIRO.dll (핸들 획득)"을 확인 —
+      새 DLL도 임포트 의존성(`MFC42.DLL`/`MSVCRT.dll`/`KERNEL32.dll`/`USER32.dll`/`WSOCK32.dll`)이 구
+      DLL과 동일해 예상대로 성공. 프로세스·8002 포트 정리 확인 후 즉시 `requireAdministrator`로
+      되돌리고 Debug/Release 재빌드, `git diff`로 주석 추가 외 속성값 원복(`requireAdministrator`)
+      확인 완료(app.manifest 변경 이력 참고).
+
+---
+
+## P32-2. P/Invoke 6인자 (`Interop/KftcGiroNative.cs`)
+
+### 구현할 것
+
+- `FNAISCRDVAN` 선언에 6번째 인자 `byte[] in_hostCode`를 추가한다(순서: `in_szMode, inData, outData,
+  out_szRetCode, int_iTimeout, in_hostCode`). `CallingConvention.StdCall`, `CharSet` 미지정, `byte[]` 마샬링
+  방침은 그대로 — hostCode도 ASCII 바이트 + NUL 종단으로 넘긴다.
+- hostCode 상수 4개(`HostCodeNoticeInquiry = "GIROINQUIRY"`, `HostCodeCardInfo = "GIROCARDINFO"`,
+  `HostCodeCardApproval = "GIROCARDAPRV"`, `HostCodeKeyDownload = "GIROKEYDOWN"`)와
+  `HostCodeMaxLength = 12`를 **이 파일 한 곳에** 둔다. 각 상수 주석에 PRD §2.3 표를 근거로 단다.
+- 클래스 주석에 새 계약(6인자, `ret 0x18`, hostCode 제약 3가지 — 12바이트 초과 오버플로 / NULL AV / 빈 값
+  `GIROKEYDOWN` 대체)을 요약한다. "계약 출처"는 PRD §2.3 + 2026-09-29 역어셈블.
+
+## P32-3. Invoker hostCode 인자·사전 검증 (`Services/Van/FnaisCrdVanInvoker.cs`)
+
+### 구현할 것
+
+- 시그니처를 `InvokeAsync(string mode, string hostCode, byte[] body, int timeoutSeconds)`로 바꾼다.
+- **DLL 호출 전 검증**: `hostCode`가 null/빈 문자열/비ASCII 포함/12바이트 초과 중 하나라도 해당하면
+  **`KftcGiroNative.FNAISCRDVAN`을 호출하지 않고** 반환한다. 예외를 밖으로 던지지 않는 기존 방침 유지.
+- 결과 구분: `FnaisCrdVanInvokeResult`에 **`IsArgumentRejected`**(bool)와 팩토리 `ArgumentRejected(string reason)`를
+  추가한다. 이 플래그는 **검증 실패 경로에서만** true가 되고, DLL을 실제로 호출한 경로에서는 절대 true가 되지
+  않아야 한다 — P32-6 하네스가 "DLL 미호출"을 판별하는 유일한 근거다. `Threw`와는 별개 플래그로 둔다
+  (예외가 아니므로). 거부 사유 문자열에 hostCode 값과 위반 항목을 담는다(hostCode는 민감정보 아님).
+- 바이트 변환은 기존 `BuildNulTerminatedAscii`를 재사용한다. 단 `Encoding.ASCII`는 비ASCII를 `?`로 바꿔 조용히
+  통과시키므로, **변환 전에 문자 범위(0x20~0x7E)를 직접 검사**한다.
+- 검증 실패 경로에서는 `inData` 복사본을 만들지 않는다(요청 본문이 새 버퍼에 남지 않게).
+
+### Task 테스트 (P32-2+3 공통)
+
+- `dotnet build` 경고 0/오류 0(x86).
+- 호출자 두 곳이 빌드되도록 새 인자를 넘긴다 — `KeyDownloadVanClient`는 `HostCodeKeyDownload`, `VanService`는
+  P32-4의 매핑을 최소 형태로 먼저 넣어도 된다. **빈 문자열이나 null을 임시값으로 넘기지 않는다.**
+- `--van-call-test` 실행 → 3전문 호출과 10회 반복이 AV·프로세스 종료 없이 끝나고, `nRet=-1`이면
+  `out_szRetCode`가 `0001`~`0006`/`9999` 중 하나로 로그에 남는다(서버 미개발이므로 통신 실패가 정상).
+- DLL 자체 로그(`<실행 폴더>\LOG\KFTC<yyyymmdd>.log`)에 `SERVER : <<...>>, PORT : <<8007>>`가 찍혔는지 확인해
+  보고에 첨부(어느 Mode로 나갔는지).
+
+### Opus 확인 포인트
+
+- 인자 순서·개수가 PRD §2.3과 정확히 일치(특히 hostCode가 **timeout 뒤**).
+- 검증이 **DLL 호출보다 앞**에 있고, 검증 실패 경로가 `Task.Run`/`FNAISCRDVAN`에 닿는 코드 경로를 하나도
+  공유하지 않는지.
+- 12바이트 경계: 정확히 12바이트(`GIROCARDAPRV`)는 통과, 13바이트는 거부.
+- 비ASCII 판정이 `Encoding.ASCII`의 `?` 치환에 속지 않는지.
+- `inData` SecureClear(`finally`)가 유지되는지, 예외가 밖으로 새지 않는지.
+
+### 완료 조건
+
+- [x] **2026-09-29 완료** (`reader-dll-integration-developer` 구현 → Opus 직접 검증).
+      `KftcGiroNative.cs`/`FnaisCrdVanInvoker.cs`/`VanService.cs`(임시 하드코딩, P32-4 TODO 주석)/
+      `KeyDownloadVanClient.cs`(`HostCodeKeyDownload` 최종값) 4개 파일만 변경, `git diff --stat`로 범위
+      확인. Opus가 diff 4개 전부 직접 읽고 인자 순서(hostCode가 timeout 뒤)·검증 로직(null/빈 값/
+      12바이트 초과/비ASCII 문자 단위 검사, `Encoding.ASCII`의 `?` 치환 우회 확인)·`inData` SecureClear·
+      `IsArgumentRejected`가 DLL 호출 경로와 완전히 분리됨을 코드로 확인. `dotnet build`(Debug/Release
+      양쪽 경고 0/오류 0) + `--van-call-test`를 **독립 재실행**(에이전트 보고와 별개로 `app.manifest`를
+      다시 asInvoker로 낮춰 직접 재현)해 3전문+902614 반복 호출이 크래시 없이 `nRet=-1`/
+      `out_szRetCode='0005'`로 일관됨을 확인, 즉시 `requireAdministrator` 원복(`git diff`로 확인).
+      12바이트 경계·비ASCII 대조군은 코드 읽기로 로직만 확인(실측 대조는 P32-6 하네스 몫).
+      **부수 관찰**: DLL 자체 로그(`\LOG\KFTC*.log`)가 `LOG` 폴더는 생성하지만 파일 내용이 안 보임
+      (CRT 버퍼링 fopen("ab+") 확인, 플러시 시점 미상) — ROADMAP "열린 항목"에 기록, P32-7에서 재확인.
+
+---
+
+## P32-4. `VanService` 거래구분→hostCode 매핑 (`Services/Van/VanService.cs`)
+
+### 구현할 것
+
+- 거래구분→hostCode 매핑을 **private static 읽기 전용 매핑 한 곳**에 둔다. 키는 문자열 리터럴이 아니라
+  `NoticeInquirySchema.FixedTransactionType`/`CardInfoInquirySchema.FixedTransactionType`/
+  `CardApprovalSchema.FixedTransactionType`, 값은 `KftcGiroNative.HostCode*` 상수.
+- 매핑이 없으면(도달 불가능한 방어 경로) **DLL을 호출하지 않고** ERROR 로그 +
+  `VanRelayOutcome.CommunicationFailure(VanFailureKind.CommunicationFailure, ...)`(= `D02`)로 반환한다. 주석에
+  "파싱 단계 E41로 이미 걸러져 도달 불가 — 빈 hostCode가 DLL에서 GIROKEYDOWN으로 대체되는 것을 막는 방어"라고
+  적는다. 새 응답코드는 만들지 않는다.
+- Invoker가 `IsArgumentRejected`를 돌려주면 역시 `D02` + ERROR 로그(사유 포함).
+- 호출 직전 로그(`[VanService] 거래구분=… mode=… FNAISCRDVAN 호출 원문=…`)에 `hostCode=<값>` 토큰을 mode 옆에
+  추가한다. 민감정보 아님 — 마스킹 대상 아님.
+
+## P32-5. `KeyDownloadVanClient` (`Services/Van/KeyDownloadVanClient.cs`)
+
+### 구현할 것
+
+- `FnaisCrdVanInvoker.InvokeAsync`에 `KftcGiroNative.HostCodeKeyDownload`를 넘긴다(0100/0120 둘 다 같은 값).
+- `IsArgumentRejected`면 ERROR 로그 + `KeyDownloadVanCallOutcome.CommunicationFailure`(상수값이라 실제로는
+  도달하지 않지만 결과 분기를 비워 두지 않는다).
+- 호출 직전 로그에 `hostCode=GIROKEYDOWN` 토큰 추가.
+
+### Task 테스트 (P32-4+5 공통)
+
+- `dotnet build` 경고 0/오류 0.
+- `--van-call-test` 재실행 → 앱 로그에서 501008/800000/902614 호출 줄에 각각 `hostCode=GIROINQUIRY`/
+  `GIROCARDINFO`/`GIROCARDAPRV`가 찍힌 것을 발췌해 보고.
+- `--keydown-test`(가짜 VAN 기반 5단계 + 실패 7종) 전부 통과 — 인터페이스 불변 확인.
+- `--payment-flow-test` 통과(스텁 경로 회귀 없음).
+
+### Opus 확인 포인트
+
+- 매핑 키가 스키마 상수인지(리터럴 `"501008"` 중복 없음), 값이 `KftcGiroNative` 상수인지.
+- 매핑 누락·`IsArgumentRejected` 두 경로 모두 DLL 미호출 + `D02`인지.
+- 로그에 hostCode 외 새 정보(특히 전문 원문 추가 노출)가 늘지 않았는지.
+- `git diff --stat`에 "손대지 않는 것" 파일이 없는지.
+
+### 완료 조건
+
+- [x] **2026-09-29 완료** (`csharp-wpf-developer` 구현 → Opus 직접 검증). `VanService.cs`
+      (`HostCodeByTransactionType` 딕셔너리, 키는 `*Schema.FixedTransactionType` — 리터럴 중복 없음,
+      매핑 없음/`IsArgumentRejected` 두 경로 모두 DLL 미호출 + `D02`)와 `KeyDownloadVanClient.cs`
+      (`HostCodeKeyDownload` 고정값 + `IsArgumentRejected` 분기 신규 추가) diff를 Opus가 직접 읽고
+      확인. `git diff --stat`로 "손대지 않는 것" 파일(3개 원캡 경로 파일 + `App.xaml.cs` +
+      `Interop`/`FnaisCrdVanInvoker`)이 이번 Task로 추가 변경되지 않았음을 확인.
+      `dotnet build`(Debug/Release 경고 0/오류 0) + **`--van-call-test`를 독립 재실행**(에이전트 보고와
+      별개로 `app.manifest`를 다시 asInvoker로 낮춰 직접 재현)해 로그에서
+      `거래구분=501008 mode=OT hostCode=GIROINQUIRY` / `800000 … hostCode=GIROCARDINFO` /
+      `902614 … hostCode=GIROCARDAPRV`를 grep으로 직접 확인, 즉시 `requireAdministrator` 원복
+      (`git diff`로 확인). `--keydown-test`(128/128)·`--payment-flow-test`(171/171)는 에이전트 실행
+      결과를 diff 코드 리딩으로 교차 확인(가짜 VAN 경로라 `KeyDownloadVanClient`의 실제 hostCode 로그는
+      이 하네스로는 안 찍힘 — 코드상 `HostCodeKeyDownload` 전달은 확인됨, 실측은 P32-7).
+
+---
+
+## P32-6. 진단 하네스 (`Services/Diagnostics/VanCallTestScenarios.cs`)
+
+### 구현할 것
+
+- 시나리오 추가 — **hostCode 사전 검증**: `FnaisCrdVanInvoker.InvokeAsync`를 직접 호출해 다음 입력이 전부
+  `IsArgumentRejected == true`이고 `Threw == false`인지 확인한다: `null`, `""`, 13바이트(`"GIROCARDAPRVX"`),
+  비ASCII(`"GIRO한글"`). 대조군으로 정확히 12바이트(`"GIROCARDAPRV"`)는 `IsArgumentRejected == false`(DLL까지
+  도달해 `nRet`을 받음)인지 확인한다.
+- "DLL 미호출" 판별은 `IsArgumentRejected` 플래그로 한다 — 단순히 "실패했다"만 보면 DLL이 호출돼 통신
+  실패한 경우와 구분되지 않는다(서버 미개발이라 정상 호출도 실패한다).
+- 기존 시나리오(3전문 무크래시, 반복 호출 일관성)는 그대로 유지한다.
+
+### Task 테스트
+
+- `--van-call-test` 전체 PASS(기존 + 신규), FAIL 0.
+- `--keydown-test`, `--payment-flow-test` 회귀 통과.
+
+### Opus 확인 포인트
+
+- 신규 시나리오가 "DLL 미호출"을 실제로 판별하는지(대조군이 있어야 판별력이 증명된다).
+- 비ASCII 케이스가 `?` 치환으로 통과해 버리지 않는지(테스트가 실제로 그 경로를 친다).
+
+### 완료 조건
+
+- [x] **2026-09-29 완료** (`csharp-wpf-developer` 구현 → Opus 직접 검증). `VanCallTestScenarios.cs`에
+      `Scenario3_HostCodePreValidation` 추가(null/빈 문자열/13바이트/비ASCII 4개 거부 케이스 +
+      정확히 12바이트 대조군 1개). Opus가 diff를 직접 읽고 확인: 판별 기준이 `IsArgumentRejected`
+      플래그이고(단순 실패 여부가 아님), 대조군(`"GIROCARDAPRV"`)이 `IsArgumentRejected == false`로
+      DLL까지 실제 도달함을 함께 검사해 판별력을 증명하는 구조, 비ASCII 검증이 원본 문자열의 문자
+      단위 검사라 `Encoding.ASCII`의 `?` 치환 함정을 피함(코드로 확인). `git diff --stat`로 이 하네스
+      파일 외 다른 파일(`VanService.cs`/`KeyDownloadVanClient.cs`/`Interop`/`FnaisCrdVanInvoker.cs`)이
+      이번 Task로 추가 변경되지 않았음을 확인. `dotnet build`(Debug/Release 경고 0/오류 0) +
+      `--van-call-test`를 **독립 재실행**(에이전트 보고와 별개로 `app.manifest`를 다시 asInvoker로
+      낮춰 재현)해 501008/800000/902614 hostCode 매핑이 재빌드 후에도 회귀 없이 유지됨을 확인. 5개
+      신규 시나리오 자체의 출력은 같은 로그 파일의 에이전트 실행 기록(11:21:26~27, 통과 13건/실패 0건
+      — null/빈 문자열/13바이트/비ASCII 전부 `IsArgumentRejected==true`+`Threw==false`, 12바이트
+      대조군만 `IsArgumentRejected==false`)과 diff 코드를 대조해 확인. `--keydown-test`(128/128),
+      `--payment-flow-test`(171/171) 회귀 없음. 매번 `app.manifest` 원복을 `git diff`로 확인.
+
+---
+
+## 체크포인트 1 — `checkpoint-reviewer` 종합 검증 (P32-1~P32-6 직후)
+
+같은 세션의 서브에이전트로 실행한다(빈 맥락에서 시작하므로 독립성은 별도 세션과 같다). 위임 프롬프트에는
+diff 범위, PRD §2.3, 아래 확인 항목만 넣는다.
+
+확인 항목:
+
+1. `FNAISCRDVAN` 선언의 인자 수·순서·타입이 PRD §2.3 시그니처와 일치하는가.
+2. hostCode가 null/빈 값/12바이트 초과/비ASCII일 때 **어떤 코드 경로로도** DLL에 도달하지 않는가.
+3. 결제 3전문과 키다운로드가 각각 PRD §2.3 표의 hostCode를 넘기는가(오배정 여부).
+4. `inData`/`OutData`/요청 바이트 SecureClear 경로가 기존과 동일하게 유지되는가.
+5. 로그에 새로 남는 정보가 민감정보를 포함하지 않는가.
+6. "손대지 않는 것" 파일이 diff에 없는가, `app.manifest`가 착수 시점 상태인가.
+7. 빌드·`--van-call-test`·`--keydown-test`·`--payment-flow-test`를 직접 재실행한 결과.
+
+결함은 해당 Task 구현 에이전트에 SendMessage로 수정을 맡기고, Opus가 수정분만 재확인한다.
+
+### 검증 결과 (2026-09-29, `checkpoint-reviewer` 같은 세션 서브에이전트)
+
+**판정: 통과.** 확정 결함 0건. 확인 항목 1~7 전부 diff를 직접 읽고 하네스(빌드/`--van-call-test`
+13건/`--keydown-test` 128건/`--payment-flow-test` 171건, 전부 실패 0건)를 독립 재실행해 확인. 특히
+검증 로직이 인코딩 전 원본 문자 단위로 비ASCII를 판정해 `Encoding.ASCII`의 `?` 치환 함정을 피함을,
+그리고 hostCode 검증 실패 경로가 `inData` 할당·`Task.Run`·`FNAISCRDVAN` 어느 것과도 코드 경로를
+공유하지 않음을 직접 추적해 확인. `app.manifest`는 검증 종료 후 `requireAdministrator`로 정확히
+복원(백업본 대조 + 빌드된 exe의 임베딩 매니페스트 바이트 검색까지 확인). DLL 해시(vendor/Debug
+bin/Release bin) 3곳 일치.
+
+참고 사항(결함 아님, 수정 요구 없음) — 2건 모두 Opus가 직접 확인:
+- 공백뿐인 hostCode(`"   "`)는 현재 검증을 통과한다. PRD §2.3이 금지하는 4가지(빈 값/NULL/12바이트
+  초과/비ASCII) 중 어디에도 해당하지 않고, 실제 호출자(`VanService`/`KeyDownloadVanClient`)는 상수만
+  넘기므로 도달 불가능 — 설계 결정 사항이라 이번 Phase에서는 손대지 않는다.
+- `KftcGiroNative.cs` 클래스 주석의 위반 항목 개수 오타("세 위반"인데 실제 4개 나열)를 코디네이터가
+  Opus 직접 발견해 즉시 수정(4번째 항목인 비ASCII를 목록에 명시적으로 추가, "네 위반"으로 정정) —
+  doc 전용 변경이라 별도 Task 없이 반영, 재빌드로 컴파일 확인 완료.
+
+- [x] 체크포인트 1 통과 (2026-09-29)
+
+---
+
+## P32-7. 키다운로드 실서버 검증
+
+### 진행
+
+1. **실행 전 사용자 확인**: 사용할 서버 Mode(가맹점 설정의 금융결제원 서버 값 — `OT`/`IT`/`R`)와 리더기
+   연결 포트.
+2. 사용자가 관리자 권한 앱을 실행하고 리더기 설정 화면의 "키다운로드" 버튼을 누른다(UIPI — 에이전트 클릭 불가).
+3. Opus가 판독:
+   - 앱 로그(KEYDOWN 카테고리): `hostCode=GIROKEYDOWN`, 0100/0120 각각 `nRet=0`,
+     `out_szRetCode='0000'`, 응답 파싱 성공, 리더기 반영 단계 성공.
+   - DLL 로그(`\LOG\KFTC<yyyymmdd>.log`): `SERVER : <<Mode에 해당하는 주소>>, PORT : <<8007>>`, 인증 처리 완료,
+     요청 송신/응답 수신 완료.
+4. 실패 시: `out_szRetCode`와 DLL 로그의 마지막 단계(접속/인증/송신/헤더 수신/바디 수신)로 원인을 분류해
+   사용자에게 보고하고, 이후 진행 여부를 확인받는다(임의로 재시도·코드 수정하지 않는다).
+
+### 완료 조건
+
+- [x] **2026-09-29 완료.** 실 VAN `GIROKEYDOWN` 호스트로 0100 상호인증 → 0120 Key Bundling → 리더기
+      반영까지 성공(mode=`R`). 앱 로그(`KFTCTaxCAP260929.log` 17:41:14~17:41:18) 확인:
+      - 가맹점 설정 저장 `VAN_MODE=R` 반영(17:41:14) → 리더기1 상태체크 성공(응답코드=08).
+      - ① `[63]→[73]` 성공(키버전=A3, 모듈ID=C160390003).
+      - ② `0100`: `mode=R hostCode=GIROKEYDOWN` → **`nRet=0 out_szRetCode='0000'`(75ms)** → 응답코드=00.
+      - ③ `[64]→[74]` 성공(암호화데이터 512바이트, 내용 미기록·길이만).
+      - ④ `0120`: `mode=R hostCode=GIROKEYDOWN` → **`nRet=0 out_szRetCode='0000'`(70ms)** → 응답코드=00.
+      - ⑤ `[65]→[75]` 성공 — **모듈ID=C160390003 키다운로드 완료.**
+
+      **선행 시도(`mode=OT`, 17:37:27~31)는 `nRet=-1 out_szRetCode='0005'`로 통신 실패했다** — 이는
+      Phase 32 코드 결함이 아니라 이 환경에서 OT 서버가 미도달임을 뜻한다(구 DLL 시절 P24-7 기록,
+      `development_plan.md` 해당 절과 동일 패턴 — 그때도 OT는 `out_szRetCode='0004'`로 실패, `R`로
+      전환해야만 성공했다). PRD §2.3에는 이 환경 종속적 사실을 새로 적지 않는다(서버 가용성은 코드
+      계약이 아니다).
+- [x] DLL 로그에 카드·키 자재 평문이 남는지 관찰 완료 — **`\LOG\KFTC<yyyymmdd>.log`가 실제로는 전혀
+      생성되지 않는다**(2026-09-29 확인). 프로세스가 살아있을 때뿐 아니라 **정상 종료
+      ("애플리케이션 종료 완료", 17:42:03) 후에도 `LOG` 폴더는 비어 있다** — 서버 왕복 성공(mode=R)
+      후에도 마찬가지였다. P32-2+3에서 세운 "CRT 버퍼링 때문에 프로세스 생존 중엔 안 보일 수 있다"는
+      가설은 이번 확인으로 기각됐다(종료 후에도 안 보였다) — 원인은 불명이나, **결과적으로 이
+      환경에서는 DLL 자체 로그에 카드/키 자재가 남을 위험이 없다**(파일 자체가 안 생긴다). 근본 원인
+      추적은 이 저장소 범위 밖(DLL 소스는 별도 관리)이라 더 파지 않는다.
+
+---
+
+## 완료 기준 (Phase 전체)
+
+1. P32-1~P32-7 완료 조건 전부 통과.
+2. 새 DLL로 3전문·키다운로드 호출이 크래시 없이 성립하고, 전문별 hostCode가 로그로 확인된다.
+3. 잘못된 hostCode는 DLL 미호출로 거부됨이 하네스로 증명된다(대조군 포함).
+4. 키다운로드 실서버 end-to-end 성공.
+5. "손대지 않는 것" 파일 미변경(`git diff`), 회귀 3종(`--van-call-test`/`--keydown-test`/`--payment-flow-test`)
+   통과.
+
+## 열린 항목
+
+- **3전문 hostCode 실서버 검증** — 서버 측 `GIROINQUIRY`/`GIROCARDINFO`/`GIROCARDAPRV` 개발 후. 그때
+  `App.xaml.cs` 스텁 교체(§10)와 Phase 20 "남은 미검증" 목록을 함께 처리한다.
+- **`int_iTimeout` 무효 추정** — 역어셈블상 DLL이 소켓 타임아웃에 쓰지 않는다(내장 5/10/13/10초). 실서버
+  실측으로 확정되면 PRD §10.1 M-1(워커 정지 위험) 판단 근거를 갱신한다.
+- **DLL 자체 로그** — 새 DLL은 INI 없이 `\LOG\KFTC<yyyymmdd>.log`를 남긴다. 90일 정리(운영 기능 §1) 대상이
+  아니고 내용도 원캡이 통제하지 못한다 — P32-7 관찰 결과에 따라 운영 문서에 반영할지 판단한다.
+
+## 착수 순서 요약
+
+P32-1(DLL 교체, Opus) → **P32-2+3**(`reader-dll-integration-developer`) → Opus 검증 → **P32-4+5**
+(`csharp-wpf-developer`) → Opus 검증 → **P32-6**(같은 에이전트 이어서) → Opus 검증 → **체크포인트 1**
+(`checkpoint-reviewer`) → **P32-7**(Opus + 사용자, 실서버).
+
+P32-1 직후 P32-2+3 전까지는 **DLL을 호출하는 하네스를 돌리지 않는다** — 새 DLL(6인자)과 옛 선언(5인자)이
+공존하는 구간이라 호출하면 스택이 깨진다.

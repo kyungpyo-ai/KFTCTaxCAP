@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using KFTCOneCAP.Wpf.Interop;
 using KFTCOneCAP.Wpf.Protocol.Pos;
+using KFTCOneCAP.Wpf.Protocol.Pos.Schemas;
 using KFTCOneCAP.Wpf.Security;
 using KFTCOneCAP.Wpf.Services.Diagnostics;
 using KFTCOneCAP.Wpf.Services.Payment;
@@ -29,6 +31,18 @@ internal sealed class VanService : IVanRelayService
     /// <summary>SPEC <c>#9</c> 전문관리번호(<c>PosSocketServer.ManagementNumberFieldNumber</c>,
     /// <c>PaymentOrchestrator.LogTxId</c>와 동일한 필드) — P22-6 로깅용.</summary>
     private const int ManagementNumberFieldNumber = 9;
+
+    /// <summary>P32-4 — 거래구분(SPEC 전문 TYPE)→hostCode 매핑(PRD §2.3 표). 키는 각 스키마의
+    /// <c>FixedTransactionType</c>(리터럴 중복 금지), 값은 <see cref="KftcGiroNative"/>의 hostCode 상수.
+    /// 이 매핑에 없는 거래구분은 구조적으로 도달하지 않는다 — <c>PosRequestTelegram.Parse</c>가 이미
+    /// <c>E41</c>로 걸러내고, 999999(거래상태조회)는 VAN을 거치지 않는다.</summary>
+    private static readonly IReadOnlyDictionary<string, string> HostCodeByTransactionType =
+        new Dictionary<string, string>
+        {
+            [NoticeInquirySchema.FixedTransactionType] = KftcGiroNative.HostCodeNoticeInquiry,
+            [CardInfoInquirySchema.FixedTransactionType] = KftcGiroNative.HostCodeCardInfo,
+            [CardApprovalSchema.FixedTransactionType] = KftcGiroNative.HostCodeCardApproval,
+        };
 
     /// <summary>Phase 23(docs/operations/development_plan.md P23-5) — VAN Mode를 매 호출마다 다시
     /// 읽는다(PRD.md §2.6 "설정값을 캐시하지 않는다"). 생성자에서 한 번 읽어 필드에 고정하면 화면에서
@@ -67,16 +81,36 @@ internal sealed class VanService : IVanRelayService
                 // 바로 반영돼야 한다.
                 string vanMode = _loadSettings().VanMode;
 
+                // P32-4 — 거래구분→hostCode 매핑(PRD §2.3). 매핑에 없으면(구조적으로 도달 불가능한
+                // 방어 경로 — PosRequestTelegram.Parse가 이미 E41로 걸러내고 999999는 VAN을 거치지
+                // 않는다) DLL을 호출하지 않는다 — 빈 hostCode가 DLL에서 GIROKEYDOWN으로 대체되는 것을
+                // 막는 방어다.
+                if (!HostCodeByTransactionType.TryGetValue(transactionTypeCode, out string hostCode))
+                {
+                    FileLogger.Error(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode}에 매핑된 hostCode 없음 — DLL 호출하지 않음", code: null, txId);
+                    return VanRelayOutcome.CommunicationFailure(VanFailureKind.CommunicationFailure, $"거래구분={transactionTypeCode}에 매핑된 hostCode 없음");
+                }
+
                 // P22-6(PRD.md §1.5 경계 표 "VAN") — FNAISCRDVAN 호출 직전. 개선권장 1(CP2 Opus 리뷰) —
                 // 실제로 나가는 mode(R/OT/IT)를 한 토큰 남긴다. 민감정보가 아니므로 마스킹하지 않는다.
                 // P23-8 "OT/R이 FNAISCRDVAN 첫 인자로 실제로 나가는 것을 로그로 확인"의 선행 조건.
-                FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} mode={vanMode} FNAISCRDVAN 호출 원문={redactedRequestBody}", code: null, txId);
+                // P32-4 — hostCode 토큰을 mode 옆에 추가(민감정보 아님, 마스킹 대상 아님).
+                FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} mode={vanMode} hostCode={hostCode} FNAISCRDVAN 호출 원문={redactedRequestBody}", code: null, txId);
 
                 // P24-3(docs/operations/development_plan.md) — P/Invoke 호출·NUL 종단·버퍼 할당·예외
                 // 차단은 FnaisCrdVanInvoker로 옮겨졌다. 이 메서드는 그 결과를 해석만 한다(응답 절단,
                 // H-1/L-1 방어, 마스킹 로깅은 여기 그대로 남는다 — invoker마다 규칙이 다르기 때문).
                 FnaisCrdVanInvokeResult invokeResult = await FnaisCrdVanInvoker.InvokeAsync(
-                    vanMode, body, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
+                    vanMode, hostCode, body, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
+
+                if (invokeResult.IsArgumentRejected)
+                {
+                    // P32-3 — hostCode 사전 검증(null/빈 값/12바이트 초과/비ASCII)에 걸려 DLL을 호출하지
+                    // 않은 경로. 위 HostCodeByTransactionType 매핑이 항상 PRD §2.3의 유효한 상수값만
+                    // 돌려주므로 실제로는 도달하지 않아야 정상이다(방어적 분기).
+                    FileLogger.Error(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} hostCode 검증 실패: {invokeResult.ArgumentRejectionReason}", code: null, txId);
+                    return VanRelayOutcome.CommunicationFailure(VanFailureKind.CommunicationFailure, $"hostCode 검증 실패: {invokeResult.ArgumentRejectionReason}");
+                }
 
                 if (invokeResult.Threw)
                 {

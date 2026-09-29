@@ -26,26 +26,43 @@ internal readonly struct FnaisCrdVanInvokeResult
     /// <summary><see cref="Threw"/>가 true일 때만 값이 있다.</summary>
     internal Exception? Exception { get; }
 
-    /// <summary><c>FNAISCRDVAN</c>의 반환값(<c>nRet</c>). <see cref="Threw"/>가 false일 때만 유효.</summary>
+    /// <summary>P32-3 — <c>hostCode</c> 사전 검증(null/빈 문자열/비ASCII/12바이트 초과)에 걸려
+    /// <b>DLL을 아예 호출하지 않은</b> 경로에서만 true. <see cref="Threw"/>와는 별개다(예외가 아니라
+    /// 의도적으로 호출을 막은 것) — DLL을 실제로 호출한 경로(성공이든 <see cref="Threw"/>든)에서는
+    /// 절대 true가 되지 않는다. 진단 하네스(P32-6)가 "DLL 미호출"을 판별하는 유일한 근거다.</summary>
+    internal bool IsArgumentRejected { get; }
+
+    /// <summary><see cref="IsArgumentRejected"/>가 true일 때만 값이 있다 — 거부 사유(hostCode 값과
+    /// 위반 항목). hostCode는 민감정보가 아니므로 그대로 담는다.</summary>
+    internal string? ArgumentRejectionReason { get; }
+
+    /// <summary><c>FNAISCRDVAN</c>의 반환값(<c>nRet</c>). <see cref="Threw"/>가 false이고
+    /// <see cref="IsArgumentRejected"/>가 false일 때만 유효.</summary>
     internal int ReturnCode { get; }
 
     /// <summary>DLL이 채운 응답 버퍼 전체(<see cref="KftcGiroNative.OutDataBufferSize"/>바이트,
-    /// 절단하지 않은 원본). <see cref="Threw"/>가 false일 때만 유효.</summary>
+    /// 절단하지 않은 원본). <see cref="Threw"/>가 false이고 <see cref="IsArgumentRejected"/>가 false일
+    /// 때만 유효.</summary>
     internal byte[] OutData { get; }
 
-    /// <summary>DLL이 채운 <c>out_szRetCode</c> 버퍼 전체. <see cref="Threw"/>가 false일 때만 유효.</summary>
+    /// <summary>DLL이 채운 <c>out_szRetCode</c> 버퍼 전체. <see cref="Threw"/>가 false이고
+    /// <see cref="IsArgumentRejected"/>가 false일 때만 유효.</summary>
     internal byte[] OutRetCode { get; }
 
-    /// <summary><c>FNAISCRDVAN</c> 호출에 걸린 시간(ms). <see cref="Threw"/>가 false일 때만 유효.</summary>
+    /// <summary><c>FNAISCRDVAN</c> 호출에 걸린 시간(ms). <see cref="Threw"/>가 false이고
+    /// <see cref="IsArgumentRejected"/>가 false일 때만 유효.</summary>
     internal long ElapsedMilliseconds { get; }
 
     private FnaisCrdVanInvokeResult(
-        bool threw, bool isDllLoadFailure, Exception? exception,
-        int returnCode, byte[] outData, byte[] outRetCode, long elapsedMilliseconds)
+        bool threw, bool isDllLoadFailure, Exception? exception, bool isArgumentRejected,
+        string? argumentRejectionReason, int returnCode, byte[] outData, byte[] outRetCode,
+        long elapsedMilliseconds)
     {
         Threw = threw;
         IsDllLoadFailure = isDllLoadFailure;
         Exception = exception;
+        IsArgumentRejected = isArgumentRejected;
+        ArgumentRejectionReason = argumentRejectionReason;
         ReturnCode = returnCode;
         OutData = outData;
         OutRetCode = outRetCode;
@@ -53,13 +70,16 @@ internal readonly struct FnaisCrdVanInvokeResult
     }
 
     internal static FnaisCrdVanInvokeResult Success(int returnCode, byte[] outData, byte[] outRetCode, long elapsedMilliseconds) =>
-        new(false, false, null, returnCode, outData, outRetCode, elapsedMilliseconds);
+        new(false, false, null, false, null, returnCode, outData, outRetCode, elapsedMilliseconds);
 
     internal static FnaisCrdVanInvokeResult DllLoadFailure(Exception exception) =>
-        new(true, true, exception, 0, Array.Empty<byte>(), Array.Empty<byte>(), 0);
+        new(true, true, exception, false, null, 0, Array.Empty<byte>(), Array.Empty<byte>(), 0);
 
     internal static FnaisCrdVanInvokeResult GenericFailure(Exception exception) =>
-        new(true, false, exception, 0, Array.Empty<byte>(), Array.Empty<byte>(), 0);
+        new(true, false, exception, false, null, 0, Array.Empty<byte>(), Array.Empty<byte>(), 0);
+
+    internal static FnaisCrdVanInvokeResult ArgumentRejected(string reason) =>
+        new(false, false, null, true, reason, 0, Array.Empty<byte>(), Array.Empty<byte>(), 0);
 }
 
 /// <summary>
@@ -79,12 +99,24 @@ internal static class FnaisCrdVanInvoker
     /// <c>FNAISCRDVAN</c>을 호출한다. <paramref name="body"/>는 NUL 종단되지 않은 원본 본문 바이트
     /// (전문 본문 또는 ISO 키다운로드 전문 바이트) — 이 메서드가 "본문 길이 + 1" 크기의 배열을 새로
     /// 만들어 NUL 종단한다(기존 <c>VanService</c>의 <c>inData</c> 조립 로직 그대로).
+    ///
+    /// <paramref name="hostCode"/>는 P32-3(PRD §2.3) — DLL 호출 <b>전에</b> 이 메서드가 검증한다
+    /// (null/빈 문자열/비ASCII 포함/<see cref="KftcGiroNative.HostCodeMaxLength"/>바이트 초과 중 하나라도
+    /// 해당하면 DLL을 호출하지 않고 <see cref="FnaisCrdVanInvokeResult.ArgumentRejected"/>를 반환한다) —
+    /// DLL 자체는 이 값을 검사하지 않으므로(빈 값→GIROKEYDOWN 대체, NULL→AV, 초과→스택 오버플로) 호출자가
+    /// 반드시 막아야 한다.
     /// </summary>
-    internal static async Task<FnaisCrdVanInvokeResult> InvokeAsync(string mode, byte[] body, int timeoutSeconds)
+    internal static async Task<FnaisCrdVanInvokeResult> InvokeAsync(string mode, string hostCode, byte[] body, int timeoutSeconds)
     {
+        if (!TryValidateHostCode(hostCode, out string rejectionReason))
+        {
+            return FnaisCrdVanInvokeResult.ArgumentRejected(rejectionReason);
+        }
+
         try
         {
             byte[] modeBytes = BuildNulTerminatedAscii(mode);
+            byte[] hostCodeBytes = BuildNulTerminatedAscii(hostCode);
             byte[] inData = BuildNulTerminatedFromBytes(body);
 
             // 매 호출마다 새로 할당한다 — 재사용하면 이전 거래의 잔여 바이트가 다음 응답에 섞일 수
@@ -99,7 +131,7 @@ internal static class FnaisCrdVanInvoker
                 // FNAISCRDVAN은 블로킹 호출이다(타임아웃 인자를 받는 것 자체가 근거) — 호출 스레드를
                 // 최대 타임아웃 시간만큼 붙잡지 않도록 Task.Run으로 감싼다.
                 nRet = await Task.Run(() => KftcGiroNative.FNAISCRDVAN(
-                    modeBytes, inData, outData, outRetCode, timeoutSeconds)).ConfigureAwait(false);
+                    modeBytes, inData, outData, outRetCode, timeoutSeconds, hostCodeBytes)).ConfigureAwait(false);
             }
             finally
             {
@@ -124,6 +156,44 @@ internal static class FnaisCrdVanInvoker
             // DLL 호출 실패로 앱이 죽으면 안 된다(PRD §9) — 어떤 예외도 밖으로 던지지 않는다.
             return FnaisCrdVanInvokeResult.GenericFailure(ex);
         }
+    }
+
+    /// <summary>P32-3(PRD §2.3) — <paramref name="hostCode"/>가 null/빈 문자열/비ASCII 포함/
+    /// <see cref="KftcGiroNative.HostCodeMaxLength"/>바이트 초과 중 하나라도 해당하면 false를 반환하고
+    /// <paramref name="reason"/>에 사유(hostCode 값 포함 — 민감정보 아님)를 담는다. <c>System.Text.Encoding.ASCII</c>
+    /// 는 범위 밖 문자를 <c>?</c>로 조용히 치환하므로, 여기서는 그 변환 대신 문자 하나하나를 0x20~0x7E 범위로
+    /// 직접 검사한다.</summary>
+    private static bool TryValidateHostCode(string? hostCode, out string reason)
+    {
+        if (hostCode is null)
+        {
+            reason = "hostCode=null";
+            return false;
+        }
+
+        if (hostCode.Length == 0)
+        {
+            reason = "hostCode=(빈 문자열) — DLL이 조용히 GIROKEYDOWN으로 대체하므로 호출 차단";
+            return false;
+        }
+
+        if (hostCode.Length > KftcGiroNative.HostCodeMaxLength)
+        {
+            reason = $"hostCode='{hostCode}' 길이({hostCode.Length})가 {KftcGiroNative.HostCodeMaxLength}바이트 초과";
+            return false;
+        }
+
+        foreach (char c in hostCode)
+        {
+            if (c is < ' ' or > '~')
+            {
+                reason = $"hostCode='{hostCode}'에 비ASCII 문자 포함(0x{(int)c:X2})";
+                return false;
+            }
+        }
+
+        reason = string.Empty;
+        return true;
     }
 
     private static byte[] BuildNulTerminatedAscii(string value)
