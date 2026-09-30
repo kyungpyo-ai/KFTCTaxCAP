@@ -441,6 +441,43 @@ public partial class App : Application
             // 등록하지 않음)와 무관하게 화면 단독 동작(요청 표 임의값 채움, 전송, 응답 표시)만 확인한다.
             StartupUri = new Uri("Views/PaymentScreenWindow.xaml", UriKind.Relative);
         }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--receipt-print-test")
+        {
+            // 개발/회귀 검증용(docs/receipt_print/development_plan.md P33-1~P33-4 완료 조건, 최종
+            // 산출물 아님): Protocol/Printer/(CP949 폭 계산·줄바꿈·인코더·상태 파서)와 Services/Printer/
+            // (시리얼 포트 열기·상태 조회·송신·닫기)를 검증한다. 모드는 두 번째 인자
+            // (self/dump/print/status). UI는 홈 화면을 그대로 띄운다.
+            StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
+
+            string mode = e.Args.Length > 1 ? e.Args[1].ToLowerInvariant() : string.Empty;
+            if (mode == "self")
+            {
+                System.Threading.Tasks.Task.Run(ReceiptPrintSelfTest.RunAll);
+            }
+            else if (mode == "dump")
+            {
+                System.Threading.Tasks.Task.Run(ReceiptPrintDiagnosticHarness.RunDump);
+            }
+            else if (mode == "print" && e.Args.Length > 3)
+            {
+                string portArg = e.Args[2];
+                string speedArg = e.Args[3];
+                System.Threading.Tasks.Task.Run(() => ReceiptPrintDiagnosticHarness.RunPrint(portArg, speedArg));
+            }
+            else if (mode == "status" && e.Args.Length > 3)
+            {
+                string portArg = e.Args[2];
+                string speedArg = e.Args[3];
+                System.Threading.Tasks.Task.Run(() => ReceiptPrintDiagnosticHarness.RunStatus(portArg, speedArg));
+            }
+            else
+            {
+                // 인자 누락·잘못된 모드 — 예외 없이 사용법만 로그로 남기고 정상 종료(P33-4 완료 조건).
+                FileLogger.Info(
+                    "[receipt-print-test] 사용법: --receipt-print-test self | dump | " +
+                    "print <포트번호> <속도> | status <포트번호> <속도>");
+            }
+        }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--notice-demo")
         {
             // 개발용 결제 알림창 실시간 애니메이션 데모(수동 실행 전용). 예전엔 인자 없는 기본

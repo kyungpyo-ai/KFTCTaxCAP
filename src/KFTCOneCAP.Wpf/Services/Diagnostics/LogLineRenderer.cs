@@ -23,7 +23,7 @@ namespace KFTCOneCAP.Wpf.Services.Diagnostics;
 ///   <list type="bullet">
 ///   <item>레벨: 폭 5(<c>INFO </c>/<c>WARN </c>/<c>ERROR</c>).</item>
 ///   <item>카테고리: 폭 8(<see cref="LogCategoryText.ToText"/> 결과 중 최장인 <c>SETTINGS</c> 기준,
-///     <see cref="LogCategory"/> 8종 전수). 빈 슬롯(<c>-</c>)도 이 폭에 맞춰 패딩한다.</item>
+///     <see cref="LogCategory"/> 9종 전수). 빈 슬롯(<c>-</c>)도 이 폭에 맞춰 패딩한다.</item>
 ///   <item>코드: 폭 3(<c>PosResultCodeMapper</c>가 만드는 <c>E0x</c>/<c>R0x</c>/<c>R2x</c>/<c>D0x</c>
 ///     체계가 전부 3자리). 빈 슬롯(<c>-</c>)도 이 폭에 맞춰 패딩한다. 코드 설명(<see
 ///     cref="LogCodeCatalog"/>)은 이 슬롯 폭 정렬 계약을 깨지 않도록 여기 붙이지 않고

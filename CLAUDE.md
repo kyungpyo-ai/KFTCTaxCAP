@@ -30,7 +30,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **3차 범위(운영 기능, Phase 22~): `docs/operations/PRD.md`가 요구사항 정본.** 애초 세 기능을 한 문서에 §1~§3으로 묶어 관리했다 — ① 로그 출력(일자별 파일 + 90일 정리 + 장래 장애정보 서버 전송 대비 구조), ② 가맹점 설정 화면(옵션 6개, 홈 화면 "가맹점 설정" 카드에 연결), ③ 리더기 키다운로드(리더기 설정 화면의 기존 버튼에 동작 구현). 이후 §4(카드정보 메모리 클리어, Phase 25)가 추가됐고, **§1.8~§1.12(Phase 27)가 §1의 로그 부분을 정정·확장**했다 — 로그 조각 확보 방식을 메모리 링버퍼에서 파일 슬라이스로 전환하고, 패턴 기반 마스킹을 제거했으며(위치 기반 마스킹 한 계층만 유지), 로그 code 슬롯 체계를 정비하고(`S`계열 신설, `E42`/`E43` 신설) 장애 알림 판정 로직 + `ALERT` 로그 레벨까지 구현했다(서버 전송 자체는 Phase 28). 분량이 크지 않고 공통 전제(레지스트리 루트·계층 규칙·보안 원칙·화면 경합)를 공유해 폴더를 나누지 않았다. 문서 구성은 2차와 같은 3단(`PRD.md` → `ROADMAP.md` → `development_plan.md`)이며, 여기에 **`fault_alert_catalog.md`**(장애 알림 대상 코드와 조건값의 정본)가 더해진다 — Phase 문서가 아니라 **운영하며 계속 갱신되는 대장**이라 따로 뒀다(2026-09-10). 알림 대상을 늘리거나 임계값을 바꿀 때는 그 문서를 먼저 고치고 설정·코드에 반영한다.
 
-**Phase 번호는 세 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
+**4차 범위(국세 납부확인증 영수증 출력, Phase 33~): `docs/receipt_print/PRD.md`가 요구사항 정본.** 결제창에서
+보낸 902614가 승인(`#7=000`)되면 가맹점 설정의 전표 인쇄 사용(`PRINTER_CHECK`)에 따라 Epson 호환 80mm 프린터에
+시리얼 COM + ESC/POS로 납부확인증을 출력하고, 직전거래 전표출력 버튼으로 재출력한다. 영수증 값은 결제창 세 탭의
+응답값에서 모은다(원캡 중계 경로는 상태를 갖지 않는다). 문서는 같은 3단 구성 + **`escpos_reference.md`**(쓰는
+ESC/POS 명령과 실기 확인 기록 — 여기 없는 명령은 코드에 넣지 않는다). 카드번호 줄은 800000 `#14` 19자리 확장
+SPEC 개정본을 기다린다(Phase 36 보류, 2026-09-30).
+
+**Phase 번호는 네 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~(`docs/receipt_print/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
 
 ## 원본 MFC 소스 (참고용, 이 저장소 밖)
 
@@ -42,6 +49,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `.claude/agents/csharp-wpf-developer.md` — 이 프로젝트의 WPF 개발 전담 에이전트. UX/UI(XAML)와 비즈니스 로직(ViewModel/서비스)을 통합해서 다룬다. `mcp__windows__*` 도구(스크린샷/클릭/스냅샷 등)를 갖추고 있어 빌드 후 실제 화면을 캡처해 원본과 대조하는 검증까지 책임진다 — 코드 작성만 하고 검증을 생략하지 않는다.
 - `.claude/agents/checkpoint-reviewer.md` — 각 Phase의 체크포인트(`development_plan.md`에 정의된 CP1/CP2 등)에서 그동안 구현된 코드를 처음 보는 눈으로 종합 검증하는 전담 리뷰어. 코드를 작성하지 않고(Edit/Write 없음) `Read`/`Grep`/`Bash`/`PowerShell`로 diff를 직접 읽고 빌드·회귀 하네스를 직접 재실행해 결함을 찾는다 — 구현자의 자기 보고를 그대로 믿지 않는 것이 존재 이유다. 각 Task의 구현-테스트-검증-수정 사이클 자체(빌드 확인, 단위 검증)에는 쓰지 않는다 — 그건 구현 에이전트(csharp-wpf-developer 등)가 그 자리에서 처리한다.
+- `.claude/agents/receipt-printer-developer.md` — 영수증 프린터(시리얼 COM + ESC/POS) 출력 계층 개발 전담(`Protocol/Printer/`, `Services/Printer/`, 프린터 진단 하네스). 근거는 `docs/receipt_print/`(특히 `escpos_reference.md`). 영수증 값 조립·화면 작업은 `csharp-wpf-developer`와 나눠 맡는다.
 - `.claude/agents/reader-pinpad-spec-expert.md` — 리더기/핀패드 SPEC 원문 및 `ReaderSerial.dll` API 계약 확인 전담(아래 "리더기 연동 DLL" 절 참고).
 - `.claude/agents/reader-dll-integration-developer.md` — `ReaderSerial.dll` P/Invoke 연동 개발 전담(아래 "리더기 연동 DLL" 절 참고).
 - `.claude/agents/pos-onecap-spec-expert.md` — POS ↔ KFTCOneCAP 간 전문(telegram) SPEC 확인 전담. 근거 문서는

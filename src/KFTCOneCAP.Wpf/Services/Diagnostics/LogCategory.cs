@@ -2,7 +2,7 @@ namespace KFTCOneCAP.Wpf.Services.Diagnostics;
 
 /// <summary>
 /// Phase 22(docs/operations/development_plan.md P22-1, PRD.md §1.3-b) 구조화 로그의 카테고리 —
-/// "통제 밖으로 나가거나 통제 안으로 들어오는" 경계 8종.
+/// "통제 밖으로 나가거나 통제 안으로 들어오는" 경계 9종(Phase 33에서 Printer 추가).
 /// 렌더링 시 실제 텍스트(대문자, PRD §1.3-b 표)로 바꾸는 책임은 <see cref="LogCategoryText"/>가 진다.
 /// </summary>
 public enum LogCategory
@@ -30,6 +30,12 @@ public enum LogCategory
 
     /// <summary>화면 열기/닫기, 키보드 후킹.</summary>
     Ui,
+
+    /// <summary>
+    /// 영수증(전표) 시리얼 프린터 출력 — 포트 열기/닫기, 상태 조회(DLE EOT), 송신 결과(docs/receipt_print/
+    /// PRD.md §1.3-b, 2026-09-30 사용자 확정, 운영 PRD §1.3-b에 이미 반영됨). Phase 33 P33-3부터 씀.
+    /// </summary>
+    Printer,
 }
 
 /// <summary>
@@ -48,6 +54,7 @@ public static class LogCategoryText
         LogCategory.Keydown => "KEYDOWN",
         LogCategory.Settings => "SETTINGS",
         LogCategory.Ui => "UI",
+        LogCategory.Printer => "PRINTER",
         _ => throw new System.ArgumentOutOfRangeException(nameof(category), category, "매핑되지 않은 LogCategory"),
     };
 }
