@@ -35,6 +35,12 @@ public static class EscPosCommands
     /// <summary>2바이트 문자(한글) 모드 끄기 <c>FS .</c>(<c>1C 2E</c>).</summary>
     public static byte[] TwoByteCharacterModeOff() => new byte[] { 0x1C, 0x2E };
 
+    /// <summary>
+    /// 왼쪽 여백 <c>GS L nL nH</c>(<c>1D 4C nL nH</c>). 여백 = (nL + nH×256) × 가로 이동 단위. 줄 맨 앞에서만
+    /// 유효. 값은 <see cref="PrinterProfile.LeftMarginDots"/>(escpos_reference.md §1, 2026-09-30 실기 확인).
+    /// </summary>
+    public static byte[] LeftMargin(ushort units) => new byte[] { 0x1D, 0x4C, (byte)(units & 0xFF), (byte)(units >> 8) };
+
     /// <summary>줄바꿈 <c>LF</c>(<c>0A</c>). 버퍼 인쇄 + 한 줄 이송.</summary>
     public const byte LineFeed = 0x0A;
 

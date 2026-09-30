@@ -29,6 +29,11 @@ public static class EscPosDocumentEncoder
         if (PrinterProfile.SendTwoByteCharacterModeOn)
             Write(EscPosCommands.TwoByteCharacterModeOn());
 
+        // 왼쪽 여백(GS L) — 42칸 인쇄 영역을 용지 가운데로 옮긴다(2026-09-30 실기, PrinterProfile.LeftMarginDots).
+        // 줄 맨 앞에서만 유효하므로 첫 줄 전에 한 번 보낸다. ESC @가 매 문서마다 초기화하므로 복귀는 필요 없다.
+        if (PrinterProfile.LeftMarginDots > 0)
+            Write(EscPosCommands.LeftMargin(PrinterProfile.LeftMarginDots));
+
         int lineIndex = 0;
         foreach (PrintLine line in document.Lines)
         {

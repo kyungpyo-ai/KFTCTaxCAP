@@ -50,9 +50,21 @@ public static class PrinterProfile
     public static readonly byte CutFeedDots = 0;
 
     /// <summary>
+    /// 왼쪽 여백(<c>GS L</c>의 값, 프린터 가로 이동 단위). 42칸(약 63mm) 인쇄 영역이 80mm 용지의 왼쪽에 붙어
+    /// 오른쪽만 비어 보이던 것을 가운데로 옮긴다. <b>2026-09-30 실기(COM6)에서 0/24/36/48/72를 찍어 비교 —
+    /// 36이 양쪽 여백이 가장 고르고 42칸이 한 줄에 그대로 들어감(사용자 확인).</b> 0이면 명령을 보내지 않는다.
+    /// 기종이 바뀌면 이 값만 다시 맞춘다.
+    /// </summary>
+    public static readonly ushort LeftMarginDots = 36;
+
+    /// <summary>
     /// 실시간 상태 조회(<c>DLE EOT n</c>) 사용 여부. 일부 호환 기종은 이 명령을 지원하지 않는다
     /// (escpos_reference.md §2) — 미지원이면 false로 바꿔 Services/Printer의 시리얼 출력 서비스가
     /// 상태 조회를 건너뛰고 바로 송신하게 한다(P33-3).
+    ///
+    /// <b>2026-09-30 실기(P33-0) 결과 false</b> — 개발 PC의 프린터(COM6, 115200bps)는 출력은 정상이나
+    /// <c>DLE EOT 1/2/4</c>에 응답이 전혀 없고 CTS/DSR/CD도 모두 꺼져 있다(속도 5종·DTR/RTS 조합 전부 동일).
+    /// 켜 두면 모든 출력이 NoResponse로 실패하므로 사용자 결정으로 끈다. 코드는 지원 기종용으로 남긴다.
     /// </summary>
-    public static readonly bool UseStatusQuery = true;
+    public static readonly bool UseStatusQuery = false;
 }
