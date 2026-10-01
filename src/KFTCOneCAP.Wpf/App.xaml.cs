@@ -145,6 +145,11 @@ public partial class App : Application
         // WPF에서는 96dpi 논리 픽셀 단위로 반환되므로 별도 DPI 스케일링은 필요 없다.
         bool isCompact = SystemParameters.PrimaryScreenHeight <= CompactHeightThreshold;
 
+        // 개발/검증용(docs/alert_dialog/development_plan.md P38-5): `--alert-gallery compact`는 화면 높이와
+        // 무관하게 컴팩트 리소스로 띄운다 — 개발 PC(1080)에서 컴팩트 모드(Malgun Gothic) 알림창을 확인하기 위함.
+        if (e.Args.Length > 1 && e.Args[0].ToLowerInvariant() == "--alert-gallery" && e.Args[1].ToLowerInvariant() == "compact")
+            isCompact = true;
+
         var typographySource = isCompact
             ? new Uri("Themes/Typography.Compact.xaml", UriKind.Relative)
             : new Uri("Themes/Typography.xaml", UriKind.Relative);
@@ -162,6 +167,9 @@ public partial class App : Application
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("Themes/ComboBox.xaml", UriKind.Relative) });
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("Themes/ToggleSwitch.xaml", UriKind.Relative) });
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("Themes/TextBox.xaml", UriKind.Relative) });
+        // Phase 38(docs/alert_dialog/PRD.md §5.1): 알림창 치수·스타일. Colors·Typography·Buttons 키를 참조하므로
+        // 반드시 그 뒤에 병합한다.
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("Themes/Alert.xaml", UriKind.Relative) });
 
         // Phase 12(P12-1): 리더기 설정 화면이 열리기 전에도 레지스트리에 설정된 포트를 앱 기동 시
         // 미리 연다(PRD §2.2.2 "항상 열어둔다"). 열기 실패해도 여기서 모달을 띄우지 않는다 — 이
@@ -485,6 +493,31 @@ public partial class App : Application
                 FileLogger.Info(
                     "[receipt-print-test] 사용법: --receipt-print-test self | dump | " +
                     "print <포트번호> <속도> | status <포트번호> <속도>");
+            }
+        }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--alert-gallery")
+        {
+            // 개발/검증용(docs/alert_dialog/development_plan.md P38-2~P38-4 화면 검증, 최종 산출물 아님):
+            // 원본 캡처와 같은 문구, 조합 선택(5종 × 본문 길이 × 버튼 구성), PRD §4.2 실제 문구 14행,
+            // 특수 경우(백그라운드 스레드·owner 없음·owner 최소화·닫힌 owner)를 띄우고 반환 결과를 화면에 표시한다.
+            StartupUri = new Uri("Views/Dialogs/AlertGalleryWindow.xaml", UriKind.Relative);
+        }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--alert-dialog-test")
+        {
+            // 개발/회귀 검증용(docs/alert_dialog/development_plan.md P38-1/P38-4 완료 조건, 최종 산출물
+            // 아님): AlertTextSplitter/AlertBehavior/AlertDialogViewModel을 창을 띄우지 않고 순수 로직으로
+            // 검증한다. 모드는 두 번째 인자(self). UI는 홈 화면을 그대로 띄운다.
+            StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
+
+            string alertTestMode = e.Args.Length > 1 ? e.Args[1].ToLowerInvariant() : string.Empty;
+            if (alertTestMode == "self")
+            {
+                System.Threading.Tasks.Task.Run(AlertDialogSelfTest.RunAll);
+            }
+            else
+            {
+                // 인자 누락·잘못된 모드 — 예외 없이 사용법만 로그로 남기고 정상 종료.
+                FileLogger.Info("[alert-dialog-test] 사용법: --alert-dialog-test self");
             }
         }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--notice-demo")

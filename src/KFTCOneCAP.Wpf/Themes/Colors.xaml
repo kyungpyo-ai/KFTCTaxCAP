@@ -115,4 +115,54 @@
     <Color x:Key="ChainedFieldBorderColor">#C4B5FD</Color>
     <SolidColorBrush x:Key="ChainedFieldBorderBrush" Color="{StaticResource ChainedFieldBorderColor}"/>
 
+    <!-- ===================== 알림창(5차 범위 Phase 38, docs/alert_dialog/PRD.md §3.2) =====================
+         종류별 아이콘 원 배경(Bg)/심볼(Fg) — 원본 CModernMessageBox RGB 그대로(PRD §2.1). Question은 Info 재사용.
+         카드·버튼·포커스 링 색은 PRD §3.2·§3.3(D1·D5)과 원본 캡처(§2.6). -->
+    <Color x:Key="AlertInfoBgColor">#EBF4FF</Color>
+    <SolidColorBrush x:Key="AlertInfoBgBrush" Color="{StaticResource AlertInfoBgColor}"/>
+    <Color x:Key="AlertInfoFgColor">#1B64F2</Color>
+    <SolidColorBrush x:Key="AlertInfoFgBrush" Color="{StaticResource AlertInfoFgColor}"/>
+
+    <Color x:Key="AlertWarningBgColor">#FFF8E6</Color>
+    <SolidColorBrush x:Key="AlertWarningBgBrush" Color="{StaticResource AlertWarningBgColor}"/>
+    <Color x:Key="AlertWarningFgColor">#F5A623</Color>
+    <SolidColorBrush x:Key="AlertWarningFgBrush" Color="{StaticResource AlertWarningFgColor}"/>
+
+    <Color x:Key="AlertErrorBgColor">#FFEBEE</Color>
+    <SolidColorBrush x:Key="AlertErrorBgBrush" Color="{StaticResource AlertErrorBgColor}"/>
+    <Color x:Key="AlertErrorFgColor">#F04452</Color>
+    <SolidColorBrush x:Key="AlertErrorFgBrush" Color="{StaticResource AlertErrorFgColor}"/>
+
+    <Color x:Key="AlertSuccessBgColor">#E6F8EE</Color>
+    <SolidColorBrush x:Key="AlertSuccessBgBrush" Color="{StaticResource AlertSuccessBgColor}"/>
+    <Color x:Key="AlertSuccessFgColor">#31AC64</Color>
+    <SolidColorBrush x:Key="AlertSuccessFgBrush" Color="{StaticResource AlertSuccessFgColor}"/>
+
+    <!-- 카드(D1): 흰 배경 + 옅은 1px 테두리 + 그림자 -->
+    <Color x:Key="AlertCardBorderColor">#E5E8EB</Color>
+    <SolidColorBrush x:Key="AlertCardBorderBrush" Color="{StaticResource AlertCardBorderColor}"/>
+    <Color x:Key="AlertShadowColor">#1A202C</Color>
+
+    <!-- 본문 글자 -->
+    <Color x:Key="AlertBodyTextColor">#4E5968</Color>
+    <SolidColorBrush x:Key="AlertBodyTextBrush" Color="{StaticResource AlertBodyTextColor}"/>
+
+    <!-- 보조 버튼(취소·아니요) — 원본 캡처 -->
+    <Color x:Key="AlertSecondaryBgColor">#F2F4F6</Color>
+    <SolidColorBrush x:Key="AlertSecondaryBgBrush" Color="{StaticResource AlertSecondaryBgColor}"/>
+    <Color x:Key="AlertSecondaryHoverBgColor">#E6E8EC</Color>
+    <SolidColorBrush x:Key="AlertSecondaryHoverBgBrush" Color="{StaticResource AlertSecondaryHoverBgColor}"/>
+    <Color x:Key="AlertSecondaryPressedBgColor">#DCDEE2</Color>
+    <SolidColorBrush x:Key="AlertSecondaryPressedBgBrush" Color="{StaticResource AlertSecondaryPressedBgColor}"/>
+
+    <!-- 포커스 링(D5): #0064DD 40% -->
+    <Color x:Key="AlertFocusRingColor">#660064DD</Color>
+    <SolidColorBrush x:Key="AlertFocusRingBrush" Color="{StaticResource AlertFocusRingColor}"/>
+
+    <!-- 본문 스크롤바(D6) 엄지 -->
+    <Color x:Key="AlertScrollThumbColor">#D1D6DB</Color>
+    <SolidColorBrush x:Key="AlertScrollThumbBrush" Color="{StaticResource AlertScrollThumbColor}"/>
+    <Color x:Key="AlertScrollThumbHoverColor">#B0B8C1</Color>
+    <SolidColorBrush x:Key="AlertScrollThumbHoverBrush" Color="{StaticResource AlertScrollThumbHoverColor}"/>
+
 </ResourceDictionary>

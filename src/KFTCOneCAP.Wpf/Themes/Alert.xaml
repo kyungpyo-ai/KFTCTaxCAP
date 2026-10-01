@@ -1,0 +1,225 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!--
+        알림창(5차 범위 Phase 38 P38-2, docs/alert_dialog/PRD.md §3.2·§3.3) — 치수·글자·버튼 스타일.
+        Colors.xaml(Alert* 토큰) · Typography(PretendardFontFamily) · Buttons.xaml(ModernButtonBase,
+        PrimaryButtonStyle)을 StaticResource로 즉시 참조하므로 App.xaml.cs에서 그 셋보다 뒤에 병합해야 한다.
+        컴팩트 모드(화면 높이 ≤ 800)는 Typography.Compact.xaml이 PretendardFontFamily를 Malgun Gothic으로
+        바꾸는 것만으로 처리된다(PRD §3.2 "폰트만, 치수 동일") — 이 파일은 컴팩트 판을 따로 두지 않는다.
+
+        수치 기준은 원본 캡처(docs/alert_dialog/screenshots/*.png, 100% 배율, 창 테두리 포함)이며 좌표는
+        카드 바깥 테두리 왼쪽 위 = (0,0)이다. 카드 테두리가 1px이므로 안쪽 여백 23 = 바깥 기준 24.
+    -->
+
+    <!-- ===================== 카드 ===================== -->
+    <sys:Double x:Key="AlertCardWidth">376</sys:Double>
+    <CornerRadius x:Key="AlertCardCornerRadius">12</CornerRadius>
+    <Thickness x:Key="AlertCardBorderThickness">1</Thickness>
+    <!-- 바깥 기준 24 = 테두리 1 + 안쪽 23. 아래만 25 — 원본 캡처의 버튼 아래 여백(버튼 바닥 169 → 창 높이 196) -->
+    <Thickness x:Key="AlertCardPadding">23,23,23,25</Thickness>
+
+    <!-- 그림자(D1): #1A202C, 불투명도 0.16, 흐림 32, 아래 8 -->
+    <sys:Double x:Key="AlertShadowOpacity">0.16</sys:Double>
+    <sys:Double x:Key="AlertShadowBlurRadius">32</sys:Double>
+    <sys:Double x:Key="AlertShadowDepth">8</sys:Double>
+    <!-- 그림자가 잘리지 않도록 창 안쪽에 두는 투명 여백. 아래쪽은 그림자가 8 내려가므로 더 넓다.
+         좌우 대칭이어야 owner 중앙 정렬 계산(AlertDialog.Show)이 단순해진다 — 상하 차이는 코드가 보정. -->
+    <Thickness x:Key="AlertShadowMargin">32,24,32,40</Thickness>
+
+    <!-- ===================== 아이콘 · 텍스트 ===================== -->
+    <sys:Double x:Key="AlertIconSize">40</sys:Double>
+    <!-- D2 벡터 심볼 선 두께. PRD 제안 2.5 — 원본 캡처의 심볼은 가는 선이라 캡처 대조로 조정(보고 참고) -->
+    <sys:Double x:Key="AlertIconStrokeThickness">2</sys:Double>
+    <!-- 아이콘 → 텍스트 간격 16 (텍스트 시작 x = 24 + 40 + 16 = 80).
+         본문이 없으면 텍스트 묶음을 아이콘 세로 중앙에 두고(PRD §2.2), 있으면 위에 붙인 뒤 제목 글자 윗선이
+         원본(y=26)에 오도록 세로 위치를 보정한다. -->
+    <!-- 본문 없음: 세로 중앙 정렬에서 위로 1px(-2/2) — 원본 캡처 제목 글자 y 37~49 -->
+    <Thickness x:Key="AlertTextColumnMargin">16,-2,0,0</Thickness>
+    <Thickness x:Key="AlertTextColumnWithBodyMargin">16,-2,0,0</Thickness>
+
+    <sys:Double x:Key="AlertTitleFontSize">15</sys:Double>
+    <!-- 제목 줄 상자 높이 — 본문이 없을 때 이 상자를 아이콘(40) 세로 중앙에 둔다 -->
+    <sys:Double x:Key="AlertTitleLineHeight">20</sys:Double>
+    <sys:Double x:Key="AlertBodyFontSize">13</sys:Double>
+    <!-- D8: 본문 줄 높이 20(원본 15) -->
+    <sys:Double x:Key="AlertBodyLineHeight">20</sys:Double>
+    <!-- 제목 윗선 → 본문 첫 줄 윗선 26(원본 캡처)이 되도록 맞춘 제목 상자 → 본문 상자 간격 -->
+    <Thickness x:Key="AlertBodyMargin">0,4,0,0</Thickness>
+    <!-- D6: 본문 최대 높이, 넘치면 본문만 스크롤 -->
+    <sys:Double x:Key="AlertBodyMaxHeight">320</sys:Double>
+
+    <!-- ===================== 버튼 ===================== -->
+    <!-- 텍스트(또는 아이콘) 영역 아래 → 버튼 윗변. 원본 캡처: 제목만 y=128, 본문 1줄 y=130 -->
+    <Thickness x:Key="AlertButtonRowMargin">0,64,0,0</Thickness>
+    <!-- 본문 없음: 아이콘 아래(y=64) → 버튼 윗변 y=129 (원본 Question.png 실측, 창 높이 195) -->
+    <Thickness x:Key="AlertButtonRowNoBodyMargin">0,65,0,0</Thickness>
+    <sys:Double x:Key="AlertButtonHeight">40</sys:Double>
+    <sys:Double x:Key="AlertButtonFontSize">14</sys:Double>
+    <!-- 버튼 사이 14 = 버튼 좌우 7씩 + 줄 전체 -7 -->
+    <Thickness x:Key="AlertButtonItemMargin">7,0</Thickness>
+    <Thickness x:Key="AlertButtonRowOuterMargin">-7,0</Thickness>
+
+    <!-- ===================== 글자 스타일 ===================== -->
+    <Style x:Key="AlertTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource AlertTitleFontSize}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="{StaticResource TitleTextBrush}"/>
+        <Setter Property="LineHeight" Value="{StaticResource AlertTitleLineHeight}"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+        <!-- 제목은 한 줄만(2026-10-01 사용자 요구). 말줄임 없음 — 문구를 제목 폭(376 - 80 - 24 = 272) 한 줄 안에
+             쓰고(긴 설명은 본문 = 둘째 줄 이후로), Phase 39 하네스가 제목 폭을 검증한다. 넘치면 잘려 보인다. -->
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+        <!-- 글자 모드(TextFormattingMode)는 지정하지 않는다 — 앱의 다른 창과 같은 WPF 기본값(Ideal). Display로 두면
+             획이 가로로 번져 보였다(2026-10-01 P38-5 사용자 실화면 비교로 확정, 투명 창 + Ideal 채택). -->
+        <!-- 레이어드 창(AllowsTransparency)에서 ClearType을 다시 켠다 — 불투명 흰 카드 위에서만 쓰는 스타일 -->
+        <Setter Property="RenderOptions.ClearTypeHint" Value="Enabled"/>
+    </Style>
+
+    <Style x:Key="AlertBodyTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource AlertBodyFontSize}"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Foreground" Value="{StaticResource AlertBodyTextBrush}"/>
+        <Setter Property="LineHeight" Value="{StaticResource AlertBodyLineHeight}"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="RenderOptions.ClearTypeHint" Value="Enabled"/>
+    </Style>
+
+    <!-- ===================== 포커스 링(D5) ===================== -->
+    <!-- WPF FocusVisualStyle은 키보드로 포커스가 옮겨졌을 때(Tab 등)만 그려진다 — "Tab 이동 시 링"과 일치.
+         버튼 모서리(8)보다 2px 바깥에 2px 선이라 반지름 10. -->
+    <Style x:Key="AlertFocusVisualStyle">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <!-- 버튼 바깥 3px(링 2px + 틈 1px). 바깥 반지름 = 버튼 반지름 8 + 3 = 11(동심, CP1 L-3) -->
+                    <Border Margin="-3" CornerRadius="11" BorderThickness="2"
+                            BorderBrush="{StaticResource AlertFocusRingBrush}"
+                            SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== 버튼 ===================== -->
+    <!-- 주 버튼(확인·예): 앱 PrimaryButtonStyle(#0064DD / hover #0052B8 / pressed #00449A) — D9 확인·예 같은 색 -->
+    <Style x:Key="AlertPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="Height" Value="{StaticResource AlertButtonHeight}"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontSize" Value="{StaticResource AlertButtonFontSize}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AlertFocusVisualStyle}"/>
+    </Style>
+
+    <!-- 보조 버튼(취소·아니요): #F2F4F6 / hover #E6E8EC / pressed #DCDEE2, 글자 #4E5968, 테두리 없음 -->
+    <Style x:Key="AlertSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonBase}">
+        <Setter Property="Height" Value="{StaticResource AlertButtonHeight}"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="{StaticResource AlertSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource AlertBodyTextBrush}"/>
+        <Setter Property="FontSize" Value="{StaticResource AlertButtonFontSize}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource AlertFocusVisualStyle}"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource AlertSecondaryHoverBgBrush}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource AlertSecondaryPressedBgBrush}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== 본문 스크롤(D6) ===================== -->
+    <!-- 기본 회색 스크롤바 대신 얇은 둥근 엄지만 보이는 스크롤바. 본문이 320을 넘을 때만 나타난다. -->
+    <Style x:Key="AlertScrollThumbStyle" TargetType="Thumb">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="ThumbBd" CornerRadius="3" Background="{StaticResource AlertScrollThumbBrush}"/>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ThumbBd" Property="Background" Value="{StaticResource AlertScrollThumbHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="ThumbBd" Property="Background" Value="{StaticResource AlertScrollThumbHoverBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AlertScrollPageButtonStyle" TargetType="RepeatButton">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="Transparent"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AlertScrollBarStyle" TargetType="ScrollBar">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Width" Value="6"/>
+        <Setter Property="MinWidth" Value="6"/>
+        <Setter Property="Margin" Value="6,0,0,0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track.DecreaseRepeatButton>
+                            <RepeatButton Style="{StaticResource AlertScrollPageButtonStyle}" Command="ScrollBar.PageUpCommand"/>
+                        </Track.DecreaseRepeatButton>
+                        <Track.Thumb>
+                            <Thumb Style="{StaticResource AlertScrollThumbStyle}"/>
+                        </Track.Thumb>
+                        <Track.IncreaseRepeatButton>
+                            <RepeatButton Style="{StaticResource AlertScrollPageButtonStyle}" Command="ScrollBar.PageDownCommand"/>
+                        </Track.IncreaseRepeatButton>
+                    </Track>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AlertBodyScrollViewerStyle" TargetType="ScrollViewer">
+        <Setter Property="MaxHeight" Value="{StaticResource AlertBodyMaxHeight}"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollViewer">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ScrollContentPresenter Grid.Column="0" CanContentScroll="{TemplateBinding CanContentScroll}"/>
+                        <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1"
+                                   Style="{StaticResource AlertScrollBarStyle}"
+                                   Orientation="Vertical"
+                                   Value="{TemplateBinding VerticalOffset}"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

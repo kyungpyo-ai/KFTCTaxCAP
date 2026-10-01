@@ -335,6 +335,20 @@
   27개 Check 전부 통과(로그 16:37:20, 동시 호출 직렬화 완료 시각 621ms ≥ 임계값 450ms로 정정 확인),
   dump 줄 미리보기가 PRD §3.2와 여전히 글자 단위로 동일하고 전자납부번호가 더미(0000000000000000000)로
   바뀐 것을 확인(16:37:28)한 즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-10-01] Phase 38 P38-2/P38-3(알림창 외형·동작, docs/alert_dialog/development_plan.md)
+  화면 검증을 위해 alert gallery 진단 인자(표기는 이 파일 주석 규칙대로 하이픈 없이 적는다)로 알림창을
+  띄워 캡처·키보드(Enter/ESC/Alt+F4/Tab/Ctrl+C)·끌기 동작을 자동화로 확인해야 해서 한시적으로
+  asInvoker로 낮췄다. 원본 캡처 4장과 같은 문구의 픽셀 실측 대조와 버튼 구성별 결과 확인을 마친 즉시
+  requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-10-01] 같은 P38-3 후속(알림창이 활성화되지 못하면 작업 표시줄 버튼 깜빡임, PRD §3.4)을
+  alert gallery의 owner 최소화 버튼으로 재현해 작업 표시줄 강조 표시를 캡처로 확인하려고 한시적으로
+  asInvoker로 낮췄다가, 확인 후 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-10-01] P38-5 사용자 피드백(레이어드 창 ClearType 꺼짐, 제목 한 줄 규칙) 수정 검증을 위해
+  한시적으로 asInvoker로 낮췄다. 사용자가 관리자 권한 갤러리를 띄워 둔 상태라 bin 대신 scratchpad 출력
+  경로로 빌드해 실행했고, 원본 문구 4개와 긴 제목을 캡처·확대 대조한 즉시 requireAdministrator로 되돌렸다.
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
