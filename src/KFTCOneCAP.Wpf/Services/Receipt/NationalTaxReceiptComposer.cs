@@ -18,6 +18,10 @@ namespace KFTCOneCAP.Wpf.Services.Receipt;
 public static class NationalTaxReceiptComposer
 {
     private const string ReprintLabel = "재출력";
+
+    /// <summary>제목 — <b>고정 문자열</b>(2026-10-01 사용자 확정: 이 프로그램은 종합소득세 전용이라 전문의
+    /// <c>징수 과목명</c>(501008/902614 <c>#21</c>)을 읽지 않는다, PRD §2.2 T·§3.2). 2배 크기 21칸에 정확히 맞는다.</summary>
+    private const string Title = "종합소득세 납부확인증";
     private const string Notice1 =
         "1.신용카드로 납부한 국세는 할부거래계약서 및 약관 등에도 불구하고 납부를 취소할 수 없습니다.";
     private const string Notice2WithoutRatePrefix = "2.신용카드로 국세를 납부할 경우 ";
@@ -39,10 +43,9 @@ public static class NationalTaxReceiptComposer
             doc.AddLine($"({ReprintLabel})", PrintAlignment.Center, PrintSize.Normal);
         }
 
-        // 제목: "{세목명} 납부확인증", 가로·세로 2배, 가운데 정렬, 폭은 LineWidth/2로 Wrap(PRD §3.2).
-        string taxItemName = ReceiptValueFormatter.Sanitize(receipt.TaxItemName);
-        string title = $"{taxItemName} 납부확인증";
-        doc.AddLines(ReceiptTextLayout.Wrap(title, titleWidth), PrintAlignment.Center, PrintSize.DoubleSize);
+        // 제목: 고정 "종합소득세 납부확인증", 가로·세로 2배, 가운데 정렬(PRD §3.2). 폭 LineWidth/2(21칸)에
+        // 정확히 맞지만, 상수를 바꿀 때를 대비해 Wrap을 그대로 거친다.
+        doc.AddLines(ReceiptTextLayout.Wrap(Title, titleWidth), PrintAlignment.Center, PrintSize.DoubleSize);
 
         doc.AddLine(ReceiptTextLayout.Separator(width));
 

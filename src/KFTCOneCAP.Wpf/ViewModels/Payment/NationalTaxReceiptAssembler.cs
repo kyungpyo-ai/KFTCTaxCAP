@@ -6,7 +6,8 @@ namespace KFTCOneCAP.Wpf.ViewModels.Payment;
 /// <summary>
 /// 결제창 세 탭(501008/800000/902614)의 응답값 → <see cref="NationalTaxReceipt"/>(docs/receipt_print/PRD.md §2.2,
 /// development_plan.md Phase 34 P34-3). <b>전문 필드 번호를 아는 유일한 곳</b>이다 — <c>Services/Receipt/</c>는
-/// 이름 붙은 값만 알고 필드 번호를 모른다(PRD §7.1 계층 원칙).
+/// 이름 붙은 값만 알고 필드 번호를 모른다(PRD §7.1 계층 원칙). 제목은 고정 문자열이라 <c>#21 징수 과목명</c>은
+/// 읽지 않는다(2026-10-01 사용자 확정 — 종합소득세 전용).
 ///
 /// 입력은 탭별 읽기 함수(<c>Func&lt;int, string?&gt;</c>, 보통 <see cref="PaymentTelegramTabViewModel.TryReadResponseField"/>)
 /// 다. <b>그 탭에 (파싱된) 응답이 없으면 <c>null</c>을 돌려주는 함수</b>여야 한다 — 읽기 함수 자체를
@@ -25,7 +26,6 @@ internal static class NationalTaxReceiptAssembler
     private const int Field902614ElectronicPaymentNo = 15;      // #1 전자납부번호 AN19 (짝 검사 키)
     private const int Field902614AccountNo = 19;                // #5 징수관 계좌번호 AN6
     private const int Field902614CollectingAgency = 20;         // 대체 #4 징수 기관명 AHN20
-    private const int Field902614TaxItemName = 21;              // 대체 T 징수 과목명 AHN20
     private const int Field902614TaxAmount = 27;                // #10 납부 세액 N15
     private const int Field902614Fee = 28;                      // #11 수수료 N15
     private const int Field902614TotalAmount = 29;              // #12 총 납부 금액 N15
@@ -39,7 +39,6 @@ internal static class NationalTaxReceiptAssembler
     private const int Field501008TaxpayerNo = 17;               // #3 납세 의무자 번호 AN13
     private const int Field501008TaxpayerName = 18;             // #2 납세 의무자 명 AHN40
     private const int Field501008CollectingAgency = 19;         // #4 징수 기관명 AHN40
-    private const int Field501008TaxItemName = 21;              // T 징수 과목명 AHN40
     private const int Field501008AmountWithinPeriod = 25;       // #7 납기내 금액 N15
     private const int Field501008DueDateWithinPeriod = 26;      // #6 납기일(납기내) N8
     private const int Field501008AmountAfterPeriod = 27;        // #9 납기후 금액 N15
@@ -94,7 +93,6 @@ internal static class NationalTaxReceiptAssembler
 
         return new NationalTaxReceipt
         {
-            TaxItemName = PrimaryOrFallback(notice?.Invoke(Field501008TaxItemName), read902614(Field902614TaxItemName)),
             ElectronicPaymentNumber = read902614(Field902614ElectronicPaymentNo),
             TaxpayerName = PrimaryOrFallback(notice?.Invoke(Field501008TaxpayerName), read902614(Field902614PayerName)),
             TaxpayerNumber = PrimaryOrFallback(notice?.Invoke(Field501008TaxpayerNo), read902614(Field902614TaxpayerRegNo)),
@@ -117,7 +115,7 @@ internal static class NationalTaxReceiptAssembler
         };
     }
 
-    /// <summary>대체 출처가 있는 항목(T/#2/#3/#4) 전용 — 1순위 값이 <c>null</c>이거나 <b>공백뿐</b>이면 대체
+    /// <summary>대체 출처가 있는 항목(#2/#3/#4) 전용 — 1순위 값이 <c>null</c>이거나 <b>공백뿐</b>이면 대체
     /// 출처를 쓴다(CP1 Opus 결정: 짝 검사를 통과했어도 501008 해당 필드가 비어 오면 빈칸보다 902614 값이
     /// 낫다). 대체 출처가 없는 항목(납기 4줄)은 이 헬퍼를 쓰지 않는다.</summary>
     private static string? PrimaryOrFallback(string? primary, string? fallback) =>

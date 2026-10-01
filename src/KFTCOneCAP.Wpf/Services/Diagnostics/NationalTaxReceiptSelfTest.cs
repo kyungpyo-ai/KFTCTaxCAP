@@ -118,7 +118,6 @@ internal static class NationalTaxReceiptSelfTest
     /// </summary>
     private static NationalTaxReceipt BuildFullSampleReceipt() => new()
     {
-        TaxItemName = "종합소득세",
         ElectronicPaymentNumber = "0000000000000000000",
         TaxpayerName = "홍길동",
         TaxpayerNumber = "8001011234567",

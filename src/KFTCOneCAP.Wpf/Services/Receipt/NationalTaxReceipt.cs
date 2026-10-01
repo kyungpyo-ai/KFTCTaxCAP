@@ -12,9 +12,6 @@ namespace KFTCOneCAP.Wpf.Services.Receipt;
 /// </summary>
 public sealed class NationalTaxReceipt
 {
-    /// <summary>세목명(PRD §2.2 T) — 제목 <c>{세목명} 납부확인증</c>의 앞부분.</summary>
-    public string? TaxItemName { get; set; }
-
     /// <summary>전자납부번호(PRD §2.2 #1).</summary>
     public string? ElectronicPaymentNumber { get; set; }
 

@@ -35,7 +35,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 시리얼 COM + ESC/POS로 납부확인증을 출력하고, 직전거래 전표출력 버튼으로 재출력한다. 영수증 값은 결제창 세 탭의
 응답값에서 모은다(원캡 중계 경로는 상태를 갖지 않는다). 문서는 같은 3단 구성 + **`escpos_reference.md`**(쓰는
 ESC/POS 명령과 실기 확인 기록 — 여기 없는 명령은 코드에 넣지 않는다). 카드번호 줄은 800000 `#14` 마스킹 카드번호(AN19,
-20260930 SPEC 개정)에서 온다 — Phase 36을 Phase 34 중간(P34-3 전)에 끼워 진행(2026-09-30).
+20260930 SPEC 개정)에서 온다. 제목은 `종합소득세 납부확인증` 고정(종합소득세 전용). Phase 33·34·36 완료(2026-10-01),
+남은 것은 35(직전거래 재출력)와 37(결제창·VAN 스텁 테스트값 현실화).
 
 **Phase 번호는 네 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~(`docs/receipt_print/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
 

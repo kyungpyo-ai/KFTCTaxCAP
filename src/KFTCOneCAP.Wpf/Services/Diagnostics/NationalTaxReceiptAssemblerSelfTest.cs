@@ -76,7 +76,6 @@ internal static class NationalTaxReceiptAssemblerSelfTest
 
     private static Dictionary<string, string?> Expected(bool with501008, bool with800000) => new()
     {
-        ["TaxItemName"] = with501008 ? "A21" : "C21",            // T
         ["ElectronicPaymentNumber"] = PairKey,                   // #1 902614 #15
         ["TaxpayerName"] = with501008 ? "A18" : "C37",           // #2
         ["TaxpayerNumber"] = with501008 ? "A17" : "C14",         // #3
@@ -99,7 +98,6 @@ internal static class NationalTaxReceiptAssemblerSelfTest
 
     private static Dictionary<string, string?> Actual(NationalTaxReceipt r) => new()
     {
-        ["TaxItemName"] = r.TaxItemName,
         ["ElectronicPaymentNumber"] = r.ElectronicPaymentNumber,
         ["TaxpayerName"] = r.TaxpayerName,
         ["TaxpayerNumber"] = r.TaxpayerNumber,
