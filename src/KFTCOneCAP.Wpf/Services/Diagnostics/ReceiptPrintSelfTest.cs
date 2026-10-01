@@ -43,10 +43,11 @@ internal static class ReceiptPrintSelfTest
             bool concurrencyOk = RunSerialPrinterConcurrencyCase();
             bool receiptOk = NationalTaxReceiptSelfTest.RunAll();
             bool assemblerOk = NationalTaxReceiptAssemblerSelfTest.RunAll(); // Phase 34 P34-4
+            bool reprintOk = LastReceiptReprintSelfTest.RunAll(); // Phase 35 P35-1
 
             bool allPassed = byteWidthOk && wrapAgencyOk && wrapNoticesOk && wrapOddBoundaryOk
                 && wrapEmptyNullOk && wrapSpaceRulesOk && encoderOk && statusOk
-                && invalidPortOk && portOpenFailedOk && concurrencyOk && receiptOk && assemblerOk;
+                && invalidPortOk && portOpenFailedOk && concurrencyOk && receiptOk && assemblerOk && reprintOk;
 
             FileLogger.Info(
                 $"[receipt-print-test self] 완료 — ByteWidth={(byteWidthOk ? "통과" : "실패")}, " +
@@ -61,6 +62,7 @@ internal static class ReceiptPrintSelfTest
                 $"동시 호출 직렬화={(concurrencyOk ? "통과" : "실패")}, " +
                 $"Phase34 조립={(receiptOk ? "통과" : "실패")}, " +
                 $"Phase34 결제창 조립기={(assemblerOk ? "통과" : "실패")}, " +
+                $"Phase35 직전거래 재출력={(reprintOk ? "통과" : "실패")}, " +
                 $"종합={(allPassed ? "통과" : "실패")}");
         }
         catch (Exception ex)

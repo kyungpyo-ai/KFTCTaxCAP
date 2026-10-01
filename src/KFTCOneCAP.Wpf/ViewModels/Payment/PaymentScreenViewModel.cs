@@ -10,6 +10,7 @@ using KFTCOneCAP.Wpf.Services.Diagnostics;
 using KFTCOneCAP.Wpf.Services.Pos;
 using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
+using KFTCOneCAP.Wpf.Services.Storage;
 
 namespace KFTCOneCAP.Wpf.ViewModels.Payment;
 
@@ -22,15 +23,17 @@ namespace KFTCOneCAP.Wpf.ViewModels.Payment;
 /// </summary>
 public sealed partial class PaymentScreenViewModel : ObservableObject
 {
-    public PaymentScreenViewModel() : this(new ReceiptPrintService())
+    public PaymentScreenViewModel() : this(new ReceiptPrintService(), new LastReceiptStore())
     {
     }
 
     /// <summary>Phase 34 CP1 M-1 — self 검증용 주입점(Fake 프린터를 쓴 <see cref="ReceiptPrintService"/>).
+    /// Phase 35 P35-1 — 직전 영수증 저장소도 같이 받는다(self는 임시 DB 경로를 넣는다).
     /// 운영 경로는 위 기본 생성자만 쓴다.</summary>
-    internal PaymentScreenViewModel(ReceiptPrintService receiptPrintService)
+    internal PaymentScreenViewModel(ReceiptPrintService receiptPrintService, LastReceiptStore lastReceiptStore)
     {
         _receiptPrintService = receiptPrintService ?? throw new ArgumentNullException(nameof(receiptPrintService));
+        _lastReceiptStore = lastReceiptStore ?? throw new ArgumentNullException(nameof(lastReceiptStore));
         var shopSettingsService = new ShopSettingsService();
 
         // 탭 라벨에서 거래 구분 코드(501008/800000/902614) 숫자를 뺐다(2026-09-18 사용자 지시 — 균등폭
@@ -92,6 +95,10 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
     /// (<c>NationalTaxReceiptAssemblerSelfTest</c>)이 Fake 프린터를 넣기 위한 것뿐이다.</summary>
     private readonly ReceiptPrintService _receiptPrintService;
 
+    /// <summary>Phase 35 P35-1(PRD §6) — 승인될 때마다 영수증 값을 저장하는 직전 영수증 저장소(납세자번호는
+    /// 저장소가 마스킹한다). 상태가 없어 창 수명 동안 하나를 재사용한다.</summary>
+    private readonly LastReceiptStore _lastReceiptStore;
+
     /// <summary>
     /// Phase 34 P34-3(PRD §5) — 자동 출력이 실패했을 때 View에 경고 문구를 알린다. ViewModel은 MessageBox를
     /// 모른다(계층 규칙, <c>ShopSetupViewModel.ResultMessageReady</c>와 같은 패턴). Skipped/Printed는 알리지
@@ -140,7 +147,13 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
 
             await Task.Yield();
 
-            ReceiptPrintOutcome outcome = await Task.Run(() => _receiptPrintService.PrintAsync(receipt, CancellationToken.None));
+            // Phase 35 P35-1(PRD §4.1·§6) — 저장은 출력보다 먼저, 전표 인쇄 사용 ON/OFF와 무관하게 한다. DB I/O도
+            // UI 스레드 밖(같은 Task.Run 안)에서 한다. 저장 실패(false, 예외 미전파)는 출력을 막지 않는다.
+            ReceiptPrintOutcome outcome = await Task.Run(() =>
+            {
+                _lastReceiptStore.Save(receipt, DateTime.Now);
+                return _receiptPrintService.PrintAsync(receipt, CancellationToken.None);
+            });
 
             if (outcome.Status == ReceiptPrintStatus.Failed)
                 ReceiptPrintWarningRequested?.Invoke(this, BuildReceiptPrintWarningMessage(outcome.Failure));
@@ -155,13 +168,24 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         }
     }
 
+    /// <summary>Phase 35 P35-1(PRD §5) — 자동 출력 경고창 끝에만 붙이는 재출력 안내 한 줄.</summary>
+    internal const string ReprintHintLine = "가맹점 설정의 '직전거래 전표출력'으로 다시 출력할 수 있습니다.";
+
     /// <summary>
-    /// PRD §5 표의 결제창 경고 문구. 재출력 안내 문구(<c>가맹점 설정의 '직전거래 전표출력'…</c>)는 Phase 35부터
-    /// 붙이므로 여기서는 붙이지 않는다(development_plan.md Phase 34 확정 사항 8). PRD 표에 행이 없는 사유
+    /// PRD §5 — 결제창 <b>자동 출력</b> 경고 문구. 실패 사유 문장(<see cref="BuildReceiptPrintFailureMessage"/>) 끝에
+    /// 줄을 바꿔 재출력 안내(<see cref="ReprintHintLine"/>)를 붙인다(Phase 35, 2026-10-01 확정 — 재출력 실패 문구에는
+    /// 붙이지 않는다).
+    /// </summary>
+    internal static string BuildReceiptPrintWarningMessage(ReceiptPrintFailureReason reason) =>
+        $"{BuildReceiptPrintFailureMessage(reason)}\n{ReprintHintLine}";
+
+    /// <summary>
+    /// PRD §5 표의 실패 사유 문장(자동 출력·재출력 공통, 재출력 안내 없음). 가맹점 설정 화면의 재출력 실패
+    /// 경고창은 이 문장을 그대로 쓴다. PRD 표에 행이 없는 사유
     /// (<see cref="ReceiptPrintFailureReason.PrinterError"/>/<see cref="ReceiptPrintFailureReason.CompositionFailed"/>/
     /// <see cref="ReceiptPrintFailureReason.Unexpected"/> 등)는 괄호 사유 없이 공통 문장만 보여 준다.
     /// </summary>
-    internal static string BuildReceiptPrintWarningMessage(ReceiptPrintFailureReason reason)
+    internal static string BuildReceiptPrintFailureMessage(ReceiptPrintFailureReason reason)
     {
         const string prefix = "전표 출력에 실패했습니다.";
         string? detail = reason switch

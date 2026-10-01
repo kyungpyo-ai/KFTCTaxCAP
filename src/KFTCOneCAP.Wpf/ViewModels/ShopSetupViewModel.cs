@@ -1,10 +1,16 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using KFTCOneCAP.Wpf.Services.Diagnostics;
+using KFTCOneCAP.Wpf.Services.Printer;
+using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
+using KFTCOneCAP.Wpf.Services.Storage;
+using KFTCOneCAP.Wpf.ViewModels.Payment;
 
 namespace KFTCOneCAP.Wpf.ViewModels;
 
@@ -114,10 +120,23 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     private string _snapshotPrinterSpeedSelection = string.Empty;
     private string _snapshotPrinterPort = string.Empty;
 
-    internal ShopSetupViewModel()
+    internal ShopSetupViewModel() : this(new ReceiptPrintService(), new LastReceiptStore())
     {
+    }
+
+    /// <summary>Phase 35 P35-1 — self 검증용 주입점(Fake 프린터를 쓴 출력 서비스, 임시 DB 경로 저장소).
+    /// 운영 경로는 위 기본 생성자만 쓴다.</summary>
+    internal ShopSetupViewModel(ReceiptPrintService receiptPrintService, LastReceiptStore lastReceiptStore)
+    {
+        _receiptPrintService = receiptPrintService ?? throw new ArgumentNullException(nameof(receiptPrintService));
+        _lastReceiptStore = lastReceiptStore ?? throw new ArgumentNullException(nameof(lastReceiptStore));
         Load();
     }
+
+    /// <summary>Phase 35 P35-1 — 직전거래 전표출력(재출력)용. 재출력은 설정을 읽지 않는다(<see
+    /// cref="ReceiptPrintService.ReprintAsync"/>).</summary>
+    private readonly ReceiptPrintService _receiptPrintService;
+    private readonly LastReceiptStore _lastReceiptStore;
 
     private void Load()
     {
@@ -286,20 +305,54 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 직전거래 전표출력 버튼(PRD §2.8.5) — 실제 출력은 이번 범위 밖이다. 판단 기준은 레지스트리
-    /// 저장값이 아니라 <b>지금 화면 입력칸의 값</b>이다(사용자 확정) — 저장 전이라도 입력칸에 값이
-    /// 있으면 안내창을 띄운다. 토글 ON/OFF와 무관하다. 아무것도 저장하지 않는다.
+    /// 직전거래 전표출력 버튼(운영 PRD §2.8.5, receipt_print PRD §4.2 — Phase 35 P35-1). 저장된 마지막 영수증을
+    /// <b>지금 화면 입력칸·콤보의 포트·속도</b>로 다시 출력한다(저장 전 값 포함, 레지스트리 저장값 아님).
+    /// 전표 인쇄 사용 ON/OFF는 보지 않는다. 아무것도 저장하지 않는다.
+    ///
+    /// <list type="bullet">
+    /// <item>포트 칸이 비면 기존 오류창 <c>프린터 포트번호를 입력해주세요.</c>.</item>
+    /// <item>저장된 영수증이 없으면 정보창 <c>출력할 직전 거래가 없습니다.</c>.</item>
+    /// <item>출력 성공 시 안내창 없음, 실패 시 PRD §5 경고 문구(재출력 안내 줄 없음).</item>
+    /// </list>
+    /// <c>[RelayCommand]</c>가 <c>Task</c> 반환 메서드에서 <see cref="IAsyncRelayCommand"/>를 만들므로 실행 중에는
+    /// <c>CanExecute=false</c>가 되어 버튼이 비활성화된다(재진입 방지, 바인딩 이름 <c>RequestLastSlipPrintCommand</c>는 그대로).
+    /// DB 조회·포트 I/O는 <see cref="Task.Run(Func{Task})"/>로 UI 스레드 밖에서 하고, 결과 이벤트는 원래 컨텍스트(UI
+    /// 스레드)로 돌아와 올린다. 예외는 밖으로 내보내지 않는다.
     /// </summary>
     [RelayCommand]
-    private void RequestLastSlipPrint()
+    private async Task RequestLastSlipPrintAsync()
     {
-        if (string.IsNullOrWhiteSpace(PrinterPort))
+        try
         {
-            ResultMessageReady?.Invoke(this, "프린터 포트번호를 입력해주세요.");
-            return;
-        }
+            if (string.IsNullOrWhiteSpace(PrinterPort))
+            {
+                ResultMessageReady?.Invoke(this, "프린터 포트번호를 입력해주세요.");
+                return;
+            }
 
-        FileLogger.Info(LogCategory.Settings, "직전거래 전표출력 요청 — 출력 미구현, 안내만", code: null, transactionId: null);
-        InfoMessageReady?.Invoke(this, "직전거래 전표를 출력합니다.");
+            // 화면 값은 UI 스레드에서 미리 떠 둔다(백그라운드에서 바인딩 프로퍼티를 읽지 않는다).
+            var connection = new PrinterConnection(PrinterPort, ToSpeedStorage(PrinterSpeedSelection));
+
+            NationalTaxReceipt? receipt = await Task.Run(() => _lastReceiptStore.TryLoad());
+            if (receipt is null)
+            {
+                InfoMessageReady?.Invoke(this, "출력할 직전 거래가 없습니다.");
+                return;
+            }
+
+            ReceiptPrintOutcome outcome = await Task.Run(
+                () => _receiptPrintService.ReprintAsync(receipt, connection, CancellationToken.None));
+
+            if (outcome.Status == ReceiptPrintStatus.Failed)
+                ResultMessageReady?.Invoke(this, PaymentScreenViewModel.BuildReceiptPrintFailureMessage(outcome.Failure));
+        }
+        catch (Exception ex)
+        {
+            // 저장소·출력 서비스 모두 예외를 던지지 않는 계약이지만 커맨드 경로의 최후 방어선을 둔다.
+            // 영수증 값은 로그에 남기지 않는다(예외 타입·메시지만).
+            FileLogger.Error(LogCategory.Printer,
+                $"[ShopSetupViewModel] 직전거래 전표출력 처리 중 예외: {ex.GetType().Name}: {ex.Message}",
+                code: null, transactionId: null);
+        }
     }
 }

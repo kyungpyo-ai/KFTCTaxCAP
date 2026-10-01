@@ -8,6 +8,7 @@ using KFTCOneCAP.Wpf.Protocol.Printer;
 using KFTCOneCAP.Wpf.Services.Printer;
 using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
+using KFTCOneCAP.Wpf.Services.Storage;
 using KFTCOneCAP.Wpf.ViewModels.Payment;
 
 namespace KFTCOneCAP.Wpf.Services.Diagnostics;
@@ -237,18 +238,24 @@ internal static class NationalTaxReceiptAssemblerSelfTest
         return !use;
     }
 
-    /// <summary>⑧ 결제창 경고 문구(PRD §5 표, 재출력 안내 문구 없음 — 확정 사항 8).</summary>
+    /// <summary>
+    /// 결제창 자동 출력 경고창 끝에 붙는 재출력 안내 줄(PRD §5, Phase 35 — 2026-10-01 확정). 상수를 참조하지 않고
+    /// PRD 문구를 그대로 적어 둔다(구현 상수가 틀려도 잡히도록).
+    /// </summary>
+    internal const string ExpectedReprintHintSuffix = "\n가맹점 설정의 '직전거래 전표출력'으로 다시 출력할 수 있습니다.";
+
+    /// <summary>⑧ 결제창 경고 문구(PRD §5 표 + Phase 35부터 끝에 재출력 안내 한 줄).</summary>
     private static bool RunWarningMessageCases()
     {
         var expected = new (ReceiptPrintFailureReason Reason, string Text)[]
         {
-            (ReceiptPrintFailureReason.InvalidPort, "전표 출력에 실패했습니다. (프린터 포트 설정 확인)"),
-            (ReceiptPrintFailureReason.PortOpenFailed, "전표 출력에 실패했습니다. (프린터 포트를 열 수 없습니다)"),
-            (ReceiptPrintFailureReason.NoResponse, "전표 출력에 실패했습니다. (프린터 응답 없음)"),
-            (ReceiptPrintFailureReason.PaperEnd, "전표 출력에 실패했습니다. (용지 없음)"),
-            (ReceiptPrintFailureReason.CoverOpen, "전표 출력에 실패했습니다. (프린터 덮개 열림)"),
-            (ReceiptPrintFailureReason.WriteFailed, "전표 출력에 실패했습니다. (전송 오류)"),
-            (ReceiptPrintFailureReason.Unexpected, "전표 출력에 실패했습니다."),
+            (ReceiptPrintFailureReason.InvalidPort, "전표 출력에 실패했습니다. (프린터 포트 설정 확인)" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.PortOpenFailed, "전표 출력에 실패했습니다. (프린터 포트를 열 수 없습니다)" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.NoResponse, "전표 출력에 실패했습니다. (프린터 응답 없음)" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.PaperEnd, "전표 출력에 실패했습니다. (용지 없음)" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.CoverOpen, "전표 출력에 실패했습니다. (프린터 덮개 열림)" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.WriteFailed, "전표 출력에 실패했습니다. (전송 오류)" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.Unexpected, "전표 출력에 실패했습니다." + ExpectedReprintHintSuffix),
         };
 
         bool ok = true;
@@ -305,7 +312,23 @@ internal static class NationalTaxReceiptAssemblerSelfTest
         var service = new ReceiptPrintService(
             () => new ShopSettings { SlipPrintEnabled = true, PrinterPort = printerPort, PrinterSpeed = 115200 },
             printer);
-        var viewModel = new PaymentScreenViewModel(service);
+        // Phase 35 — 자동 출력 경로가 승인 시 직전 영수증을 저장하므로 운영 DB가 아닌 임시 DB를 넣는다.
+        string dbPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"p35-assembler-test-{Guid.NewGuid():N}.db");
+        try
+        {
+            return RunNoSynchronousCompletionCaseCore(name, service, new LastReceiptStore(dbPath), callCount);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { System.IO.File.Delete(dbPath); } catch (Exception) { /* 임시 파일 — 지우지 못해도 판정과 무관 */ }
+        }
+    }
+
+    private static bool RunNoSynchronousCompletionCaseCore(
+        string name, ReceiptPrintService service, LastReceiptStore store, Func<int>? callCount)
+    {
+        var viewModel = new PaymentScreenViewModel(service, store);
         var messages = new List<string>();
         viewModel.ReceiptPrintWarningRequested += (_, m) => messages.Add(m);
 
@@ -328,7 +351,7 @@ internal static class NationalTaxReceiptAssemblerSelfTest
             SynchronizationContext.SetSynchronizationContext(previous);
         }
 
-        const string expectedMessage = "전표 출력에 실패했습니다. (프린터 포트 설정 확인)";
+        const string expectedMessage = "전표 출력에 실패했습니다. (프린터 포트 설정 확인)" + ExpectedReprintHintSuffix;
         bool finalOk = task.IsCompleted && messages.Count == 1 && messages[0] == expectedMessage
             && (callCount is null || callCount() == 1);
 
