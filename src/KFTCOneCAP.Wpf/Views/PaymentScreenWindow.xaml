@@ -33,7 +33,7 @@
 
         2라운드 확정(같은 날) — 좌/우 분리를 SET 장소(kiosk 담당 여부) 기준으로 다시 정했다. 요청(좌측)
         패널에는 SET 장소에 kiosk가 포함된 필드만 들어간다(kiosk가 실제로 채워 보내는 값). 응답(우측)
-        패널에는 kiosk가 없는 필드 중 원캡 담당을 뺀 나머지만 들어간다 — 단 800000의 #14(BIN)는 원캡
+        패널에는 kiosk가 없는 필드 중 원캡 담당을 뺀 나머지만 들어간다 — 단 800000의 #14(마스킹 카드번호, 이전 BIN)는 원캡
         담당이어도 응답에 보여준다(카드 정보 조회 전문의 유일한 목적이 그 조회 결과라서). 해당 없는
         필드는 "회색/공백"으로 두지 않고 목록에서 아예 뺀다(PaymentTelegramTabViewModel.RebuildRequestRows/
         RebuildResponseRows 참고) — 902614의 원캡 담당 8개(카드번호/PIN 등)는 이 예외에 해당하지 않아
@@ -262,10 +262,36 @@
                         Background="{StaticResource Blue500Brush}"
                         CornerRadius="{StaticResource ReaderHeaderIconCornerRadius}"
                         VerticalAlignment="Top">
-                    <Viewbox Width="26" Height="26">
-                        <Canvas Width="24" Height="24">
-                            <Path Fill="White" Data="M4,6 L20,6 20,18 4,18 Z M4,9 L20,9 M7,13 L9,13 M7,15.5 L11,15.5"
-                                  Stroke="White" StrokeThickness="1.4" StrokeLineJoin="Round"/>
+                    <!--
+                        HomeWindow.xaml "결제" 카드(TransCardButton) 아이콘과 완전히 동일한 지오메트리를
+                        공유한다 — 리더기 설정 헤더가 홈 화면 "리더기 설정" 카드 아이콘을 그대로 재사용하는
+                        것과 같은 패턴(ReaderSetupWindow.xaml 주석 참고). 카드 본체+마그네틱 띠+칩+키패드
+                        점 6개 구성이며, 기존 26x26/24x24 캔버스 버전은 카드가 지나치게 작아 보였다(사용자
+                        지적, 2026-09-28) — 홈 화면과 동일한 28x28 기준으로 키운다.
+                    -->
+                    <Viewbox Width="28" Height="28">
+                        <Canvas Width="28" Height="28">
+                            <Path Fill="White">
+                                <Path.Data>
+                                    <GeometryGroup FillRule="EvenOdd">
+                                        <RectangleGeometry Rect="1,4.5,26,19" RadiusX="2.5" RadiusY="2.5"/>
+                                        <RectangleGeometry Rect="1,9,26,3"/>
+                                        <RectangleGeometry Rect="7,14,9,6" RadiusX="1" RadiusY="1"/>
+                                    </GeometryGroup>
+                                </Path.Data>
+                            </Path>
+                            <Path Fill="White">
+                                <Path.Data>
+                                    <GeometryGroup>
+                                        <RectangleGeometry Rect="8,15,2,1.8"/>
+                                        <RectangleGeometry Rect="11,15,2,1.8"/>
+                                        <RectangleGeometry Rect="14,15,2,1.8"/>
+                                        <RectangleGeometry Rect="8,17.8,2,1.8"/>
+                                        <RectangleGeometry Rect="11,17.8,2,1.8"/>
+                                        <RectangleGeometry Rect="14,17.8,2,1.8"/>
+                                    </GeometryGroup>
+                                </Path.Data>
+                            </Path>
                         </Canvas>
                     </Viewbox>
                 </Border>

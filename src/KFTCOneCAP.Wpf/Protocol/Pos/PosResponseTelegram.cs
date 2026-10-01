@@ -97,7 +97,8 @@ public sealed class PosResponseTelegram : IPosOutboundResponse
     ///
     /// <c>#43</c>(보안단말기 인증번호)/<c>#44</c>(FALLBACK CODE)/<c>#48</c>(거래 입력 유형)/<c>#50</c>
     /// (승인 인증방식)은 카드 데이터가 아닌 제어값이라 대상에서 뺐다(2026-09-04 사용자 확정).
-    /// <c>800000</c>의 <c>#14</c> BIN도 대상이 아니다 — BIN을 돌려주는 것이 그 전문의 목적 자체다.
+    /// <c>800000</c>의 <c>#14</c> 마스킹 카드번호(SPEC 20260930 이전엔 BIN)도 대상이 아니다 — 그 값을
+    /// 돌려주는 것이 그 전문의 목적 자체다(리더기가 이미 마스킹한 값, Phase 36 확정 사항 5).
     /// </summary>
     private static readonly int[] CardReadingFieldNumbers = { 45, 46, 51, 53 };
 

@@ -19,6 +19,8 @@ namespace KFTCOneCAP.Wpf.Services.Diagnostics;
 ///
 /// <c>App.xaml.cs</c>가 <c>--receipt-print-test self</c> 인자로 실행될 때만 <see cref="RunAll"/>을 호출한다.
 /// <c>dump</c>/<c>print</c>/<c>status</c> 모드는 <see cref="ReceiptPrintDiagnosticHarness"/>가 맡는다.
+/// Phase 34(P34-1/P34-2, docs/receipt_print/development_plan.md)부터 <see cref="NationalTaxReceiptSelfTest"/>도
+/// 여기서 함께 실행한다 — 영수증 조립·출력 서비스는 별도 모드를 만들지 않고 같은 <c>self</c> 한 번에 묶는다.
 /// </summary>
 internal static class ReceiptPrintSelfTest
 {
@@ -39,10 +41,12 @@ internal static class ReceiptPrintSelfTest
             bool invalidPortOk = RunSerialPrinterInvalidPortCases();
             bool portOpenFailedOk = RunSerialPrinterPortOpenFailedCase();
             bool concurrencyOk = RunSerialPrinterConcurrencyCase();
+            bool receiptOk = NationalTaxReceiptSelfTest.RunAll();
+            bool assemblerOk = NationalTaxReceiptAssemblerSelfTest.RunAll(); // Phase 34 P34-4
 
             bool allPassed = byteWidthOk && wrapAgencyOk && wrapNoticesOk && wrapOddBoundaryOk
                 && wrapEmptyNullOk && wrapSpaceRulesOk && encoderOk && statusOk
-                && invalidPortOk && portOpenFailedOk && concurrencyOk;
+                && invalidPortOk && portOpenFailedOk && concurrencyOk && receiptOk && assemblerOk;
 
             FileLogger.Info(
                 $"[receipt-print-test self] 완료 — ByteWidth={(byteWidthOk ? "통과" : "실패")}, " +
@@ -55,6 +59,8 @@ internal static class ReceiptPrintSelfTest
                 $"InvalidPort={(invalidPortOk ? "통과" : "실패")}, " +
                 $"PortOpenFailed={(portOpenFailedOk ? "통과" : "실패")}, " +
                 $"동시 호출 직렬화={(concurrencyOk ? "통과" : "실패")}, " +
+                $"Phase34 조립={(receiptOk ? "통과" : "실패")}, " +
+                $"Phase34 결제창 조립기={(assemblerOk ? "통과" : "실패")}, " +
                 $"종합={(allPassed ? "통과" : "실패")}");
         }
         catch (Exception ex)

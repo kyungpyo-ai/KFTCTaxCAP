@@ -8,7 +8,7 @@ namespace KFTCOneCAP.Wpf.Services.Diagnostics;
 /// 전문에 실리지 않는다(§1.12.2 #2). 같은 클래스에 섞으면 그 계약이 흐려진다.
 ///
 /// 호출부에 <c>"S01"</c> 같은 리터럴을 흩지 않기 위해 이 한 지점에 모은다. 다음 번호는
-/// <c>S12</c>다(§2.2, §4).
+/// <c>S13</c>이다(§2.2, §4 — S12는 전표 출력 실패, docs/receipt_print Phase 34).
 /// </summary>
 internal static class InternalFaultCodes
 {
@@ -44,4 +44,13 @@ internal static class InternalFaultCodes
 
     /// <summary>DLL 로드 스모크 실패(기동 시점 사전 점검).</summary>
     internal const string DllLoadSmokeFailure = "S11";
+
+    /// <summary>
+    /// 전표(영수증) 출력 실패(docs/receipt_print/PRD.md §5, Phase 34 P34-2). 사유(포트 설정 오류/포트
+    /// 열기 실패/전송 오류/양식 조립 오류 등)는 로그 본문에 적는다 — 코드는 <c>S12</c> 하나뿐이다.
+    /// <b>S 계열의 유일한 예외로 장애 알림 대상이 아니다(N)</b> — <c>docs/operations/fault_alert_catalog.md</c>
+    /// §2.2, <c>FaultAlertJudge</c>의 기본 분기가 모르는 코드를 <c>N</c>으로 판정하므로 이 코드 자체가
+    /// <c>FaultAlertJudge</c> 수정 없이 <c>N</c>이 된다.
+    /// </summary>
+    internal const string ReceiptPrintFailure = "S12";
 }

@@ -1,7 +1,7 @@
 # 실행계획서: 국세 납부확인증 영수증 출력 (4차 범위)
 
 > `PRD.md`(무엇을) → `ROADMAP.md`(순서) → **이 문서(Task 단위 지시·완료 조건)**. 각 Phase의 절은 그 Phase
-> **착수 직전**에 작성한다. 현재 작성된 절: **Phase 33(완료, 2026-09-30)**. Phase 34~36은 착수 직전에 추가.
+> **착수 직전**에 작성한다. 현재 작성된 절: **Phase 33(완료, 2026-09-30)**, **Phase 34(P34-1~4·CP1 완료, P34-5 실기 대기, 2026-09-30)**, **Phase 36(코드 완료·실기는 P34-5에 합침, 2026-09-30)**. Phase 34~36은 착수 직전에 추가.
 
 ## 공통 작업 규칙 (모든 Phase)
 
@@ -370,3 +370,331 @@ P33-1~P33-4(CP1 통과) + P33-0/P33-5(실기) 완료. 진단 인자 하나로 �
 프린터(COM6, 115200bps)에 가운데 정렬로 출력된다. 실기에서 바뀐 것: 상태 조회 끔(`UseStatusQuery=false`),
 왼쪽 여백 36 추가(`LeftMarginDots`, `GS L` — `escpos_reference.md`에 먼저 등재). 결제 흐름·화면 변경 없음.
 **남은 한계**: 이 프린터에서는 용지 없음·커버 열림·전원 꺼짐을 감지하지 못한다(PRD §5).
+
+---
+
+# Phase 34 — 납부확인증 자동 출력
+
+**이 Phase가 끝나면**: 결제창에서 902614를 보내 승인(`#7=000`)되면, 가맹점 설정의 전표 인쇄 사용이 ON일 때
+세 탭의 응답값으로 조립한 납부확인증이 자동으로 출력된다. 실패하면 결제창에 경고창이 뜨고 `S12` 로그가 남는다.
+
+> **실수가 나기 쉬운 곳**: ① 전문 필드 번호(501008/800000/902614가 같은 이름 필드를 다른 번호로 가진다 —
+> PRD §2.2 표가 유일한 기준), ② 501008 짝 검사(전자납부번호 불일치 시 501008 값을 **전부** 버린다),
+> ③ 원캡 중계 경로를 건드리는 것(이 Phase의 diff에 `Services/Payment/`·`Services/Pos/`가 있으면 설계 오류).
+
+## 착수 전 확정 사항 (2026-09-30 사용자 확정, PRD 반영 완료)
+
+1. **출력 중 다음 전송 허용** — 출력은 백그라운드, 직렬화는 출력 서비스(`SerialReceiptPrinter.Gate`)가 맡는다(PRD §9 #4).
+2. **빈 값** — 선불카드잔액 공백 → `0`, 그 외 빈 값 → 라벨만(`라벨 : `)(PRD §9 #7).
+3. **제어문자** — 영수증에 들어가는 모든 전문 값에서 0x00~0x1F·0x7F를 공백으로 치환(PRD §9 #14).
+4. **로그 코드 `S12` 하나**(전표 출력 실패, 사유는 본문), 장애 알림 `N`(`fault_alert_catalog.md` §2.2 예외 행 추가 완료).
+5. **수수료율** — 800000 `#26` N4, 소수점 2자리(`0050`=0.5%), 끝 0 제거. 값 없으면 요율 없는 문구(PRD §3.3).
+6. **할부** — `00`/`01` → 일시불, 그 외 `N개월`(PRD §2.2 #15).
+7. **카드번호 줄** — 800000 응답 `#14`(마스킹 카드번호) 트림 → 4자리마다 `-`. 800000 응답 없으면 빈칸(2026-09-30 Phase 36 선행으로 변경).
+8. **경고창의 재출력 안내 문구는 Phase 35에서 붙인다**(PRD §5).
+9. **승인 판정** — 902614 응답 `#7 == "000"`만(PRD §2.3).
+
+## 착수 전 전제 (코드 실측, 2026-09-30)
+
+- **결제창 구조** — `PaymentScreenViewModel.Tabs`(501008/800000/902614 순, `TransactionTypeCode`로 찾음).
+  탭 VM `PaymentTelegramTabViewModel.SendAsync`가 응답을 받으면 `_lastResponseTelegram`을 채운 **뒤**
+  `HasResponse = true`로 바꾸고, `PaymentScreenViewModel.OnTabPropertyChanged`가 그 전이를 받아
+  연쇄(`ApplyChainMappingsFrom`)를 적용한다. 전송 직전 `HasResponse=false`로 떨어뜨려 매 응답마다 false→true
+  전이가 보장된다(P30 CP2 M-1). 응답 파싱 실패 시에도 `HasResponse=true`가 되지만 `_lastResponseTelegram`은
+  `null` → `TryReadResponseField`가 `null`.
+- **값 읽기** — `tab.TryReadResponseField(n)` = `PosTelegram.Read(n)`(고정 길이 원문, 패딩 포함 — 트림은 호출자 몫).
+  902614 응답은 요청 필드를 그대로 되돌려 준다(스텁 VAN이 clone 후 `#3/#6/#7/#8`만 덮고 kiosk 외 소유 필드는
+  임의값으로 채움 — P30-1).
+- **VAN** — 메인 앱 `App.Orchestrator`는 `StubVanRelayService`(항상 `#7=000`). 따라서 결제창 E2E로 자동 출력을
+  재현할 수 있다. 800000 `#26`은 스텁이 임의 숫자 4자리로 채우므로 요율이 비현실적일 수 있다(표시 형식만 확인).
+- **View 알림 경로** — `PaymentScreenWindow.xaml.cs`에는 아직 메시지 박스 경로가 없다. `ShopSetupViewModel`의
+  `ResultMessageReady`(string 이벤트 → View가 `MessageBox`) 패턴을 따른다.
+- **설정** — `ShopSettingsService.Load()`(예외 없음, 폴백): `SlipPrintEnabled`, `PrinterPort`(숫자 문자열),
+  `PrinterSpeed`(int). 매 출력 직전에 읽는다(캐시 금지).
+- **출력 계층(Phase 33)** — `ReceiptTextLayout.Wrap/LabelValue/Separator`, `PrintDocument`, `EscPosDocumentEncoder.Encode`,
+  `IReceiptPrinter.PrintAsync(payload, PrinterConnection, ct)` → `PrintResult`. 샘플 문서 조립 예시는
+  `ReceiptPrintDiagnosticHarness.BuildSampleDocument`.
+- **로그 코드** — `InternalFaultCodes`(S01~S11), `LogCodeCatalog.Descriptions`. `FaultAlertJudge`의 기본 분기
+  (`_ => ClassifyRBusinessFailure`)가 모르는 코드를 `N`으로 판정하므로 S12는 **Judge 수정 없이** `N`이 된다.
+- **관리자 권한** — 결제창 E2E는 GUI 조작이 필요하고 UIPI 때문에 에이전트 자동화가 안 된다 → 사용자가 조작.
+
+## 이 Phase에서 손대지 않는 것
+
+- 원캡 중계 경로(`Services/Payment/`, `Services/Pos/`, `Services/Van/`), 전문 스키마(`Protocol/Pos/`).
+- 가맹점 설정 화면·직전거래 전표출력(Phase 35), SQLite 저장(Phase 35).
+- 카드번호 값(Phase 36). `FaultAlertJudge`.
+
+## 위험 · 미확정
+
+| # | 항목 | 대응 |
+|---|---|---|
+| 1 | 탭 값의 필드 번호 혼동 | 조립기를 PRD §2.2 표와 1:1로 대조하는 self 검증(필드마다 다른 표식값을 넣은 가짜 탭으로) |
+| 2 | 출력 대기가 UI를 막음 | 포트 I/O는 Phase 33 서비스가 `Task.Run`으로 처리 — 전송 버튼 잠금과 무관하게 진행 |
+| 3 | 결제창을 닫는 중 출력 진행 | 출력은 창과 무관하게 끝까지 진행(창이 닫혔으면 경고창은 띄우지 않고 로그만) |
+| 4 | 상태 조회 꺼짐 → 프린터 꺼져도 성공 | Phase 33 한계 그대로(PRD §5). 이 Phase에서 해결하지 않음 |
+
+## 체크포인트
+
+| 체크포인트 | Task | 성격 |
+|---|---|---|
+| **CP1** | P34-1 ~ P34-4 | 양식·조립·트리거 전체. 필드 매핑 정확성, 501008 짝 검사, 계층, 중계 경로 무변경 |
+| — | P34-5 | 결제창 E2E 실기(사용자 조작) · 문서 |
+
+## Task별 담당 · 모델
+
+| Task | 담당 | 모델 | 위임 단위 | 판단 이유 / 위임 프롬프트에 넣을 근거 |
+|---|---|---|---|---|
+| P34-1 표시값 변환·양식 조립 | **`receipt-printer-developer`** | Sonnet 5 | P34-1+2 한 번에 | 출력 계층(Phase 33) API를 만든 에이전트라 `PrintDocument` 구성에 맥락이 가장 많다. 근거: PRD §3 전체·§2.2 "표시 변환" 열·§9 확정값, 이 절 P34-1/P34-2 |
+| P34-2 출력 서비스(설정 확인·S12) | 〃 | Sonnet 5 | (위와 함께) | Services 계층, 전문 필드를 모름 |
+| P34-3 결제창 조립·트리거·경고창 | **`csharp-wpf-developer`** | Sonnet 5 | P34-3+4 한 번에 | ViewModel/View(MVVM) 작업, 전문 필드 번호를 아는 유일한 계층. 근거: PRD §2 전체(특히 §2.2 표·§2.3)·§4.1·§5, 이 절 P34-3/P34-4, P34-1+2 결과 요약(공개 타입) |
+| P34-4 조립 self 검증 | 〃 | Sonnet 5 | (위와 함께) | 조립기와 한 묶음 |
+| CP1 | **`checkpoint-reviewer`** | Opus 5.5 | P34-1~4 | 중립 프롬프트: diff 범위(`91f57e9..HEAD` + 미커밋), PRD §2·§3·§4.1·§5, 이 절 CP1 항목 |
+| CP1 결함 수정 | 해당 에이전트(SendMessage) → Opus 재확인 | Sonnet 5 → Opus 5.5 | — | 리뷰어 지적 원문 |
+| P34-5 결제창 E2E | **Opus 직접 + 사용자** | Opus 5.5 | — | 카드·PIN·화면 조작은 사용자, 로그·출력물 판독과 문서는 Opus |
+
+---
+
+## P34-1. `Services/Receipt/` — 표시값 모델 · 변환 · 양식 조립
+
+| 파일(제안) | 내용 |
+|---|---|
+| `Services/Receipt/NationalTaxReceipt.cs` | 이름 붙은 표시용 값 모델(전문 필드 번호를 모른다): 세목명, 전자납부번호, 납세자명, 납세자번호(원문), 세입징수관서, 계좌번호, 납기내기한/금액, 납기후기한/금액(원문), 납부세액, 수수료, 총 납부금액, 선불카드잔액, 카드사명, 할부(원문 2자리), 카드번호, 납부일자, 수수료율(원문 4자리), `IsReprint`(Phase 35용, 기본 false). 전부 `string?` 원문을 받고 변환은 아래가 한다 |
+| `Services/Receipt/ReceiptValueFormatter.cs` | 순수 함수: `Amount`(N 0패딩 → `100,000`, 전부 0 → `0`, 공백 → 빈값), `Date`(`YYYYMMDD` → `YYYY.MM.DD`, 형식 아니면 트림 원문), `Installment`(`00`/`01` → 일시불, 숫자 → `N개월`, 그 외 트림 원문), `MaskTaxpayerNumber`(트림 후 앞 6 + 나머지 `*`, 6자 이하 그대로), `PrepaidBalance`(공백 → `0`), `FeeRatePercent`(N4 소수점 2자리 → `0.5`/`0.75`/`1`, 공백·비숫자 → null), `CardNumber`(4자리마다 `-`, 공백 → 빈값), `Sanitize`(제어문자 → 공백, 뒤 공백 트림) |
+| `Services/Receipt/NationalTaxReceiptComposer.cs` | `NationalTaxReceipt` → `PrintDocument`. PRD §3.2 순서·구분선·빈 줄·하단 안내 1·2(요율 유무 분기)·제목 2배 가운데(폭 `LineWidth/2`로 Wrap). `IsReprint`면 제목 위에 `(재출력)` 가운데 보통 크기 1줄. 모든 값은 `Sanitize` 후 `LabelValue`로 |
+
+**완료 조건**
+- [x] 변환 함수마다 정상·공백·비정상 입력 케이스(self)
+- [x] 더미 샘플 모델 → 조립 결과 줄 목록이 PRD §3.2 그림과 글자 단위로 같다(요율 `0080` = 0.8%일 때)
+- [x] 요율 없음 → 2번 문구가 `2.신용카드로 국세를 납부할 경우 납부대행수수료는 납세자가 부담합니다.`의 Wrap 결과
+- [x] `IsReprint` → 첫 줄 `(재출력)`
+- [x] 제어문자 포함 값(예: 납세자명에 ESC `@` 삽입) → 인코딩 결과의 값 영역에 `1B 40`이 없다
+- [x] `Services/Receipt/`가 WPF·`Protocol/Pos`(전문)를 참조하지 않는다
+
+## P34-2. `Services/Receipt/ReceiptPrintService` — 설정 확인 · 출력 · S12
+
+- `Task<ReceiptPrintOutcome> PrintAsync(NationalTaxReceipt receipt, CancellationToken ct)`:
+  1. `ShopSettingsService.Load()`(매번). `SlipPrintEnabled == false` → INFO `전표 인쇄 사용 안 함 — 출력 생략` → `Skipped`.
+  2. 조립 → 인코딩(예외 → `Failed` + S12 ERROR, 사유 "양식 조립 오류", 본문 로그 금지).
+  3. `IReceiptPrinter.PrintAsync(payload, new PrinterConnection(settings.PrinterPort, settings.PrinterSpeed), ct)`.
+  4. 실패 → `FileLogger.Error(LogCategory.Printer, "전표 출력 실패 — 사유=…", code: "S12")` → `Failed(reason)`. 성공 → INFO → `Printed`.
+- 공개 메서드는 예외를 던지지 않는다. `IReceiptPrinter`와 설정 로더는 생성자 주입(기본값 = 실제 구현) — self에서 Fake로 교체.
+- `InternalFaultCodes.ReceiptPrintFailure = "S12"`, `LogCodeCatalog`에 `["S12"] = "전표(영수증) 출력 실패"`.
+- 결과 → 경고창 문구 변환은 PRD §5 표(상태 조회 관련 행은 현재 발생하지 않지만 enum에 있으므로 매핑은 둔다).
+
+**완료 조건**
+- [x] 설정 OFF → 프린터 호출 0회, `Skipped`
+- [x] Fake 프린터 실패 → `Failed` + 로그에 `[PRINTER ] [S12]`
+- [x] 설정 ON + Fake 성공 → payload가 P34-1 조립 결과의 인코딩과 같다
+- [x] 예외 미전파(설정 로드·조립·출력 어디서 던져도)
+
+**검증 기록(2026-09-30)** — `receipt-printer-developer` 구현, self `[Phase34 조립] 종합=통과` 보고. Opus가
+`ReceiptValueFormatter`/`NationalTaxReceiptComposer`/`ReceiptPrintService`를 직접 읽고, x86 리플렉션으로
+`FaultAlertJudge.Classify("S12")` → `Verdict=None`(S11은 Immediate), 요율(`0050`→0.5, `0005`→0.05, `1000`→10,
+공백·`12a4`→null), 금액(전부 0→`0`, 공백→빈값) 재확인. 경미 관찰: 요율 `0000` → `0%인` 문구(CP1에서 판단).
+
+### Opus 확인 포인트 (P34-1+2)
+- 금액 변환이 선행 0만 제거하고 `0` 금액을 `0`으로 남기는지.
+- 수수료율 소수점 2자리 해석(`0050`→`0.5`, `0005`→`0.05`, `1000`→`10`).
+- 납세자번호 마스킹이 트림 후 길이 기준인지.
+- 설정을 캐시하지 않는지(필드에 `ShopSettings` 보관 금지).
+- `S12` 로그에 영수증 값이 없는지.
+
+---
+
+## P34-3. 결제창 — 조립 · 승인 판정 · 트리거 · 경고창
+
+- `ViewModels/Payment/NationalTaxReceiptAssembler.cs`(전문 필드 번호를 아는 유일한 곳): 세 탭의 읽기 함수
+  (`Func<int, string?>`)를 받아 `NationalTaxReceipt`를 만든다. PRD §2.2 표 그대로:
+  - 501008 1순위 조건: 501008 응답 있음 **그리고** `501008 #14`(트림) == `902614 #15`(트림). 아니면 501008 값을 **하나도** 쓰지 않고 대체 출처/빈값.
+  - 800000: 응답 있으면 `#18` 카드사명, `#26` 요율. 없으면 null.
+  - 902614: `#15/#19/#27/#28/#29/#52/#34/#32`, 대체 출처 `#21/#37/#14/#20`.
+  - 카드번호 = 800000 응답 `#14` 트림(Phase 36이 먼저 끝나 있으므로 연결한다 — 2026-09-30 순서 변경).
+- `PaymentScreenViewModel.OnTabPropertyChanged` — 902614 탭의 `HasResponse` false→true 전이에서(연쇄 처리 **뒤**)
+  `TryReadResponseField(7)` 트림 == `"000"`이면 조립 → `ReceiptPrintService.PrintAsync` 호출. `async void` 핸들러
+  안에서 try/catch로 감싼 await — 예외가 창을 죽이지 않게. 결과가 `Failed`면 `ReceiptPrintWarningRequested`(string) 이벤트.
+- `PaymentScreenWindow.xaml.cs` — 이벤트 구독 → 창이 아직 열려 있으면 `MessageBox`(Warning, 제목 `전표 출력`).
+  문구 = PRD §5 표(재출력 안내 문구는 붙이지 않음 — 확정 사항 8). 창이 닫혔으면 무시.
+- 출력 중에도 전송 버튼은 막지 않는다(확정 사항 1).
+
+**완료 조건**
+- [x] `Services/Payment/`, `Services/Pos/`, `Services/Van/`, `Protocol/Pos/` diff 없음
+- [x] 902614 응답 `#7 != 000` / 파싱 실패 / 다른 탭 응답 → 출력 호출 없음
+- [x] 조립기가 PRD §2.2 표와 1:1(P34-4 self로 판정)
+
+## P34-4. 조립 self 검증
+
+`--receipt-print-test self`에서 함께 실행되도록 이어 붙인다.
+
+- 가짜 탭: 필드마다 **다른 표식값**을 넣어 어느 필드가 어느 항목으로 갔는지 판정.
+- 케이스: ① 세 탭 모두 + 전자납부번호 일치 → 1순위 전부 ② 501008 없음 → 대체 출처 + 납기 4줄 빈값 ③ 501008 있으나
+  전자납부번호 불일치 → ②와 같음 ④ 800000 없음 → 카드사명 빈값·요율 null ⑤ `#7`이 `000`이 아닐 때 트리거 판정이 false.
+
+**완료 조건**
+- [x] 위 5 케이스 전부 통과, P34-1/P34-2 self와 합쳐 `종합=통과`
+
+**검증 기록(2026-09-30)** — `csharp-wpf-developer` 구현(Phase 36에 이어서). self `[Phase34 결제창 조립기]` ①~⑧ 통과
+(⑦ 빈 짝키 → 501008 미사용, ⑧ 경고 문구), `--payment-flow-test` 192건 통과, 빌드 0/0. Opus가 조립기 필드 상수 28개를
+PRD §2.2와 한 줄씩 대조(전부 일치), 짝 검사가 읽기 함수를 통째로 끊어 부분 적용 불가, 트리거가 연쇄 뒤·try/catch·
+취소 토큰 없음(창 닫혀도 출력 완료)을 직접 확인. 에이전트 판단 2건 수용: ① 짝 키가 비어 있으면 불일치 처리
+② PRD §5에 없는 사유(PrinterError/CompositionFailed/Unexpected)는 괄호 없이 공통 문장. **실제 트리거 경로(결제창 →
+출력 → 경고창)는 P34-5 실기로 확인.**
+
+### Opus 확인 포인트 (P34-3+4)
+- 필드 번호를 PRD §2.2 표와 한 줄씩 대조(특히 501008 `#25~#28`, 902614 `#14/#15/#19/#20/#21`).
+- 짝 검사가 부분 적용되지 않는지.
+- 연쇄 적용 뒤에 트리거가 도는지, 파싱 실패 경로에서 null 안전한지.
+- `async void` 핸들러의 예외 처리, 창 닫힘 후 경고창 미표시.
+
+---
+
+## CP1 확인 항목 (`checkpoint-reviewer`에 그대로 전달)
+
+1. `dotnet build` 성공, `--receipt-print-test self` 종합 통과를 직접 재실행(매니페스트는 건드리지 말고 x86 PowerShell 리플렉션으로 대체 가능).
+2. 조립기 필드 매핑이 PRD §2.2 표와 1:1, 501008 짝 검사가 전부/전무로 동작.
+3. 표시 변환(금액·날짜·할부·마스킹·선불잔액·요율·제어문자)이 PRD §2.2·§3.3·§3.4·§9와 일치.
+4. 설정 OFF → 미출력, 승인 아님 → 미출력, 실패 → S12 + 경고 이벤트, 공개 메서드 예외 미전파.
+5. 계층: `Services/Receipt/`는 WPF·`Protocol/Pos`를 모름, 전문 필드 번호는 ViewModel에만.
+6. 원캡 중계 경로·스키마 diff는 **Phase 36의 800000 `#14` 한 지점(스키마·`HandleCardInfoInquiryAsync` 채움·KioskSim)뿐**. 새 POSITION이 SPEC 20260930 p.13과 일치.
+7. 로그·코드에 실제 개인정보 없음, S12 로그에 영수증 본문 없음.
+8. `fault_alert_catalog.md` S12 행과 코드(`InternalFaultCodes`, `LogCodeCatalog`)가 일치하고 `FaultAlertJudge`가 S12를 `N`으로 판정.
+
+---
+
+## CP1 결과 (2026-09-30, `checkpoint-reviewer` — Phase 34 P34-1~4 + Phase 36)
+
+판정: **수정 후 재검증 필요**(M-1). 리뷰어가 빌드(`--no-incremental` 포함), `ReceiptPrintSelfTest`·`PaymentFlowTestScenarios`(192)·
+`MemoryClearTestScenarios`(8) 재실행, `FaultAlertJudge` S12=None, KioskSim 800000 리플렉션, SPEC p.13 200dpi 렌더 대조를 직접 수행.
+
+| # | 지적 | 조치 |
+|---|---|---|
+| M-1 | InvalidPort·조립/설정 예외처럼 **동기로 끝나는 실패**면 경고창이 `HasResponse=true` 처리 중(=`IsSending=false` 전)에 모달로 떠 전송 잠금이 안 풀림(P34-5 시나리오 4의 "없는 포트"는 비동기 경로라 재현 못 함) | 출력 호출을 항상 `Task.Run`으로 UI 흐름 밖에서 시작 |
+| L-1 | InvalidPort의 S12가 ERROR — PRD §5는 WARN | InvalidPort만 WARN |
+| L-2 | 오래된 주석 2곳 | 갱신 |
+| (개선) | 501008 응답이 실패여도 번호만 같으면 사용 / 1순위가 공백이면 빈칸 | 501008 `#7=000` 조건 추가, 공백이면 대체 출처(PRD §2.2 갱신) — Opus 결정 |
+
+**재검증(2026-09-30, `checkpoint-reviewer` 새 세션) — 통과, 확정 결함 0건.** M-1 수정(동기 조립 → `Task.Yield()` → `Task.Run` →
+이벤트)이 `DispatcherSynchronizationContext`에서 경고를 `SendAsync`의 `IsSending=false` 이후로 미룸을 코드 흐름으로 확인, self ⑪이
+수정 전 코드라면 실패하는 검증임을 실측(포트 빈 값 → `PrintAsync`가 동기 완료), `ReceiptPrintSelfTest` ①~⑪·payment-flow 192·
+memory-clear 8 재실행 통과, 빌드 `--no-incremental` 0/0. 경미 관찰 1건(주석 부정확)은 Opus가 수정. **실제 UI에서 경고창이 떠 있는 동안
+전송 버튼·배지가 풀려 있는지는 P34-5 시나리오 4-b로 확인.** 참고: payment-flow 중 SQLite `readonly database` WARN 1회는 이번 변경 전부터
+있던 로그(원인 미조사, 범위 밖).
+
+**범위 밖 후속(기존 불일치, 결제 흐름 영향 없음)**: SPEC 20260930 p.13 렌더에서 800000 `#19`의 ○가 VAN 열, 공통부 `#5`·`#7` VAN 단독 /
+`#6`·`#8` VAN+kiosk로 보이나 코드는 다름, KioskSim 800000 `#11`/`#12`가 여전히 Kiosk — `pos-onecap-spec-expert` 확인 후 별도 정리.
+운영 로그 16:24:40 줄의 실물 전자납부번호는 사용자 결정으로 유지.
+
+## P34-5. 결제창 E2E (Opus 직접 + 사용자)
+
+준비: 가맹점 설정에서 전표 인쇄 사용 ON, 포트 `6`, 속도 `115200bps`. 리더기·카드 준비.
+
+| # | 시나리오 | 기대 |
+|---|---|---|
+| 1 | 501008 → 800000 → 902614(카드·PIN) | 자동 출력, 영수증 값 = 탭 응답값(PRD §2.2 변환 적용). 요율은 스텁 임의값이라 형식만 확인 |
+| 2 | 전표 인쇄 사용 OFF 후 902614 | 출력 없음, 로그 INFO "출력 생략" |
+| 3 | 902614만(501008 없이) | 납기 4줄 빈칸, 납세자명·세입징수관서는 902614 값 |
+| 4 | 포트를 없는 번호(예: 4)로 저장 후 902614 | 결제창 경고창(포트 열기 실패 문구), 로그 `S12`, 탭 결과는 그대로 |
+| 4-b | 전표 인쇄 사용 ON + **포트 빈 값**(동기 실패 경로, CP1 M-1) — 가맹점 설정 저장이 막히면 레지스트리 `PRINTER`를 직접 비움 | 경고창 `(프린터 포트 설정 확인)`, **경고창이 떠 있는 동안에도 전송 버튼·배지가 이미 풀려 있음** |
+| 5 | 출력 중 다른 탭 전송 | 막히지 않음 |
+
+**완료 조건**
+- [ ] 1~5 결과 기록(사용자 확인)
+- [ ] 문서 갱신(ROADMAP Phase 34 체크, 이 절 완료 선언)
+
+## Phase 34 진행 순서
+
+**P34-1+2**(`receipt-printer-developer`) → Opus 검증 → **Phase 36**(800000 `#14`, 아래 절 — 2026-09-30 SPEC 개정으로 끼워 넣음) → **P34-3+4**(`csharp-wpf-developer`, 카드번호 줄 = 800000 응답 `#14` 연결 포함) → Opus 검증 →
+**CP1**(`checkpoint-reviewer`) → 수정·재확인 → **P34-5**(Opus + 사용자, 결제창 E2E).
+
+---
+
+# Phase 36 — 800000 `#14` 마스킹 카드번호 (SPEC 20260930) — Phase 34 중간(P34-3 전)에 진행
+
+**이 Phase가 끝나면**: 800000 스키마가 SPEC 20260930과 일치하고(`#14` AN19, `#15~#28` +11, `#28` AN205, 총 500),
+원캡은 800000에서 리더기 카드번호의 구분자 앞 부분(이미 마스킹됨)을 `#14`에 채운다. 키오스크 시뮬레이터도 같은
+스키마를 쓴다. 영수증 카드번호 줄 연결은 P34-3(결제창 조립)에서 한다.
+
+> **왜 Phase 34 중간인가**(2026-09-30 사용자 확정): 스키마가 SPEC과 어긋난 채로 P34-3이 800000 응답 `#18`/`#26`을
+> 읽으면 11바이트 밀린 값을 읽는다. 스키마부터 맞추고, P34-5 실기에서 카드번호 줄까지 한 번에 확인한다.
+>
+> **원캡 중계 경로를 건드리는 유일한 Phase다** — 변경은 800000 `#14` 채움 한 지점으로 제한한다. 902614·501008
+> 경로와 응답 삭제(P26-1)·메모리 클리어(Phase 25) 규칙은 그대로 유지돼야 한다.
+
+## 착수 전 확정 사항 (2026-09-30)
+
+1. **SPEC 정본** — `docs/payment_relay/spec/국세 베리어프리 키오스크용 전산설계서(POS-원캡)_20260930.pdf`. 변경은 800000뿐
+   (pos-onecap-spec-expert 두 판 대조): `#14` `마스킹 카드번호` AN19 POSITION 70 원캡 SET, `#15~#28` POSITION +11,
+   `#28` 예비 정보 FIELD AN216→AN205, 총 길이 500. `#18` 카드사명 POSITION 108, `#26` 수수료율 POSITION 285.
+2. **채움 규칙**(사용자 확정) — 리더기 `CardReadData.CardNumber`에서 **맨 앞부터 숫자(`0-9`)·`*`가 이어지는 부분만**
+   (구분자 `D`/`=` 등 다른 문자가 나오면 거기서 끊음), 19자 초과면 앞 19자, **왼쪽 정렬 + 공백 채움**.
+   결과가 8자 미만이면 기존 "카드번호 8자리 미만" 방어 경로 그대로(`ReaderNoCardDataDefensiveCode`, `SendInvalidationInit`).
+3. **마스킹** — 원캡은 추가 마스킹하지 않는다(리더기가 이미 9~12번째·마지막 자리 `*`). 전문 로그(`TelegramLogRedactor`)도
+   변경 없음 — 리더기 마스킹 그대로 남김(사용자 확정).
+4. **메모리 클리어** — `#14`용 임시 `char[]`는 기존 BIN 버퍼처럼 쓰고 바로 `SecureClear.Clear`(Phase 25 원칙).
+5. **응답 삭제(P26-1)** — 800000 `#14`는 대상이 아니다(카드 정보 조회 전문의 목적이 이 값을 돌려주는 것). 그대로.
+6. **결제창 표시** — 800000 `#14`는 원캡 담당이지만 응답 패널에 보여 주는 예외(Phase 29) 그대로. 라벨만 새 이름.
+
+## 착수 전 전제 (코드 실측, 2026-09-30)
+
+- `Protocol/Pos/Schemas/CardInfoInquirySchema.cs` — `new(14, "BIN", PosFieldType.AN, 8, 70, PosFieldOwner.OneCap)`,
+  `#28 … 216, 284`. `PosTelegramSchema` 생성자가 POSITION 연속성·총 길이를 자체 검증한다.
+- `Services/Payment/PaymentOrchestrator.cs` `HandleCardInfoInquiryAsync` — `fillOneCapFields`에서 `cardNumber.Length < 8`
+  방어 후 앞 8자리를 `char[8]`에 복사해 `request.Telegram.Write(14, bin)`, `finally`에서 클리어. 로그 "BIN 채움 완료".
+- `src/KFTCOneCAP.KioskSim/Protocol/TelegramSchemas.cs` — 시뮬레이터(Phase 19)의 별도 스키마 사본. 같은 변경 필요.
+- 테스트: `Services/Diagnostics/PaymentFlowTestScenarios.cs:239` `Read(14) == "94123456"`(BIN 기대) 등. 가짜 리더기
+  카드번호 픽스처(`FakeReaderEndpoint` 등)가 구분자를 포함하는지 확인 필요.
+- 주석에 "BIN"이 남은 곳: `PosResponseTelegram.cs:100`, `StubVanRelayService.cs:113`, `PaymentTelegramTabViewModel.cs:71`,
+  `TelegramLogRedactor.cs:20,98`, `CardInfoInquirySchema.cs:8,48`, `PosSchemaRegistry` 등 — 의미가 바뀐 곳만 갱신.
+
+## 이 Phase에서 손대지 않는 것
+
+- 501008/902614/999999 스키마와 처리, `TelegramLogRedactor`의 마스킹 대상 목록, P26-1 응답 삭제 목록.
+- 영수증 카드번호 줄 연결(P34-3에서), 결제창 연쇄 맵(800000 `#14`는 연쇄 대상이 아님 — 확인만).
+
+## Task별 담당 · 모델
+
+| Task | 담당 | 모델 | 위임 단위 | 판단 이유 / 근거 |
+|---|---|---|---|---|
+| P36-1 문서 정본 갱신 | **Opus 직접** | Opus 5.5 | — | 완료(2026-09-30): CLAUDE.md, `pos-onecap-spec-expert.md`, payment_relay PRD §3.3 표·개정 이력, ROADMAP 참고 문서, `spec_open_questions.md`, receipt PRD §2.4 |
+| P36-2 스키마·원캡 채움·KioskSim·테스트 | **`csharp-wpf-developer`** | Sonnet 5 | 한 번에 | 스키마(Protocol)·오케스트레이터(Services)·시뮬레이터·하네스가 한 변경의 여러 면이라 한 에이전트가 일관되게. 근거: 이 절 전체, payment_relay PRD §3.3 개정 이력 행, `spec_open_questions.md` 마지막 행, SPEC PDF p.13~14 |
+| P36-3 Opus 검증 | **Opus 직접** | Opus 5.5 | — | diff 직접 읽기 + 회귀 하네스 재실행 |
+| CP | Phase 34 CP1에 합친다 | Opus 5.5 | — | 규모가 작아 별도 체크포인트 없이 Phase 34 CP1 범위에 포함(중계 경로 변경이 이 한 지점뿐인지 확인 항목 추가) |
+| 실기 | Phase 34 P34-5에 합친다 | Opus 5.5 + 사용자 | — | 실제 카드로 800000 → `#14` 값 확인 |
+
+## P36-2. 스키마 · 원캡 채움 · 시뮬레이터 · 테스트
+
+1. `CardInfoInquirySchema` — `#14` 이름 `마스킹 카드번호`, AN 19, POSITION 70. `#15~#27` POSITION +11,
+   `#28` AN 205 POSITION 295. 주석의 SPEC 판·페이지 인용 갱신(20260930 p.13~14).
+2. `PaymentOrchestrator` 800000 채움 — 확정 사항 2의 규칙으로 `char[19]`(공백 초기화) 버퍼를 만들어 `Write(14, …)`,
+   `finally`에서 클리어. 방어 조건은 "추출 결과 8자 미만". 로그 문구 "마스킹 카드번호 채움 완료"(값은 로그에 넣지 않음 —
+   전문 로그는 `TelegramLogRedactor` 경로가 따로 남긴다).
+   추출 로직은 테스트 가능하도록 순수 함수로 분리해도 좋다(위치는 에이전트 판단, Protocol/Pos 또는 Services/Payment).
+3. `KioskSim` `TelegramSchemas` 800000 동일 변경. 시뮬레이터 UI에 `#14` 길이·라벨이 박혀 있으면 함께.
+4. 테스트 — `PaymentFlowTestScenarios` 800000 기대값을 새 규칙으로(예: 픽스처 카드번호 `9412345678901234`처럼 구분자
+   없는 값 → `"9412345678901234   "`; 가능하면 `11112222****444*D****123…` 같은 구분자 포함 픽스처 케이스 추가).
+   추출 함수 경계 케이스(구분자 `D`/`=`, 19자 초과, 8자 미만, 빈 값)를 self로.
+5. 주석의 "BIN" 갱신(전제의 목록).
+
+**완료 조건**
+- [x] `dotnet build`(루트 — KioskSim 포함) 경고·오류 0
+- [x] 스키마 자체 검증 통과(앱 기동 또는 스키마 생성 시 예외 없음), 800000 총 길이 500
+- [x] `--payment-flow-test`(또는 800000을 다루는 기존 회귀 하네스) 통과 — 기대값 갱신 포함
+- [x] 추출 경계 케이스 self 통과
+- [x] 501008/902614 스키마·`TelegramLogRedactor` 대상 목록·P26-1 삭제 목록 diff 없음
+- [x] 메모리 클리어 하네스(`--memory-clear-test`) 회귀 통과
+
+**검증 기록(2026-09-30)** — `csharp-wpf-developer` 구현. 새 POSITION 15행을 SPEC 20260930 p.13과 대조(전부 일치,
+총 500), `MaskedCardNumberExtractor.ExtractInto` 경계 14건, `--payment-flow-test` 192건·`--memory-clear-test` 8건·
+난수/연쇄 self 통과(Debug·Release, x86 리플렉션 — SQLite 바인딩 리디렉트를 위해 스크립트에 AssemblyResolve 추가).
+KioskSim 스키마도 리플렉션으로 생성 확인(total=500), `tools/spec_client.ps1`의 `#15` 89·`#16` 104·`#14` 19바이트 출력
+수정(사용자 지적으로 범위 추가). Opus가 추출 함수·오케스트레이터 diff·spec_client diff를 직접 읽어 확인 — 구분자 뒤가
+섞이는 경로 없음, 버퍼 클리어가 방어 경로 포함 전 경로, 902614 채움 코드 무변경.
+
+**후속 확인(범위 밖, 에이전트 보고)**: ① SPEC 20260930 p.13 800000 `#19` 체크카드 여부의 SET 체크가 VAN 열로 보인다(코드는
+InternetGiro) — pos-onecap-spec-expert로 확인 필요 ② KioskSim 800000 `#11`/`#12`가 여전히 Kiosk로 분류(20260922 개정 미반영).
+둘 다 표시·분류 문제로 결제 흐름에는 영향 없음.
+
+### Opus 확인 포인트
+- 새 POSITION이 SPEC 20260930 p.13 표와 한 칸씩 일치(특히 `#18`=108, `#26`=285, `#28`=295/205).
+- 추출이 "숫자·`*` 연속 구간"이고 구분자 뒤(유효기간 등)가 절대 섞이지 않는지.
+- 버퍼 클리어가 모든 경로(방어 실패 포함)에서 일어나는지.
+- 902614 원캡 8필드 채움 코드에 diff가 없는지.

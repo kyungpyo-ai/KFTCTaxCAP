@@ -25,7 +25,7 @@ namespace KFTCOneCAP.Wpf.Services.Payment;
 /// <code>
 /// ProcessAsync(전문)
 ///  ├ 501008 → [알림창 PROCESSING] → VAN 중계 → 응답
-///  ├ 800000 → [알림창 IC] → 무결성 선행 → 카드리딩 라운드 → BIN 채움 → [PROCESSING] → VAN 중계 → 응답
+///  ├ 800000 → [알림창 IC] → 무결성 선행 → 카드리딩 라운드 → 마스킹 카드번호 채움 → [PROCESSING] → VAN 중계 → 응답
 ///  └ 902614 → [알림창 IC] → 무결성 선행 → 카드리딩 라운드 → [알림창 PIN](Phase 18) → 7+1개 필드 채움
 ///             → [PROCESSING] → VAN 중계 → 응답
 /// </code>
@@ -305,7 +305,7 @@ internal sealed class PaymentOrchestrator
     }
 
     /// <summary>
-    /// 800000 — 카드리딩(BIN 8자리만 사용) 후 중계. 알림창 IC→(카드리딩 로직은 902614와 완전히 동일,
+    /// 800000 — 카드리딩(카드번호의 구분자 앞 마스킹 카드번호만 사용, SPEC 20260930 #14 AN19) 후 중계. 알림창 IC→(카드리딩 로직은 902614와 완전히 동일,
     /// P17-5 확정 사항 3)→PROCESSING.
     /// </summary>
     private async Task<PosResponseTelegram> HandleCardInfoInquiryAsync(PosRequestTelegram request, string txId)
@@ -318,34 +318,34 @@ internal sealed class PaymentOrchestrator
             requiresPin: false, // 800000은 PIN 단계가 없다(Phase 18 확정 사항 1) — #51 필드 자체가 없음
             fillOneCapFields: (winner, cardData, pin) =>
             {
-                char[] cardNumber = cardData.CardNumber;
-                if (cardNumber.Length < 8)
-                {
-                    // 2026-09-17 — fillOneCapFields는 동기 델리게이트라 여기서 await할 수 없다.
-                    // 이 실패는 극히 드문 방어적 분기(카드 리딩이 이미 성공(00)했는데 카드번호가
-                    // 8자리 미만인 비정상 상황)라 기존 fire-and-forget으로 남겨 둔다 — 정상/실기로
-                    // 재현된 BUSY 경합(취소·Timeout·업무 실패 경로)과 달리 이 분기는 바로 다음
-                    // 라운드나 다음 거래로 이어지는 흔한 경로가 아니다.
-                    winner.SendInvalidationInit();
-                    FileLogger.Error(LogCategory.Payment, $"[PaymentOrchestrator] 카드번호가 8자리 미만이라 BIN을 추출할 수 없음: 길이={cardNumber.Length}", code: null, txId);
-                    return PosResponseTelegram.Failure(request, PosResultCodeMapper.ReaderNoCardDataDefensiveCode);
-                }
-
-                // #14 BIN — 카드번호 앞 8자리만 잘라 쓰는 임시 버퍼. 이 델리게이트 안에서 만들고
-                // 바로 쓰고 바로 지운다(Phase 25 P25-3/P25-5 — 수명이 이 메서드 안에서 끝나는 임시
-                // 버퍼는 즉시 클리어).
-                char[] bin = new char[8];
+                // #14 마스킹 카드번호(AN19, SPEC 20260930) — 리더기 카드번호의 선두 숫자·'*' 구간만
+                // 왼쪽 정렬 + 공백 채움(Phase 36 확정 사항 2, MaskedCardNumberExtractor). 이 델리게이트
+                // 안에서 만들고 바로 쓰고 바로 지운다(Phase 25 P25-3/P25-5 — 수명이 이 메서드 안에서
+                // 끝나는 임시 버퍼는 즉시 클리어). 방어 실패 경로도 같은 finally를 지난다.
+                char[] maskedCardNumber = new char[MaskedCardNumberExtractor.FieldLength];
                 try
                 {
-                    Array.Copy(cardNumber, bin, 8);
-                    request.Telegram.Write(14, bin); // #14 BIN
+                    int extractedLength = MaskedCardNumberExtractor.ExtractInto(cardData.CardNumber, maskedCardNumber);
+                    if (extractedLength < MaskedCardNumberExtractor.MinimumLength)
+                    {
+                        // 2026-09-17 — fillOneCapFields는 동기 델리게이트라 여기서 await할 수 없다.
+                        // 이 실패는 극히 드문 방어적 분기(카드 리딩이 이미 성공(00)했는데 카드번호가
+                        // 8자리 미만인 비정상 상황)라 기존 fire-and-forget으로 남겨 둔다 — 정상/실기로
+                        // 재현된 BUSY 경합(취소·Timeout·업무 실패 경로)과 달리 이 분기는 바로 다음
+                        // 라운드나 다음 거래로 이어지는 흔한 경로가 아니다.
+                        winner.SendInvalidationInit();
+                        FileLogger.Error(LogCategory.Payment, $"[PaymentOrchestrator] 카드번호(구분자 앞 숫자·'*' 부분)가 8자리 미만이라 마스킹 카드번호를 채울 수 없음: 길이={extractedLength}", code: null, txId);
+                        return PosResponseTelegram.Failure(request, PosResultCodeMapper.ReaderNoCardDataDefensiveCode);
+                    }
+
+                    request.Telegram.Write(14, maskedCardNumber); // #14 마스킹 카드번호
                 }
                 finally
                 {
-                    SecureClear.Clear(bin);
+                    SecureClear.Clear(maskedCardNumber);
                 }
 
-                FileLogger.Info(LogCategory.Payment, "[PaymentOrchestrator] BIN 채움 완료 — VAN 중계로", code: null, txId);
+                FileLogger.Info(LogCategory.Payment, "[PaymentOrchestrator] 마스킹 카드번호 채움 완료 — VAN 중계로", code: null, txId);
                 return null; // null = 실패 아님, VAN 중계로 진행
             }).ConfigureAwait(false);
     }

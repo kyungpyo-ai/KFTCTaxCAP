@@ -70,6 +70,7 @@ internal static class LogCodeCatalog
         ["S09"] = "동시 연결 상한 초과 거부",
         ["S10"] = "연결 처리 중 예외",
         ["S11"] = "DLL 로드 스모크 실패(기동 시점 사전 점검)",
+        ["S12"] = "전표(영수증) 출력 실패",
     };
 
     /// <summary>

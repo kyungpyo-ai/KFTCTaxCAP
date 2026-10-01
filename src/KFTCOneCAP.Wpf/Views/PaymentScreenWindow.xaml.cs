@@ -59,6 +59,38 @@ public partial class PaymentScreenWindow : Window
         // 대입이 끝났으므로 그대로 CenterOwner를 쓴다.
         if (Owner == null)
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+        // Phase 34 P34-3(docs/receipt_print/PRD.md §5) — 납부확인증 자동 출력 실패 경고. ViewModel은
+        // MessageBox를 모르므로 이벤트로 받는다(ShopSetupWindow와 같은 패턴). 출력은 창이 닫힌 뒤에도
+        // 끝까지 진행되므로, 닫힐 때 구독을 해제해 닫힌 창 위에 경고창이 뜨지 않게 한다.
+        ViewModel.ReceiptPrintWarningRequested += ViewModel_ReceiptPrintWarningRequested;
+        Closed += PaymentScreenWindow_Closed;
+    }
+
+    private bool _isClosed;
+
+    private void PaymentScreenWindow_Closed(object? sender, EventArgs e)
+    {
+        _isClosed = true;
+        ViewModel.ReceiptPrintWarningRequested -= ViewModel_ReceiptPrintWarningRequested;
+        Closed -= PaymentScreenWindow_Closed;
+    }
+
+    /// <summary>경고창(Warning, 제목 "전표 출력"). 이벤트가 UI 스레드 밖에서 올 수도 있어 디스패처로
+    /// 넘기고, 넘어간 시점에 창이 이미 닫혔으면 띄우지 않는다(로그는 출력 서비스가 이미 S12로 남김).</summary>
+    private void ViewModel_ReceiptPrintWarningRequested(object? sender, string message)
+    {
+        void Show()
+        {
+            if (_isClosed || !IsLoaded)
+                return;
+            MessageBox.Show(this, message, "전표 출력", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        if (Dispatcher.CheckAccess())
+            Show();
+        else
+            Dispatcher.BeginInvoke(new Action(Show));
     }
 
     /// <summary>흰색(라이트) 타이틀바 강제 적용 — HomeWindow/ReaderSetupWindow와 동일 로직.</summary>

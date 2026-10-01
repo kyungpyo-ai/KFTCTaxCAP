@@ -38,7 +38,7 @@ internal static class PaymentFlowTestScenarios
             FileLogger.Info("[payment-flow-test] Phase 17 스모크 검증 시작");
 
             await Scenario1_NoticeInquiryRelaysWithoutReader().ConfigureAwait(false);
-            await Scenario2_CardInfoInquiryFillsBin().ConfigureAwait(false);
+            await Scenario2_CardInfoInquiryFillsMaskedCardNumber().ConfigureAwait(false);
             await Scenario3_CardApprovalFillsSevenFields().ConfigureAwait(false);
             await Scenario4_SetupGateBlocksAllThreeTelegrams().ConfigureAwait(false);
             await Scenario5_UnknownWccSurfacesAsInternalError().ConfigureAwait(false);
@@ -62,6 +62,7 @@ internal static class PaymentFlowTestScenarios
             await Scenario23_StatusInquiryMatchReturnsStoredResponseVerbatim().ConfigureAwait(false);
             await Scenario24_StatusInquiryNoMatchYieldsE07().ConfigureAwait(false);
             Scenario25_NoE07LiteralOutsidePosResultCodeMapper();
+            Scenario26_MaskedCardNumberExtractorBoundaries();
 
             FileLogger.Info($"[payment-flow-test] 완료 — 통과 {_passCount}건, 실패 {_failCount}건");
         }
@@ -226,17 +227,97 @@ internal static class PaymentFlowTestScenarios
         Check("501008: VAN까지 relay 도달", vanRelay.LastRequest != null);
     }
 
-    /// <summary>800000 — 카드리딩 성공 후 BIN(카드번호 앞 8자리)만 채워지는지.</summary>
-    private static async Task Scenario2_CardInfoInquiryFillsBin()
+    /// <summary>800000 — 카드리딩 성공 후 #14 마스킹 카드번호(AN19, SPEC 20260930)가 리더기 카드번호의 선두
+    /// 숫자·'*' 구간으로 왼쪽 정렬 + 공백 채움되는지(Phase 36 P36-2). 구분자 없는 픽스처 / 구분자(D) 포함
+    /// 픽스처 / 추출 결과 8자 미만(방어 경로) 세 가지를 본다.</summary>
+    private static async Task Scenario2_CardInfoInquiryFillsMaskedCardNumber()
     {
-        var orchestrator = BuildOrchestrator(out var r1, out var r2, out var presenter, out var gate, out var vanRelay, out var lastTransactionResponseStore);
-        r1.EnqueueCardReadOutcome(SuccessOutcome(cardNumber: "9412345678901234"));
+        // (a) 구분자 없는 16자리 — 그대로 16자 + 공백 3.
+        {
+            var orchestrator = BuildOrchestrator(out var r1, out var r2, out var presenter, out var gate, out var vanRelay, out var lastTransactionResponseStore);
+            r1.EnqueueCardReadOutcome(SuccessOutcome(cardNumber: "9412345678901234"));
 
-        var request = BuildRequest("800000", new Dictionary<int, string> { [15] = "1000" });
-        PosResponseTelegram response = (PosResponseTelegram)await orchestrator.ProcessAsync(request).ConfigureAwait(false);
+            var request = BuildRequest("800000", new Dictionary<int, string> { [15] = "1000" });
+            PosResponseTelegram response = (PosResponseTelegram)await orchestrator.ProcessAsync(request).ConfigureAwait(false);
 
-        Check("800000: 응답 성공(#7=000)", response.Telegram.Read(7) == "000");
-        Check("800000: VAN 요청에 실린 BIN이 카드번호 앞 8자리", vanRelay.LastRequest?.Read(14) == "94123456");
+            Check("800000: 응답 성공(#7=000)", response.Telegram.Read(7) == "000");
+            Check("800000: VAN 요청 #14 마스킹 카드번호 = 카드번호 16자리(Read, 우측 공백 제거)", vanRelay.LastRequest?.Read(14) == "9412345678901234");
+            string? raw14 = vanRelay.LastRequest == null ? null
+                : System.Text.Encoding.ASCII.GetString(vanRelay.LastRequest.Telegram.ToBody(), 70, 19);
+            Check("800000: #14 원문 바이트(POSITION 70, 19) = 16자리 + 공백 3(왼쪽 정렬)", raw14 == "9412345678901234   ");
+            string? raw15 = vanRelay.LastRequest == null ? null
+                : System.Text.Encoding.ASCII.GetString(vanRelay.LastRequest.Telegram.ToBody(), 89, 15);
+            Check("800000: #15 납부세액이 새 POSITION 89(N15)에 그대로", raw15 == "000000000001000");
+        }
+
+        // (b) 리더기 마스킹 + 구분자 'D' 포함 — 구분자 뒤(유효기간 등)는 절대 섞이지 않는다.
+        {
+            var orchestrator = BuildOrchestrator(out var r1, out var r2, out var presenter, out var gate, out var vanRelay, out var lastTransactionResponseStore);
+            r1.EnqueueCardReadOutcome(SuccessOutcome(cardNumber: "11112222****444*D****1234"));
+
+            var request = BuildRequest("800000", new Dictionary<int, string> { [15] = "1000" });
+            PosResponseTelegram response = (PosResponseTelegram)await orchestrator.ProcessAsync(request).ConfigureAwait(false);
+
+            Check("800000(구분자 D): 응답 성공(#7=000)", response.Telegram.Read(7) == "000");
+            string? raw14 = vanRelay.LastRequest == null ? null
+                : System.Text.Encoding.ASCII.GetString(vanRelay.LastRequest.Telegram.ToBody(), 70, 19);
+            Check("800000(구분자 D): #14 원문 = 구분자 앞 16자 + 공백 3", raw14 == "11112222****444*   ");
+        }
+
+        // (c) 구분자 앞이 8자 미만 — 기존 "카드번호 8자리 미만" 방어 경로(R32 + 무효화), VAN 미도달.
+        {
+            var orchestrator = BuildOrchestrator(out var r1, out var r2, out var presenter, out var gate, out var vanRelay, out var lastTransactionResponseStore);
+            r1.EnqueueCardReadOutcome(SuccessOutcome(cardNumber: "1234567D8901234567"));
+
+            var request = BuildRequest("800000", new Dictionary<int, string> { [15] = "1000" });
+            PosResponseTelegram response = (PosResponseTelegram)await orchestrator.ProcessAsync(request).ConfigureAwait(false);
+
+            Check("800000(구분자 앞 7자): 응답 = ReaderNoCardDataDefensiveCode",
+                response.Telegram.Read(7) == PosResultCodeMapper.ReaderNoCardDataDefensiveCode);
+            Check("800000(구분자 앞 7자): VAN 미도달", vanRelay.LastRequest == null);
+            Check("800000(구분자 앞 7자): 승자 리더기 무효화 호출됨", r1.InvalidationCount >= 1);
+        }
+    }
+
+    /// <summary>Phase 36 P36-2 — <see cref="MaskedCardNumberExtractor.ExtractInto"/> 경계 케이스(순수 함수).
+    /// 구분자 <c>D</c>/<c>=</c>, 19자 초과, 8자 미만, 빈 값/null, 선두 비숫자, 목적 버퍼 길이 검증.</summary>
+    private static void Scenario26_MaskedCardNumberExtractorBoundaries()
+    {
+        void Case(string name, string? input, string expectedField, int expectedCount)
+        {
+            char[] dest = new char[MaskedCardNumberExtractor.FieldLength];
+            // 이전 값이 남아 있어도 공백으로 덮이는지 보려고 쓰레기로 채워 둔다.
+            for (int i = 0; i < dest.Length; i++) dest[i] = 'X';
+            int count = MaskedCardNumberExtractor.ExtractInto(input?.ToCharArray(), dest);
+            Check($"P36 추출: {name}", count == expectedCount && new string(dest) == expectedField);
+        }
+
+        Case("구분자 D에서 끊음", "11112222****444*D****1234", "11112222****444*   ", 16);
+        Case("구분자 =에서 끊음", "9412345678901234=2912101", "9412345678901234   ", 16);
+        Case("구분자 없음 16자", "9412345678901234", "9412345678901234   ", 16);
+        Case("정확히 19자", "1234567890123456789", "1234567890123456789", 19);
+        Case("19자 초과 → 앞 19자", "12345678901234567890123", "1234567890123456789", 19);
+        Case("19자 초과 + 뒤에 구분자", "1234567890123456789012D34", "1234567890123456789", 19);
+        Case("구분자 앞 7자(8자 미만)", "1234567D8901234567", "1234567            ", 7);
+        Case("정확히 8자", "12345678", "12345678           ", 8);
+        Case("빈 값", "", "                   ", 0);
+        Case("null", null, "                   ", 0);
+        Case("선두가 구분자", "D1234567890123456", "                   ", 0);
+        Case("공백에서 끊음", "12345678 90", "12345678           ", 8);
+        Case("'*'로 시작", "****5678", "****5678           ", 8);
+
+        bool threw = false;
+        try { MaskedCardNumberExtractor.ExtractInto("12345678".ToCharArray(), new char[8]); }
+        catch (ArgumentException) { threw = true; }
+        Check("P36 추출: 목적 버퍼 길이 19 아니면 ArgumentException", threw);
+
+        Check("P36 스키마: 800000 #14 = AN19 POSITION 70 원캡, 총 500",
+            PosSchemaRegistry.TryResolve("800000", out PosTelegramSchema? s) && s != null
+            && s.Fields.Any(f => f.Number == 14 && f.Length == 19 && f.Position == 70 && f.Owners == PosFieldOwner.OneCap)
+            && s.Fields.Any(f => f.Number == 18 && f.Position == 108)
+            && s.Fields.Any(f => f.Number == 26 && f.Position == 285)
+            && s.Fields.Any(f => f.Number == 28 && f.Length == 205 && f.Position == 295)
+            && s.TotalLength == 500);
     }
 
     /// <summary>902614 — 원캡 담당 8필드(#43~#46,#48,#50,#51,#53)가 정확히 채워지는지. Phase 18(P18-4)부터 902614는
@@ -1075,7 +1156,7 @@ internal static class PaymentFlowTestScenarios
                 noticeRecord.ResponseBody.SequenceEqual(noticeResponse.Telegram.ToBody()));
         }
 
-        // --- 2) 800000 — 카드리딩(BIN만) 후 중계. 이전 501008 기록을 덮어써야 한다(고정 키 upsert). ---
+        // --- 2) 800000 — 카드리딩(#14 마스킹 카드번호만) 후 중계. 이전 501008 기록을 덮어써야 한다(고정 키 upsert). ---
         r1.EnqueueCardReadOutcome(SuccessOutcome(cardNumber: "9412345678901234"));
         var cardInfoRequest = BuildRequest("800000", new Dictionary<int, string> { [15] = "1000" });
         PosResponseTelegram cardInfoResponse = (PosResponseTelegram)await orchestrator.ProcessAsync(cardInfoRequest).ConfigureAwait(false);

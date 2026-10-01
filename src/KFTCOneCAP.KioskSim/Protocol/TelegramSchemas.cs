@@ -223,7 +223,7 @@ namespace KFTCOneCAP.KioskSim.Protocol
         // 다. 카드 정보 조회 전문 (800000) — SPEC 2-다(p.12), 총 길이 500
         //
         // 정보부(#14~#27) 중 #14~16만 요청 입력(kiosk가 채워야 조회가 성립)이고, #17~27은 조회
-        // 결과(인터넷지로 응답 전용)다. #14~16 중에서는 #14 BIN만 kiosk가 아니라 원캡이 채운다 —
+        // 결과(인터넷지로 응답 전용)다. #14~16 중에서는 #14 마스킹 카드번호(SPEC 20260930 이전엔 BIN)만 kiosk가 아니라 원캡이 채운다 —
         // 리더기로 카드를 태그해야 얻을 수 있는 값이기 때문(SPEC 표에서 #14 행은 "원캡" 열만
         // 체크되어 있다).
         // ------------------------------------------------------------------
@@ -275,33 +275,38 @@ namespace KFTCOneCAP.KioskSim.Protocol
                     "화면에서는 편집을 막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true),
 
                 // 정보부(#14~27, p.12).
-                new TelegramField(14, "BIN", TelegramRepresentation.AN, 8, 70, TelegramSetLocation.OneCap,
-                    "카드 리딩 결과에서 나오는 카드번호 앞자리(BIN). SPEC 표에서 \"원캡\" 열만 체크되어 있다 — " +
+                // SPEC 20260930(p.13~14) 개정: #14 "BIN" AN8 → "마스킹 카드번호" AN19. 뒤따르는 #15~#28
+                // POSITION이 +11 밀리고 #28 예비 정보 FIELD가 216→205로 줄어 총 길이 500 유지.
+                new TelegramField(14, "마스킹 카드번호", TelegramRepresentation.AN, 19, 70, TelegramSetLocation.OneCap,
+                    "카드 리딩 결과에서 나오는 카드번호 중 구분자(D/=) 앞의 숫자·'*' 부분(리더기가 이미 " +
+                    "9~12번째·마지막 자리를 마스킹, 앞 8자리 BIN은 마스킹 제외 — SPEC 20260930 p.14). 원캡이 " +
+                    "왼쪽 정렬 + 공백 채움으로 넣는다. SPEC 표에서 \"원캡\" 열만 체크되어 있다 — " +
                     "kiosk가 채우지 않는 유일한 요청-입력 필드(#14~16 중)."),
-                new TelegramField(15, "납부세액", TelegramRepresentation.N, 15, 78, TelegramSetLocation.Kiosk),
-                new TelegramField(16, "납세자 유형", TelegramRepresentation.AN, 2, 93, TelegramSetLocation.Kiosk,
+                new TelegramField(15, "납부세액", TelegramRepresentation.N, 15, 89, TelegramSetLocation.Kiosk),
+                new TelegramField(16, "납세자 유형", TelegramRepresentation.AN, 2, 104, TelegramSetLocation.Kiosk,
                     "501008 #55와 같은 코드 체계('10'/'20'/'30'/'40')."),
-                new TelegramField(17, "카드사 코드", TelegramRepresentation.AN, 2, 95, TelegramSetLocation.InternetGiro,
-                    "조회 결과(응답 전용). BIN에 해당하는 카드사를 인터넷지로가 응답."),
-                new TelegramField(18, "카드사명", TelegramRepresentation.AHN, 30, 97, TelegramSetLocation.InternetGiro),
-                new TelegramField(19, "체크카드 여부", TelegramRepresentation.AN, 1, 127, TelegramSetLocation.InternetGiro),
-                new TelegramField(20, "납부가능 시간 여부", TelegramRepresentation.AN, 1, 128, TelegramSetLocation.InternetGiro),
-                new TelegramField(21, "포인트 납부 가능 여부", TelegramRepresentation.AN, 1, 129, TelegramSetLocation.InternetGiro),
-                new TelegramField(22, "카드 할부개월 LIST", TelegramRepresentation.AN, 60, 130, TelegramSetLocation.InternetGiro,
+                new TelegramField(17, "카드사 코드", TelegramRepresentation.AN, 2, 106, TelegramSetLocation.InternetGiro,
+                    "조회 결과(응답 전용). #14 앞 8자리(BIN)에 해당하는 카드사를 인터넷지로가 응답."),
+                new TelegramField(18, "카드사명", TelegramRepresentation.AHN, 30, 108, TelegramSetLocation.InternetGiro),
+                new TelegramField(19, "체크카드 여부", TelegramRepresentation.AN, 1, 138, TelegramSetLocation.InternetGiro),
+                new TelegramField(20, "납부가능 시간 여부", TelegramRepresentation.AN, 1, 139, TelegramSetLocation.InternetGiro),
+                new TelegramField(21, "포인트 납부 가능 여부", TelegramRepresentation.AN, 1, 140, TelegramSetLocation.InternetGiro),
+                new TelegramField(22, "카드 할부개월 LIST", TelegramRepresentation.AN, 60, 141, TelegramSetLocation.InternetGiro,
                     "할부개월수 2Byte 단위 코드를 연속 구성. 예: 01020304 (space padding), 총 60Byte로 최대 30개(SPEC 각주)."),
-                new TelegramField(23, "포인트 할부개월 LIST", TelegramRepresentation.AN, 60, 190, TelegramSetLocation.InternetGiro,
+                new TelegramField(23, "포인트 할부개월 LIST", TelegramRepresentation.AN, 60, 201, TelegramSetLocation.InternetGiro,
                     "형식은 #22와 동일."),
-                new TelegramField(24, "납부대행 수수료 금액", TelegramRepresentation.N, 12, 250, TelegramSetLocation.InternetGiro),
-                new TelegramField(25, "합계금액", TelegramRepresentation.N, 12, 262, TelegramSetLocation.InternetGiro),
+                new TelegramField(24, "납부대행 수수료 금액", TelegramRepresentation.N, 12, 261, TelegramSetLocation.InternetGiro),
+                new TelegramField(25, "합계금액", TelegramRepresentation.N, 12, 273, TelegramSetLocation.InternetGiro),
                 // #26 신규 추가(SPEC 20260831 개정) — 뒤따르는 #27/#28은 이 삽입으로 번호·POSITION이
                 // 한 칸씩 밀렸다(20260826판에서는 #26/#27이었음). 본 앱(Protocol/Pos/Schemas/
                 // CardInfoInquirySchema.cs)과 독립적으로 SPEC PDF를 다시 옮겨 적었다(P19-2 원칙 유지).
-                new TelegramField(26, "납부대행 수수료율", TelegramRepresentation.N, 4, 274, TelegramSetLocation.InternetGiro,
-                    "SPEC 20260831 개정판 신규 필드 — 인터넷지로 열만 체크(응답 전용, kiosk/원캡/VAN 전부 공란)."),
-                new TelegramField(27, "API 세부 응답코드", TelegramRepresentation.AN, 6, 278, TelegramSetLocation.InternetGiro),
-                new TelegramField(28, "예비 정보 FIELD", TelegramRepresentation.AN, 216, 284, TelegramSetLocation.InternetGiro,
-                    "SPEC 표(p.12)는 인터넷지로 열이 체크되어 있다(직접 확인) — 응답 전용. #26 신규 삽입으로 " +
-                    "길이가 220→216으로 축소(총 길이 500 유지)."),
+                new TelegramField(26, "납부대행 수수료율", TelegramRepresentation.N, 4, 285, TelegramSetLocation.InternetGiro,
+                    "SPEC 20260831 개정판 신규 필드 — 인터넷지로 열만 체크(응답 전용, kiosk/원캡/VAN 전부 공란). " +
+                    "소수점 2자리 기준(0050 = 0.5%, SPEC 20260930 p.14)."),
+                new TelegramField(27, "API 세부 응답코드", TelegramRepresentation.AN, 6, 289, TelegramSetLocation.InternetGiro),
+                new TelegramField(28, "예비 정보 FIELD", TelegramRepresentation.AN, 205, 295, TelegramSetLocation.InternetGiro,
+                    "SPEC 표(20260930 p.13)는 인터넷지로 열이 체크되어 있다 — 응답 전용. #26 신규 삽입으로 " +
+                    "220→216, #14 확장(AN8→AN19)으로 다시 216→205로 축소(총 길이 500 유지)."),
             };
             return fields;
         }

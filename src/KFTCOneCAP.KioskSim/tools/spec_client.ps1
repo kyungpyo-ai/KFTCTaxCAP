@@ -50,9 +50,9 @@ switch ($TxType) {
         Set-Field -Buffer $body -Pos 70 -Len 19 -Value "1234567890123456789"      # #14 전자납부번호
     }
     "800000" {
-        # #14 BIN(pos 70, 8) 은 원캡이 채운다 — 공백으로 둔다
-        Set-Field -Buffer $body -Pos 78 -Len 15 -Value "1000" -Numeric            # #15 납부세액
-        Set-Field -Buffer $body -Pos 93 -Len 2  -Value "10"                       # #16 납세자 유형
+        # #14 마스킹 카드번호(pos 70, 19) 는 원캡이 채운다 — 공백으로 둔다 (SPEC 20260930, 이전 판은 BIN pos 70, 8)
+        Set-Field -Buffer $body -Pos 89  -Len 15 -Value "1000" -Numeric           # #15 납부세액
+        Set-Field -Buffer $body -Pos 104 -Len 2  -Value "10"                      # #16 납세자 유형
     }
     "902614" {
         Set-Field -Buffer $body -Pos 70  -Len 13 -Value "8001011234567"           # #14 주민등록번호
@@ -124,7 +124,7 @@ try {
 
     # 전문별 관심 필드
     if ($TxType -eq "800000") {
-        Write-Host ("    #14 BIN=[{0}]" -f $cp949.GetString($rb, 70, 8))
+        Write-Host ("    #14 마스킹 카드번호=[{0}]" -f $cp949.GetString($rb, 70, 19))
     }
     if ($TxType -eq "902614") {
         Write-Host ("    #43 보안단말기인증번호=[{0}]" -f $cp949.GetString($rb, 355, 32))
