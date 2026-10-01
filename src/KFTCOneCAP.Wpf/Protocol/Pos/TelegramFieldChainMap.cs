@@ -38,7 +38,7 @@ public enum FieldChainConversion
 /// 09-22로 세 번 바뀐 전례가 있다) 이 파일 하나만 고치면 된다.
 ///
 /// <b>근거 수준이 항목마다 다르다.</b> SPEC 원문에 명문 근거가 있는 항목은 <c>#29</c>(2026-09-22
-/// 재배포본에서 p.16 자기참조 오탈자가 정정돼 근거가 생겼다) 하나뿐이고, 나머지는 전부 필드명 일치
+/// 재배포본에서 p.16 자기참조 오탈자가 정정돼 근거가 생겼다)와 공통부 <c>#11</c>/<c>#12</c>(p.7, 2026-10-01 추가)뿐이고, 나머지는 전부 필드명 일치
 /// 또는 사용자 확정만 근거다 — SPEC은 이 저장소 개발팀이 직접 작성·관리하는 문서이며(발주처 질의
 /// 대상이 아니다), 미기재 항목의 조사 기록과 확정 상태는 <c>docs/payment_relay/spec_open_questions.md</c>
 /// §4(Q1~Q10)가 정본이다. 각 항목의 <see cref="ChainEntry.Evidence"/>가 그 Q번호를 가리킨다.
@@ -105,12 +105,19 @@ public static class TelegramFieldChainMap
     }
 
     /// <summary>
-    /// 연쇄 매핑 전체 목록(23건 — 501008→902614 16건 + 800000→902614 2건 + 902614 내부 합산 1건(#29) +
+    /// 연쇄 매핑 전체 목록(25건 — 501008→902614 공통부 #11/#12 2건(2026-10-01 추가, SPEC p.7 명문) + 501008→902614 16건 +
+    /// 800000→902614 2건 + 902614 내부 합산 1건(#29) +
     /// 501008→902614 합산 1건(#27) + 501008→800000 2건 + 902614 고정값 1건(#34) = PRD.md §3.3.2 표의
     /// 모든 필드를 빠짐없이 옮긴 것, §38/§42/800000 #11·#12는 의도적 제외(클래스 주석 참고)).
     /// </summary>
     public static readonly IReadOnlyList<ChainEntry> Entries = new[]
     {
+        // ── 501008 응답 → 902614 요청 공통부 #11/#12 (2026-10-01 사용자 지시 — SPEC 원문 근거 있음) ──
+        new ChainEntry(CardApproval902614, 11, Notice501008, new[] { 11 }, FieldChainConversion.Direct,
+            "SPEC 20260930 p.7 원문 \"'501008' 응답부에 전달한 값 SET\"(이용기관 발행기관 분류코드, N2=N2)"),
+        new ChainEntry(CardApproval902614, 12, Notice501008, new[] { 12 }, FieldChainConversion.Direct,
+            "SPEC 20260930 p.7 원문 \"'501008' 응답부에 전달한 값 SET\"(이용기관 지로 번호, N7=N7)"),
+
         // ── 501008 응답 → 902614 요청 (PRD §3.3.2, 이름 일치 그룹 — SPEC 명문 없음, 이름 동일성만 근거) ──
         new ChainEntry(CardApproval902614, 14, Notice501008, new[] { 17 }, FieldChainConversion.Direct,
             "spec_open_questions.md Q7 — #14/#36 둘 다 501008 #17(납세의무자번호)에서 옴, SPEC 명문 없음(사용자 확정)"),

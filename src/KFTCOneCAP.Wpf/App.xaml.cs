@@ -415,6 +415,15 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(PosRandomValueGeneratorSelfTest.RunAll);
         }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--realistic-test-value-test")
+        {
+            // 개발/회귀 검증용(docs/receipt_print/development_plan.md P37-1 완료 조건, 최종 산출물 아님):
+            // RealisticTestValueGenerator(결제창·VAN 스텁 테스트값)의 규칙 커버리지·금액 정합·날짜·카드사 쌍과
+            // 스텁 → 연쇄 → 902614 → 영수증 조립까지를 고정 시드로 확인한다. 리더기·프린터 불필요(스텁 VAN만
+            // 사용, 소켓 미사용). UI는 홈 화면을 그대로 띄운다.
+            StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
+            System.Threading.Tasks.Task.Run(RealisticTestValueGeneratorSelfTest.RunAll);
+        }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--field-chain-converter-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P30-3 완료 조건, 최종 산출물

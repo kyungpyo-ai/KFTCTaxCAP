@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -40,18 +39,15 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     /// <see cref="PosRandomValueGenerator"/>는 필드 이름/업무 의미를 보지 않는다는 원칙(PRD §12.3)을
     /// 지키려고 이 필드를 특별 취급하지 않으므로, 여기서 생성 직후 이 필드만 스키마의 고정값으로
     /// 되돌린다 — 이건 "값의 업무 의미"가 아니라 "전문을 어느 스키마로 파싱할지"를 결정하는 프로토콜
-    /// 라우팅 키라 §12.3이 피하려는 것과 다른 층위다.
+    /// 라우팅 키라 §12.3이 피하려는 것과 다른 층위다. (Phase 37부터는 <see cref="RealisticTestValueGenerator"/>가
+    /// 이 필드도 고정값으로 채우지만, 전송 성립 전제라 생성 직후 덮어쓰기는 그대로 둔다.)
     /// </summary>
     private const int TransactionTypeFieldNumber = 4;
 
-    /// <summary>Regenerate()의 902614 #27/#28 축소 난수 상한 — Services/Van/StubVanRelayService.cs의
-    /// 같은 이름 상수와 스케일을 맞췄다(체크포인트 1 M-2 수정과 같은 성격, 2026-09-23 사용자 승인).
-    /// 이 클래스는 Services 계층을 참조하지 않으므로(계층 규칙) 상수를 직접 여기 복제한다.</summary>
-    private const int RealisticAmountMaxExclusive8Digits = 100_000_000; // 0~99,999,999
-
-    private const int RealisticFeeMaxExclusive6Digits = 1_000_000; // 0~999,999
-
-    private static readonly Random RandomAmountSource = new();
+    /// <summary>Phase 37 P37-1 — <see cref="RealisticTestValueGenerator"/>에 넘기는 난수원. 탭 인스턴스마다
+    /// <c>new Random()</c>을 만들면 짧은 간격으로 생성된 세 탭이 같은 시드(시간 기반)를 받아 같은 값을 낼 수
+    /// 있어(StubVanRelayService L-2와 같은 이유) static 하나를 공유한다. UI 스레드에서만 쓰인다.</summary>
+    private static readonly Random TestValueRandom = new();
 
     private readonly PosTelegramSchema _schema;
     private readonly HashSet<int> _ownedByOneCap;
@@ -82,7 +78,9 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     /// 필드를 <see cref="PosRandomValueGenerator"/>로 채우는데, <c>#42</c>는 TelegramFieldChainMap의
     /// 연쇄 대상도 아니고(가맹점 설정값이지 다른 전문에서 오는 값이 아니다) 그렇다고 임의값이어도 되는
     /// 필드도 아니어서, 임의값을 그대로 두면 실제 전송 시 항상 E06으로 거부된다. `#4`(거래 구분 코드)를
-    /// 스키마 고정값으로 되돌리는 것과 같은 성격의 보정이다.</summary>
+    /// 스키마 고정값으로 되돌리는 것과 같은 성격의 보정이다. (Phase 37: 요청 생성기가
+    /// <see cref="RealisticTestValueGenerator"/>로 바뀌었고 그 생성기는 <c>#42</c>를 공백 규칙으로 둔다 —
+    /// 이 덮어쓰기가 설정값을 채우는 유일한 자리다.)</summary>
     private readonly Func<string> _kioskIdProvider;
 
     private PosTelegram _requestTelegram;
@@ -244,28 +242,22 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
             .Where(row => row.IsChainedField && !selfReferencingTargets.Contains(row.Number))
             .ToDictionary(row => row.Number, row => row.Value);
 
-        _requestTelegram = PosRandomValueGenerator.GenerateRandomRequest(_schema);
+        // Phase 37 P37-1(docs/receipt_print/development_plan.md) — 요청값을 실제와 비슷한 테스트값으로 채운다
+        // (RealisticTestValueGenerator 클래스 주석). 902614 #27/#28/#29 초기값도 그 생성기가 서로 맞게
+        // (#28 = #27 × 0.8% 내림, #29 = #27+#28) 채우므로, 예전의 #27/#28 축소 난수 재작성(체크포인트 1
+        // M-2 사전 조치)은 필요 없어져 삭제했다.
+        _requestTelegram = RealisticTestValueGenerator.GenerateRequest(_schema, TestValueRandom, DateTime.Now);
 
-        // TransactionTypeFieldNumber 주석 참고 — 라우팅이 성립하도록 고정값으로 되돌린다.
+        // TransactionTypeFieldNumber 주석 참고 — 라우팅 키는 생성기도 이미 채우지만, 이 화면의 전송이
+        // 성립하는 전제라 여기서도 명시적으로 고정값을 쓴다.
         _requestTelegram.Write(TransactionTypeFieldNumber, _schema.TransactionTypeCode);
 
-        // 체크포인트 1 M-2와 같은 성격의 사전 조치(2026-09-23 사용자 승인) — 902614 #27(납부 세액)과
-        // #28(수수료)은 #29=#27+#28 자기참조 합산(RecomputeSelfReferencingChainTargets 아래)의 소스다.
-        // PosRandomValueGenerator가 채우는 전 자리 N15 난수를 그대로 두면, 501008만 먼저 보내 #27이
-        // 연쇄로 현실적인 값으로 바뀌는 순간(#28은 아직 연쇄 전이라 여전히 거대 난수) #29 재계산이
-        // 자리수 초과로 거의 항상 실패한다. StubVanRelayService의 금액 필드 특별 취급과 같은 스케일로
-        // 맞춰 여기서도 작은 범위로 다시 채운다.
         if (_schema.TransactionTypeCode == TelegramFieldChainMap.CardApproval902614)
         {
-            _requestTelegram.Write(27,
-                RandomAmountSource.Next(0, RealisticAmountMaxExclusive8Digits).ToString(CultureInfo.InvariantCulture));
-            _requestTelegram.Write(28,
-                RandomAmountSource.Next(0, RealisticFeeMaxExclusive6Digits).ToString(CultureInfo.InvariantCulture));
-
-            // _kioskIdProvider 클래스 주석 참고 — #42는 임의값이면 실기 전송 시 PaymentOrchestrator의
-            // E06(키오스크 고유번호 불일치) 검사에 항상 걸린다. 설정값이 비어 있으면(개발 환경 등) 그냥
-            // 두어 기존 동작(임의값)을 유지한다 — 어차피 그 경우 설정 자체가 비어 있어 원캡도 검사를
-            // 건너뛴다(ShopSettingsService.ResolveKioskId 참고).
+            // _kioskIdProvider 클래스 주석 참고 — #42는 실기 전송 시 PaymentOrchestrator의 E06(키오스크
+            // 고유번호 불일치) 검사 대상이다. 생성기는 #42를 공백 규칙으로 두므로(가맹점 설정값) 여기서
+            // 설정값으로 덮는다. 설정값이 비어 있으면(개발 환경 등) 공백 그대로 둔다 — 그 경우 설정 자체가
+            // 비어 있어 원캡도 검사를 건너뛴다(ShopSettingsService.ResolveKioskId 참고).
             string kioskId = _kioskIdProvider();
             if (!string.IsNullOrEmpty(kioskId))
                 _requestTelegram.Write(42, kioskId);

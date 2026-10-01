@@ -2,7 +2,6 @@ using System;
 using System.Globalization;
 using System.Threading.Tasks;
 using KFTCOneCAP.Wpf.Protocol.Pos;
-using KFTCOneCAP.Wpf.Protocol.Pos.Schemas;
 using KFTCOneCAP.Wpf.Services.Diagnostics;
 using KFTCOneCAP.Wpf.Services.Payment;
 
@@ -108,78 +107,34 @@ internal sealed class StubVanRelayService : IVanRelayService
     /// 요청 바이트를 그대로 돌려줬다 — kiosk가 채우지 않는 업무 필드(디지털예산/인터넷지로 담당)는
     /// 요청에서부터 공백이므로 응답도 공백이었고, 그러면 전문 간 필드 연쇄(Phase 30 본 목적)를 검증할
     /// "받아올 값" 자체가 없었다(2026-09-21 P29-8 실기 로그로 실제 확인). 그래서 지금은
-    /// <b>kiosk 소유도 아니고 원캡 소유도 아닌 필드</b>를 <see cref="PosRandomValueGenerator"/>로 채워
-    /// 돌려준다 — kiosk 소유 필드는 요청에 이미 값이 있어 손댈 필요가 없고, 원캡 소유 필드(예:
-    /// <c>800000 #14</c> 마스킹 카드번호, <c>902614</c>의 원캡 담당 8개)는 원캡이 실제 카드리딩으로 채운 진짜 값이라
-    /// 스텁이 덮으면 그 검증(Phase 29에서 실기로 이미 끝난 것)이 무의미해진다. <b>이건 스텁의 한계를
-    /// 메우는 개발용 장치일 뿐이다</b> — 실 VAN이 붙으면 `App.xaml.cs` 한 줄 교체(PRD §10)로 이 클래스
-    /// 전체가 함께 사라진다.
+    /// <b>kiosk 소유도 아니고 원캡 소유도 아닌 필드</b>를 채워 돌려준다 — kiosk 소유 필드는 요청에 이미 값이
+    /// 있어 손댈 필요가 없고, 원캡 소유 필드(예: <c>800000 #14</c> 마스킹 카드번호, <c>902614</c>의 원캡 담당
+    /// 8개)는 원캡이 실제 카드리딩으로 채운 진짜 값이라 스텁이 덮으면 그 검증(Phase 29에서 실기로 이미 끝난
+    /// 것)이 무의미해진다. <b>이건 스텁의 한계를 메우는 개발용 장치일 뿐이다</b> — 실 VAN이 붙으면
+    /// `App.xaml.cs` 한 줄 교체(PRD §10)로 이 클래스 전체가 함께 사라진다.
+    ///
+    /// <b>Phase 37 P37-1(docs/receipt_print/development_plan.md, 2026-10-01)</b> — 채우는 값을
+    /// <see cref="PosRandomValueGenerator"/>의 의미 없는 임의값(금액 4개만 자릿수 제한하던 P30 M-2 보정 포함)에서
+    /// <see cref="RealisticTestValueGenerator.FillStubResponse"/>의 현실적 테스트값으로 바꿨다(<c>김테스트</c>,
+    /// <c>테스트세무서 징수관</c>, 서로 맞는 금액·수수료, SPEC 코드표의 카드사 쌍 등). 금액 범위가 그 규칙 안에서
+    /// 정해지므로 예전 자릿수 제한 코드(<c>IsRealisticAmountField</c>/<c>IsRealisticFeeField</c>)는 삭제했다.
+    /// 소유자가 없는 필드(<see cref="PosFieldOwner.None"/> — 예비 정보/FILLER, 800000 #11/#12)는 그 생성기의
+    /// 응답 규칙에도 없어 요청 clone 그대로 공백으로 남는다(P30 L-1 취지 유지).
     /// </summary>
-    /// <summary>P30 체크포인트 지적(M-2, 2026-09-23) — <see cref="TelegramFieldChainMap"/>의 합산 연쇄
-    /// (<c>902614 #27</c> = <c>501008 #30</c>+<c>#31</c>+<c>#32</c>, <c>902614 #29</c> = <c>#27</c>+<c>#28</c>,
-    /// <c>800000 #15</c> = <c>501008 #30</c>+<c>#31</c>+<c>#32</c>)의 소스/대상이 전부 N15(또는 N12→N15
-    /// 확장)인데, <see cref="PosRandomValueGenerator.GenerateValue"/>는 N15 필드를 15자리 전부 무작위로
-    /// 채워(거의 10^15에 가까운 값도 나옴) 세 값만 더해도 약 83% 확률로 N15 한도(10^15)를 넘어
-    /// <see cref="PosField.Pad"/>가 예외를 던진다. 실제 세금은 이렇게 크지 않으므로(보통 몇백만~몇천만원
-    /// 수준), 이 4개 금액 필드만 자릿수를 줄인 현실적인 범위의 난수로 채운다 — 나머지 필드는 기존대로
-    /// <see cref="PosRandomValueGenerator.GenerateValue"/>를 쓴다.
-    /// <list type="bullet">
-    /// <item><c>501008 #30</c>(본세)/<c>#31</c>(농어촌특별세)/<c>#32</c>(교육세), 전부 N15 — 최대 8자리
-    /// (0~99,999,999)로 제한. 세 값을 합해도 최대 약 3억(9자리 이내)이라 N15에 여유 있게 들어온다.</item>
-    /// <item><c>800000 #24</c>(납부대행 수수료 금액, N12) — 최대 6자리(0~999,999)로 제한. 연쇄 대상인
-    /// <c>902614 #28</c>(N15로 확장)이 최대 99만이라, <c>#29 = #27+#28</c>(#27은 위 세 필드 합, 최대
-    /// 약 3억)도 최대 약 3억1백만으로 N15 한도에 넉넉히 들어온다.</item>
-    /// </list>
-    /// <see cref="PosField.Pad"/>가 N형 필드를 우측정렬 0-패딩하므로 여기서는 짧은 숫자 문자열만
-    /// 만들면 되고 직접 0-패딩할 필요가 없다.</summary>
-    private const int RealisticAmountMaxExclusive8Digits = 100_000_000; // 0~99,999,999
-
-    private const int RealisticFeeMaxExclusive6Digits = 1_000_000; // 0~999,999
-
     private static VanRelayOutcome BuildFakeSuccess(PosRequestTelegram request)
     {
         PosTelegram cloned = request.Telegram.Clone();
+        DateTime now = DateTime.Now;
 
-        // kiosk 소유도 아니고 원캡 소유도 아닌 필드(디지털예산/인터넷지로 담당)만 임의값으로 채운다.
-        // 공통부 #3/#6/#7/#8도 이 조건에 걸릴 수 있으므로(예: #7 응답 코드는 kiosk 소유가 아님) 반드시
-        // 아래 성공값 덮어쓰기보다 먼저 실행한다 — 순서를 바꾸면 "000" 등이 임의값에 덮여 사라진다.
-        //
-        // P30 체크포인트 지적(L-1, 2026-09-23) — PRD §13.8은 "SET 장소로 kiosk가 표시되지 않은 응답
-        // 필드"만 채우라고 했는데, 예전 조건은 SET 장소 자체가 없는 필드(PosFieldOwner.None, 예비 정보
-        // FIELD/FILLER 등)까지 포함해버렸다. 특히 800000 #11/#12는 2026-09-22 SPEC 개정으로 "공백 확정"
-        // 자리라 난수가 실리면 안 된다 — Owners != None 조건을 추가해 소유자가 아예 없는 필드는 건드리지
-        // 않는다(요청 clone 그대로 공백으로 남는다).
-        foreach (PosField field in cloned.Schema.Fields)
-        {
-            if (field.Owners == PosFieldOwner.None)
-                continue;
-
-            if (field.Owners.HasFlag(PosFieldOwner.Kiosk) || field.Owners.HasFlag(PosFieldOwner.OneCap))
-                continue;
-
-            string value = IsRealisticAmountField(cloned.Schema.TransactionTypeCode, field.Number)
-                ? SharedRandom.Next(0, RealisticAmountMaxExclusive8Digits).ToString(CultureInfo.InvariantCulture)
-                : IsRealisticFeeField(cloned.Schema.TransactionTypeCode, field.Number)
-                    ? SharedRandom.Next(0, RealisticFeeMaxExclusive6Digits).ToString(CultureInfo.InvariantCulture)
-                    : PosRandomValueGenerator.GenerateValue(field.Type, field.Length, SharedRandom);
-
-            cloned.Write(field.Number, value);
-        }
+        // 응답 업무 필드를 먼저 채우고, 공통부 #3/#6/#7/#8 성공값을 그 뒤에 덮는다 — 순서를 바꾸면 응답
+        // 규칙이 공통부(#7 등)를 다시 덮을 수 있다.
+        RealisticTestValueGenerator.FillStubResponse(cloned, request.Telegram, SharedRandom, now);
 
         cloned.Write(3, "0210");
         cloned.Write(6, "C");
         cloned.Write(7, "000");
-        cloned.Write(8, DateTime.Now.ToString("yyMMddHHmmss", CultureInfo.InvariantCulture));
+        cloned.Write(8, now.ToString("yyMMddHHmmss", CultureInfo.InvariantCulture));
 
         return VanRelayOutcome.Success(cloned.ToBody());
     }
-
-    /// <summary>M-2 주석 참고 — <c>501008 #30/#31/#32</c>(본세/농어촌특별세/교육세).</summary>
-    private static bool IsRealisticAmountField(string transactionTypeCode, int fieldNumber) =>
-        transactionTypeCode == NoticeInquirySchema.FixedTransactionType
-        && (fieldNumber == 30 || fieldNumber == 31 || fieldNumber == 32);
-
-    /// <summary>M-2 주석 참고 — <c>800000 #24</c>(납부대행 수수료 금액).</summary>
-    private static bool IsRealisticFeeField(string transactionTypeCode, int fieldNumber) =>
-        transactionTypeCode == CardInfoInquirySchema.FixedTransactionType && fieldNumber == 24;
 }
