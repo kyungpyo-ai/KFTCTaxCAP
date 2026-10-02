@@ -42,7 +42,8 @@ ESC/POS 명령과 실기 확인 기록 — 여기 없는 명령은 코드에 넣
 바꾸고, 디자인 개선안을 함께 반영한다(원본 기반 + 개선, 2026-10-01 사용자 확정). 결제 알림창(`PaymentNoticeWindow`)과
 KioskSim은 범위 밖. 원본 캡처는 `docs/alert_dialog/screenshots/`(캡처가 소스 수치보다 우선). 문서는 같은 3단 구성.
 이 범위부터 **구현 위임 모델을 Task 성격으로 고른다**(디자인 판단 Opus / 명세 완결 로직 Sonnet / 기계적 치환 Haiku —
-`development_plan.md` Task 표에 근거 기록), 메인 세션은 Opus.
+`development_plan.md` Task 표에 근거 기록), 메인 세션은 Opus. Phase 38(알림창 컴포넌트)·39(기존 호출부 교체 — 앱 내
+`MessageBox.Show` 0건, 세 ViewModel `AlertRequested(AlertMessage)` 통합, 고정 문구 줄 폭 자동 검증) 완료(2026-10-02) — 5차 범위 종료.
 
 **Phase 번호는 다섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~(`docs/alert_dialog/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
 

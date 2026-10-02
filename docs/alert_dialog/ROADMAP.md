@@ -24,7 +24,7 @@
 | Phase | 내용 | 상태 |
 |---|---|---|
 | 38 | **알림창 컴포넌트** — 계약 타입·제목/본문 분리, 색 토큰·스타일, 창(XAML+VM)·벡터 아이콘·키보드·알림음, `--alert-gallery`·`--alert-dialog-test`, 원본 캡처 대조 | ✅ 완료(2026-10-01 — 사용자 확인, D4 애니메이션 철회·글자 모드 Ideal 확정) |
-| 39 | **기존 호출부 교체** — ViewModel 이벤트 계약(`AlertMessage`), 종류 재분류(PRD §4.2), View 7곳 교체, 하네스 갱신, 실제 화면 E2E | ⬜ 대기 |
+| 39 | **기존 호출부 교체** — ViewModel 이벤트 계약(`AlertMessage`), 종류 재분류(PRD §4.2), View 7곳 교체, 하네스 갱신, 실제 화면 E2E | ✅ 완료(2026-10-02 — CP1 통과, 리더기 실기 E2E, Win7 미확인) |
 
 (상태 값: ⬜ 대기 / 🔄 진행중 / ✅ 완료 / ⏸ 보류)
 
@@ -74,11 +74,11 @@
 
 ### 작업 항목
 
-- [ ] ViewModel 이벤트 계약 변경 — `EventHandler<string>` → `EventHandler<AlertMessage>`(PRD §4.3), 문구를 만드는 쪽이 종류 결정
-- [ ] 종류 재분류 — PRD §4.2 표 14행
-- [ ] View 7곳 `MessageBox.Show` → `AlertDialog.Show` 교체(질문창 2곳 포함)
-- [ ] 하네스 갱신 — `LastReceiptReprintSelfTest`, `NationalTaxReceiptAssemblerSelfTest`(문구 + 종류 검증)
-- [ ] 실제 화면 E2E — PRD §4.2 각 행을 실제 화면에서 띄워 확인(사용자 조작 또는 `asInvoker` 일시 해제 후 원복)
+- [x] ViewModel 이벤트 계약 변경 — `EventHandler<string>` → `EventHandler<AlertMessage>`(PRD §4.3), 문구를 만드는 쪽이 종류 결정
+- [x] 종류 재분류 — PRD §4.2 표 14행
+- [x] View 7곳 `MessageBox.Show` → `AlertDialog.Show` 교체(질문창 2곳 포함)
+- [x] 하네스 갱신 — `LastReceiptReprintSelfTest`, `NationalTaxReceiptAssemblerSelfTest`(문구 + 종류 검증) + 신규 `AlertFixedPhraseSelfTest`(종류·문구 대조, 줄 폭)
+- [x] 실제 화면 E2E — PRD §4.2 각 행을 실제 화면에서 띄워 확인(`asInvoker` 일시 해제 후 원복, PRD §6.1)
 
 ### 완료 기준
 

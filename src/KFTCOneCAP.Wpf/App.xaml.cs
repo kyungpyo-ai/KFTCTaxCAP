@@ -512,7 +512,20 @@ public partial class App : Application
             string alertTestMode = e.Args.Length > 1 ? e.Args[1].ToLowerInvariant() : string.Empty;
             if (alertTestMode == "self")
             {
-                System.Threading.Tasks.Task.Run(AlertDialogSelfTest.RunAll);
+                // Phase 39 P39-4(docs/alert_dialog/development_plan.md) — 종류·문구 대조 + 제목·본문 줄
+                // 폭 자동 검증을 같은 인자에서 함께 돌린다. 두 SelfTest 모두 Task.Run의 백그라운드
+                // 스레드에서 호출되지만, AlertFixedPhraseSelfTest 내부에서 FormattedText 측정·리소스
+                // 조회가 필요한 부분만 Dispatcher.Invoke로 UI 스레드로 옮긴다(개발계획 "실수가 나기
+                // 쉬운 곳" ⑤).
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    bool phase38Ok = AlertDialogSelfTest.RunAll();
+                    bool phase39Ok = AlertFixedPhraseSelfTest.RunAll();
+                    FileLogger.Info(
+                        "[alert-dialog-test self] [전체] 완료 — " +
+                        $"Phase38={(phase38Ok ? "통과" : "실패")}, Phase39={(phase39Ok ? "통과" : "실패")}, " +
+                        $"종합={(phase38Ok && phase39Ok ? "통과" : "실패")}");
+                });
             }
             else
             {

@@ -9,6 +9,7 @@ using KFTCOneCAP.Wpf.Services.Printer;
 using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
 using KFTCOneCAP.Wpf.Services.Storage;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
 using KFTCOneCAP.Wpf.ViewModels.Payment;
 
 namespace KFTCOneCAP.Wpf.Services.Diagnostics;
@@ -239,23 +240,27 @@ internal static class NationalTaxReceiptAssemblerSelfTest
     }
 
     /// <summary>
-    /// 결제창 자동 출력 경고창 끝에 붙는 재출력 안내 줄(PRD §5, Phase 35 — 2026-10-01 확정). 상수를 참조하지 않고
-    /// PRD 문구를 그대로 적어 둔다(구현 상수가 틀려도 잡히도록).
+    /// 결제창 자동 출력 경고창 끝에 붙는 재출력 안내 줄(PRD §5, Phase 35 — 2026-10-01 확정, Phase 39에서
+    /// 2026-10-01 축약 문구로 교체). 상수를 참조하지 않고 PRD 문구를 그대로 적어 둔다(구현 상수가 틀려도
+    /// 잡히도록, docs/alert_dialog/PRD.md §4.4).
     /// </summary>
-    internal const string ExpectedReprintHintSuffix = "\n가맹점 설정의 '직전거래 전표출력'으로 다시 출력할 수 있습니다.";
+    internal const string ExpectedReprintHintSuffix = "\n가맹점 설정에서 다시 출력하세요.";
 
-    /// <summary>⑧ 결제창 경고 문구(PRD §5 표 + Phase 35부터 끝에 재출력 안내 한 줄).</summary>
+    /// <summary>⑧ 결제창 경고 문구(PRD §5 표 + Phase 35부터 끝에 재출력 안내 한 줄, Phase 39 새 형식 —
+    /// 제목 `전표 출력 실패` + 사유 줄, 행 없는 사유는 제목만).</summary>
     private static bool RunWarningMessageCases()
     {
         var expected = new (ReceiptPrintFailureReason Reason, string Text)[]
         {
-            (ReceiptPrintFailureReason.InvalidPort, "전표 출력에 실패했습니다. (프린터 포트 설정 확인)" + ExpectedReprintHintSuffix),
-            (ReceiptPrintFailureReason.PortOpenFailed, "전표 출력에 실패했습니다. (프린터 포트를 열 수 없습니다)" + ExpectedReprintHintSuffix),
-            (ReceiptPrintFailureReason.NoResponse, "전표 출력에 실패했습니다. (프린터 응답 없음)" + ExpectedReprintHintSuffix),
-            (ReceiptPrintFailureReason.PaperEnd, "전표 출력에 실패했습니다. (용지 없음)" + ExpectedReprintHintSuffix),
-            (ReceiptPrintFailureReason.CoverOpen, "전표 출력에 실패했습니다. (프린터 덮개 열림)" + ExpectedReprintHintSuffix),
-            (ReceiptPrintFailureReason.WriteFailed, "전표 출력에 실패했습니다. (전송 오류)" + ExpectedReprintHintSuffix),
-            (ReceiptPrintFailureReason.Unexpected, "전표 출력에 실패했습니다." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.InvalidPort, "전표 출력 실패\n프린터 포트 설정 확인." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.PortOpenFailed, "전표 출력 실패\n프린터 포트를 열 수 없습니다." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.NoResponse, "전표 출력 실패\n프린터 응답 없음." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.PaperEnd, "전표 출력 실패\n용지 없음." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.CoverOpen, "전표 출력 실패\n프린터 덮개 열림." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.WriteFailed, "전표 출력 실패\n전송 오류." + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.PrinterError, "전표 출력 실패" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.CompositionFailed, "전표 출력 실패" + ExpectedReprintHintSuffix),
+            (ReceiptPrintFailureReason.Unexpected, "전표 출력 실패" + ExpectedReprintHintSuffix),
         };
 
         bool ok = true;
@@ -329,8 +334,8 @@ internal static class NationalTaxReceiptAssemblerSelfTest
         string name, ReceiptPrintService service, LastReceiptStore store, Func<int>? callCount)
     {
         var viewModel = new PaymentScreenViewModel(service, store);
-        var messages = new List<string>();
-        viewModel.ReceiptPrintWarningRequested += (_, m) => messages.Add(m);
+        var messages = new List<AlertMessage>();
+        viewModel.AlertRequested += (_, m) => messages.Add(m);
 
         SynchronizationContext? previous = SynchronizationContext.Current;
         var context = new QueueSynchronizationContext();
@@ -351,8 +356,9 @@ internal static class NationalTaxReceiptAssemblerSelfTest
             SynchronizationContext.SetSynchronizationContext(previous);
         }
 
-        const string expectedMessage = "전표 출력에 실패했습니다. (프린터 포트 설정 확인)" + ExpectedReprintHintSuffix;
-        bool finalOk = task.IsCompleted && messages.Count == 1 && messages[0] == expectedMessage
+        const string expectedMessage = "전표 출력 실패\n프린터 포트 설정 확인." + ExpectedReprintHintSuffix;
+        bool finalOk = task.IsCompleted && messages.Count == 1 && messages[0].Text == expectedMessage
+            && messages[0].Kind == AlertKind.Warning
             && (callCount is null || callCount() == 1);
 
         LogCheck($"⑪ {name} — 반환 시점 미완료·이벤트 0회", atReturnOk,

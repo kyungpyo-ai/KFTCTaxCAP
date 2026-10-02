@@ -239,6 +239,15 @@ AlertResult AlertDialog.Show(Window? owner, string text, string caption,
 `System.Windows.MessageBox.Show` 7곳, 전부 View 코드비하인드. ViewModel은 `EventHandler<string>` 이벤트로 문구만
 넘기고 아이콘은 **이벤트 종류에 고정**돼 있다.
 
+> **Phase 39 완료(2026-10-02) — 교체 후 상태**: `src/KFTCOneCAP.Wpf`에 `MessageBox.Show`·`MessageBoxImage`·`MessageBoxResult`·
+> `MessageBoxButton` 0건. 세 ViewModel(`ShopSetupViewModel`·`ReaderSetupViewModel`·`PaymentScreenViewModel`)은
+> `AlertRequested`(`EventHandler<AlertMessage>`) 하나로 알리고, View 3곳(`ShopSetupWindow`·`ReaderSetupWindow`·`PaymentScreenWindow`)이
+> `AlertDialog.Show`로 띄운다. 고정 문구는 각 VM의 `internal const`(가맹점 설정: `TimeoutInvalidMessage`·`InvalidInputMessage`·
+> `SaveFailedMessage`·`PrinterPortRequiredMessage`·`NoLastReceiptMessage`·`DiscardChangesQuestion`, 리더기 설정: `DuplicatePortMessage`·
+> `DiscardChangesQuestion`)와 문구 빌더(`ReaderSetupViewModel.BuildMessage`·`BuildKeyDownloadMessage`,
+> `PaymentScreenViewModel.BuildReceiptPrintFailureMessage`·`BuildReceiptPrintWarningMessage`)에 있다. 아래 §4.2 "출처" 열의 줄번호는
+> 교체 전(2026-10-01) 기준이다.
+
 ### 4.2 재분류 표 (사용자 확정: 성공/실패 구분)
 
 | # | 화면 | 문구 | 출처 | 현재 | **새 종류** | 버튼 |
@@ -261,7 +270,9 @@ AlertResult AlertDialog.Show(Window? owner, string text, string caption,
 - 전표 출력 실패(#6·#14)는 **Warning 유지** — 거래(승인)는 이미 성립했고 재출력으로 복구 가능한 상황이다
   (receipt_print PRD §5와 일치).
 - 리더기 결과(#8~#11)의 성공/실패 판정은 문구를 파싱하지 않고 **문구를 만드는 쪽이 결과 객체로 종류를 정한다**.
-- 질문창(#7·#13)은 지금처럼 View가 직접 띄운다(ViewModel 이벤트 없음).
+- 질문창(#7·#13)과 포트 중복 경고(#12)는 지금처럼 View가 직접 띄운다(ViewModel 이벤트 없음). 단 **문구는 각 화면 ViewModel의
+  `internal const`로 옮기고 View는 그 상수를 쓴다**(2026-10-02 사용자 확정) — 문구 폭 자동 검증 하네스(`Services/Diagnostics`)가
+  View를 참조하지 않고 모든 고정 문구를 열거할 수 있게 하기 위해서다. 문구의 주인은 지금처럼 각 화면 ViewModel이다(중앙 카탈로그를 두지 않는다).
 
 ### 4.3 ViewModel 이벤트 계약 변경
 
@@ -286,6 +297,9 @@ AlertResult AlertDialog.Show(Window? owner, string text, string caption,
     마침표(예 `프린터 포트를 열 수 없습니다.`). #14는 그 뒤에 재출력 안내 줄 **`가맹점 설정에서 다시 출력하세요.`**(2026-10-01 사용자 확정 —
     처음 안 `가맹점 설정의 '직전거래 전표출력'으로 다시 출력할 수 있습니다.`는 한 줄 폭을 넘어 문장 중간에서 넘어가 축약). **receipt_print PRD §5 표와
     `LastReceiptReprintSelfTest`·`NationalTaxReceiptAssemblerSelfTest`의 문구 기대값도 함께 고친다**(Phase 39).
+  - **사유 문장이 없는 실패**(`PrinterError`·`CompositionFailed`·`Unexpected` 등 receipt_print PRD §5 표에 행이 없는 사유 — 지금은 괄호 없이
+    `전표 출력에 실패했습니다.`만 나옴)는 **제목만** 쓴다(2026-10-02 사용자 확정): #6 재출력 = `전표 출력 실패`, #14 자동 =
+    `전표 출력 실패\n가맹점 설정에서 다시 출력하세요.` 공통 안내 문장을 새로 만들지 않는다(문구 뜻을 바꾸지 않는 원칙).
   - #12 → `리더기 설정 실패\n리더기 포트가 동일합니다.\n서로 다른 포트를 선택해주세요.`(원본 캡처 제목·본문, 2026-10-01 사용자 확정 — 처음 안의 긴 본문은 줄이 어색하게 넘어가 축약)
 - **본문은 어절(띄어쓰기) 단위로만 줄바꿈한다**(웹 `word-break: keep-all`과 같은 동작, 2026-10-01 사용자 확정). WPF 기본은 한글을
   글자 단위로 끊어 `지정할 수 없습니` / `다.`처럼 낱말 중간에서 넘어간다. 한 어절이 폭보다 길 때만(예외 메시지 경로·URL 등) 글자 단위로 끊는다.
@@ -334,10 +348,20 @@ src/KFTCOneCAP.Wpf/
 - **화면 확인**(`--alert-gallery`): 5종 × 버튼 구성, 본문 없음/여러 줄/아주 긴 본문(스크롤), 일반·컴팩트 모드.
   캡처를 원본 캡처(`screenshots/{Error,Warning,Success,Question}.png`)와 나란히 대조하고 **사용자 육안 확인**.
 - **실제 화면 E2E**: 가맹점 설정·리더기 설정·결제창에서 §4.2의 각 문구를 실제로 띄워 종류·버튼·키보드 동작 확인.
-  앱이 `requireAdministrator`라 GUI 자동화가 UIPI에 막히므로 화면 조작은 사용자가 하거나, 검증 동안만
-  `asInvoker`로 낮춘 뒤 즉시 원복한다(앞 범위와 같은 방식).
+  앱이 `requireAdministrator`라 GUI 자동화가 UIPI에 막히므로 Phase 39는 **검증 동안만 `asInvoker`로 낮춰 에이전트가 자동 조작·캡처하고
+  즉시 원복한다**(2026-10-02 사용자 확정, 앞 범위와 같은 방식). 실기 리더기를 쓰며 **#10 키다운로드 성공도 실기로 확인한다**(IPEK 1회 소모를
+  사용자가 수용, 2026-10-02 — 실행 직전 다시 확인받는다).
 - **회귀**: `--receipt-print-test self`(재출력·조립 하네스 포함) 통과, `MessageBox.Show` grep 0건.
 - **Win7**: 실기가 없으면 "Win7 미확인"으로 기록한다(추측으로 완료 표시하지 않는다).
+
+### 6.1 검증 결과 (Phase 39, 2026-10-02 — 상세는 `development_plan.md` P39-1~P39-5·CP1)
+
+- **로직**: `--alert-dialog-test self`(Phase38 33개 + Phase39 종류·문구 대조 34건 + 줄 폭 57문구×2글꼴, Pretendard 실제 로드 확인·검출력 확인 포함)와
+  `--receipt-print-test self` 모두 종합=통과, 실패 0건. 가장 빠듯한 줄은 #1 본문 둘째 줄(Malgun Gothic 269.4/271) — 컴팩트 실화면에서 한 줄 유지 확인.
+- **실제 화면**(`asInvoker` 일시 해제, 리더기 실기): #1·#2·#4·#6·#7·#8·#9·#10·#12·#13 캡처로 확인, #10 키다운로드 성공 1회(IPEK 1회 소모),
+  #14는 사용자 육안 확인(스텁 VAN 승인 + 사용자 PIN), #7 키 동작(ESC·Alt+F4 유지, Enter=예). 
+- **미확인**: #3·#5 실화면(재현 수단 없음/조건 미충족 — self·갤러리로 대체), #11 아이콘·제목 캡처(다른 창에 가림 — self로 대체), #13 키 동작 실측, Win7.
+- CP1(`checkpoint-reviewer`) 통과 — L 2건(줄 폭 하네스의 글꼴 대체 미검출, 주석 잔재) Opus 수정·재확인.
 
 ---
 
@@ -356,4 +380,7 @@ src/KFTCOneCAP.Wpf/
 | ~~9~~ | ~~`30초 이상 입력` 문구~~ | **확정**(2026-10-01) — `카드입력 타임아웃은 30초 이상 입력해주세요.` | 해소 |
 | ~~12~~ | ~~제목 한 줄 · 긴 첫 줄 문구~~ | **확정**(2026-10-01, P38-5 중 사용자 요구) — 제목 줄바꿈 금지, 말줄임표 없음 + #1·#6·#12·#14를 짧은 제목 + 본문으로(§4.4), 제목 폭 자동 검증 | 해소(Phase 39 반영) |
 | ~~10~~ | ~~이벤트 통합~~ | **확정**(2026-10-01) — 세 ViewModel 모두 `AlertRequested(AlertMessage)` 하나로 | 해소 |
+| ~~13~~ | ~~사유 없는 전표 출력 실패 문구~~ | **확정**(2026-10-02) — 제목만(`전표 출력 실패`, #14는 재출력 안내 줄만 붙음), §4.4 | 해소 |
+| ~~14~~ | ~~문구 폭 검증의 문구 출처~~ | **확정**(2026-10-02) — View에 있던 #7·#12·#13 문구를 각 ViewModel `internal const`로, 하네스는 VM 상수·문구 빌더를 열거(§4.2) | 해소 |
+| ~~15~~ | ~~Phase 39 E2E 방식·실기 범위~~ | **확정**(2026-10-02) — `asInvoker` 일시 해제 + 에이전트 자동 조작, 리더기 실기, #10 키다운로드 성공 포함(§6) | 해소 |
 | ~~11~~ | ~~원본 캡처와 소스 수치 차이~~ | **해소**(2026-10-01) — 캡처 4장 픽셀 측정, §2.6에 기록, §3.2에 반영(폭 376·버튼 40·간격). 예 버튼 색 차이는 개선 D9로 | 해소 |

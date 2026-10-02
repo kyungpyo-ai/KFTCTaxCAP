@@ -2,7 +2,9 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
 using KFTCOneCAP.Wpf.ViewModels.Payment;
+using KFTCOneCAP.Wpf.Views.Dialogs;
 
 namespace KFTCOneCAP.Wpf.Views;
 
@@ -60,10 +62,11 @@ public partial class PaymentScreenWindow : Window
         if (Owner == null)
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        // Phase 34 P34-3(docs/receipt_print/PRD.md §5) — 납부확인증 자동 출력 실패 경고. ViewModel은
-        // MessageBox를 모르므로 이벤트로 받는다(ShopSetupWindow와 같은 패턴). 출력은 창이 닫힌 뒤에도
-        // 끝까지 진행되므로, 닫힐 때 구독을 해제해 닫힌 창 위에 경고창이 뜨지 않게 한다.
-        ViewModel.ReceiptPrintWarningRequested += ViewModel_ReceiptPrintWarningRequested;
+        // Phase 34 P34-3(docs/receipt_print/PRD.md §5) → Phase 39(docs/alert_dialog/PRD.md §4) — 납부확인증
+        // 자동 출력 실패 경고. ViewModel은 알림창을 모르므로 이벤트로 받는다(ShopSetupWindow와 같은 패턴).
+        // 출력은 창이 닫힌 뒤에도 끝까지 진행되므로, 닫힐 때 구독을 해제해 닫힌 창 위에 경고창이 뜨지
+        // 않게 한다.
+        ViewModel.AlertRequested += ViewModel_AlertRequested;
         Closed += PaymentScreenWindow_Closed;
     }
 
@@ -72,19 +75,19 @@ public partial class PaymentScreenWindow : Window
     private void PaymentScreenWindow_Closed(object? sender, EventArgs e)
     {
         _isClosed = true;
-        ViewModel.ReceiptPrintWarningRequested -= ViewModel_ReceiptPrintWarningRequested;
+        ViewModel.AlertRequested -= ViewModel_AlertRequested;
         Closed -= PaymentScreenWindow_Closed;
     }
 
     /// <summary>경고창(Warning, 제목 "전표 출력"). 이벤트가 UI 스레드 밖에서 올 수도 있어 디스패처로
     /// 넘기고, 넘어간 시점에 창이 이미 닫혔으면 띄우지 않는다(로그는 출력 서비스가 이미 S12로 남김).</summary>
-    private void ViewModel_ReceiptPrintWarningRequested(object? sender, string message)
+    private void ViewModel_AlertRequested(object? sender, AlertMessage m)
     {
         void Show()
         {
             if (_isClosed || !IsLoaded)
                 return;
-            MessageBox.Show(this, message, "전표 출력", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AlertDialog.Show(this, m.Text, "전표 출력", m.Kind);
         }
 
         if (Dispatcher.CheckAccess())

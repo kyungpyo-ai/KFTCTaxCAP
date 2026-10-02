@@ -6,6 +6,8 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using KFTCOneCAP.Wpf.ViewModels;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
+using KFTCOneCAP.Wpf.Views.Dialogs;
 
 namespace KFTCOneCAP.Wpf.Views;
 
@@ -13,7 +15,7 @@ namespace KFTCOneCAP.Wpf.Views;
 /// 가맹점 설정 화면.
 /// Phase 23(docs/operations/development_plan.md P23-3) — MVVM으로 만든다(PRD.md §0.2). 검증/저장은
 /// <see cref="ShopSetupViewModel"/>이 맡고, 이 코드비하인드는 <see cref="Window.Close"/>/
-/// <see cref="Window.DialogResult"/>/<see cref="MessageBox"/> 호출과 경합 게이트
+/// <see cref="Window.DialogResult"/>/알림창(<see cref="AlertDialog"/>, Phase 39) 호출과 경합 게이트
 /// (<see cref="App.SetupScreenGate"/>) 등록/해제만 담당한다 — <c>ReaderSetupWindow.xaml.cs</c>와
 /// 같은 역할 분담이다.
 ///
@@ -34,10 +36,9 @@ public partial class ShopSetupWindow : Window
     {
         InitializeComponent();
         DataContext = ViewModel;
-        ViewModel.ResultMessageReady += ViewModel_ResultMessageReady;
-        // Phase 31(P31-3) — 정보(안내) 메시지/포커스 요청은 경고와 다른 처리가 필요해 별도 이벤트로
-        // 받는다(ViewModel은 MessageBox/TextBox를 모른다, 계층 규칙).
-        ViewModel.InfoMessageReady += ViewModel_InfoMessageReady;
+        ViewModel.AlertRequested += ViewModel_AlertRequested;
+        // Phase 31(P31-3) — 포커스 요청은 ViewModel이 TextBox를 몰라야 하므로 별도 이벤트로 받는다
+        // (계층 규칙).
         ViewModel.FocusPrinterPortRequested += ViewModel_FocusPrinterPortRequested;
     }
 
@@ -78,16 +79,12 @@ public partial class ShopSetupWindow : Window
     }
 
     /// <summary>
-    /// P23-3 — ViewModel은 MessageBox를 직접 호출하지 않는다(계층 규칙). 검증 실패/저장 실패 문구가
-    /// 준비되면 이 이벤트로 알려오고, 여기서만 모달로 보여준다.
+    /// P23-3 → Phase 39(docs/alert_dialog/PRD.md §4) — ViewModel은 알림창을 직접 띄우지 않는다(계층
+    /// 규칙). 검증 실패/저장 실패/안내 문구가 준비되면 이 이벤트로 알려오고, 여기서만 모달로 보여준다.
+    /// 종류(경고/오류/정보)는 <see cref="AlertMessage.Kind"/>가 정한다.
     /// </summary>
-    private void ViewModel_ResultMessageReady(object? sender, string message) =>
-        MessageBox.Show(this, message, "가맹점 설정", MessageBoxButton.OK, MessageBoxImage.Warning);
-
-    /// <summary>Phase 31(P31-3) — 직전거래 전표출력 안내(PRD §2.8.5)는 경고가 아니라 정보 아이콘으로
-    /// 띄운다. 기존 <see cref="ViewModel_ResultMessageReady"/>(Warning 고정)는 그대로 둔다.</summary>
-    private void ViewModel_InfoMessageReady(object? sender, string message) =>
-        MessageBox.Show(this, message, "가맹점 설정", MessageBoxButton.OK, MessageBoxImage.Information);
+    private void ViewModel_AlertRequested(object? sender, AlertMessage m) =>
+        AlertDialog.Show(this, m.Text, "가맹점 설정", m.Kind);
 
     /// <summary>Phase 31(P31-3) — 포트 검증 실패 시(PRD §2.8.4) 포트 입력칸에 포커스를 주고 전체
     /// 선택한다(원본 SlipSetupDlg.cpp:642-643 SetFocus + SetSel(0,-1)과 동일 UX).</summary>
@@ -180,14 +177,14 @@ public partial class ShopSetupWindow : Window
         if (!ViewModel.IsDirty())
             return true;
 
-        var result = MessageBox.Show(
+        var result = AlertDialog.Show(
             this,
-            "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?",
+            ShopSetupViewModel.DiscardChangesQuestion,
             "가맹점 설정",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            AlertKind.Question,
+            AlertButtons.YesNo);
 
-        return result == MessageBoxResult.Yes;
+        return result == AlertResult.Yes;
     }
 
     // ===================== 필드 안내 info 팝오버 =====================

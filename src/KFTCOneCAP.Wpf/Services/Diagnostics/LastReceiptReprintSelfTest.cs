@@ -12,6 +12,7 @@ using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
 using KFTCOneCAP.Wpf.Services.Storage;
 using KFTCOneCAP.Wpf.ViewModels;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
 using KFTCOneCAP.Wpf.ViewModels.Payment;
 
 namespace KFTCOneCAP.Wpf.Services.Diagnostics;
@@ -290,7 +291,7 @@ internal static class LastReceiptReprintSelfTest
             var store = new LastReceiptStore(dbPath);
             var viewModel = new PaymentScreenViewModel(service, store);
             int warnings = 0;
-            viewModel.ReceiptPrintWarningRequested += (_, _) => warnings++;
+            viewModel.AlertRequested += (_, _) => warnings++;
 
             viewModel.PrintReceiptIfApprovedAsync(Fake902614(RawTaxpayerNumber)).GetAwaiter().GetResult();
 
@@ -405,30 +406,60 @@ internal static class LastReceiptReprintSelfTest
     }
 
     // ------------------------------------------------------------------
-    // ⑥ 경고 문구 — 자동 출력은 재출력 안내 포함(마지막 줄), 재출력 실패 문구는 미포함
+    // ⑥ 경고 문구(Phase 39 새 규칙, docs/alert_dialog/PRD.md §4.4) — 재출력 문구는 항상 "전표 출력 실패"로
+    // 시작하고 재출력 안내 줄이 없다. 사유 문장이 있는 6종(PrinterError/CompositionFailed/Unexpected
+    // 제외)은 정확히 두 줄(제목+사유), 사유 없는 3종은 정확히 한 줄(제목만). 자동 출력 문구 = 재출력 문구 +
+    // "\n" + 재출력 안내 줄(ExpectedReprintHintSuffix) — 안내가 "덧붙여지는지"를 직접 검사한다(기대값만
+    // 바꿔 통과시키지 않는다, development_plan.md Phase 39 "실수가 나기 쉬운 곳" ②).
     // ------------------------------------------------------------------
     private static bool RunMessageCases()
     {
         bool ok = true;
-        foreach (ReceiptPrintFailureReason reason in new[]
-                 {
-                     ReceiptPrintFailureReason.InvalidPort, ReceiptPrintFailureReason.PortOpenFailed,
-                     ReceiptPrintFailureReason.NoResponse, ReceiptPrintFailureReason.PaperEnd,
-                     ReceiptPrintFailureReason.CoverOpen, ReceiptPrintFailureReason.WriteFailed,
-                     ReceiptPrintFailureReason.Unexpected,
-                 })
+
+        var withReason = new[]
+        {
+            ReceiptPrintFailureReason.InvalidPort, ReceiptPrintFailureReason.PortOpenFailed,
+            ReceiptPrintFailureReason.NoResponse, ReceiptPrintFailureReason.PaperEnd,
+            ReceiptPrintFailureReason.CoverOpen, ReceiptPrintFailureReason.WriteFailed,
+        };
+        var withoutReason = new[]
+        {
+            ReceiptPrintFailureReason.PrinterError, ReceiptPrintFailureReason.CompositionFailed,
+            ReceiptPrintFailureReason.Unexpected,
+        };
+
+        foreach (ReceiptPrintFailureReason reason in withReason)
+        {
+            string reprint = PaymentScreenViewModel.BuildReceiptPrintFailureMessage(reason);
+            string[] lines = reprint.Split('\n');
+            bool one = lines.Length == 2
+                && lines[0] == "전표 출력 실패"
+                && !reprint.Contains("가맹점 설정에서 다시 출력하세요.");
+            LogCheck($"⑥ {reason} — 재출력 문구 정확히 두 줄(제목+사유), 안내 없음", one, one ? null : $"실제={Show(reprint)}");
+            ok &= one;
+        }
+
+        foreach (ReceiptPrintFailureReason reason in withoutReason)
+        {
+            string reprint = PaymentScreenViewModel.BuildReceiptPrintFailureMessage(reason);
+            bool one = reprint == "전표 출력 실패" && !reprint.Contains('\n');
+            LogCheck($"⑥ {reason} — 재출력 문구 정확히 한 줄(제목만)", one, one ? null : $"실제={Show(reprint)}");
+            ok &= one;
+        }
+
+        foreach (ReceiptPrintFailureReason reason in withReason.Concat(withoutReason))
         {
             string auto = PaymentScreenViewModel.BuildReceiptPrintWarningMessage(reason);
             string reprint = PaymentScreenViewModel.BuildReceiptPrintFailureMessage(reason);
-            bool one = auto == reprint + NationalTaxReceiptAssemblerSelfTest.ExpectedReprintHintSuffix
-                && reprint.StartsWith("전표 출력에 실패했습니다.", StringComparison.Ordinal)
-                && !reprint.Contains("직전거래 전표출력")
-                && !reprint.Contains("\n");
-            LogCheck($"⑥ {reason} — 자동=안내 포함 / 재출력=안내 없음", one);
+            bool one = auto == reprint + NationalTaxReceiptAssemblerSelfTest.ExpectedReprintHintSuffix;
+            LogCheck($"⑥ {reason} — 자동 문구 = 재출력 문구 + 재출력 안내 접미사", one, one ? null : $"자동={Show(auto)}, 재출력={Show(reprint)}");
             ok &= one;
         }
+
         return ok;
     }
+
+    private static string Show(string v) => $"\"{v.Replace("\n", "\\n")}\"";
 
     // ------------------------------------------------------------------
     // ⑦ 가맹점 설정 화면 버튼(ShopSetupViewModel.RequestLastSlipPrintCommand)
@@ -451,7 +482,16 @@ internal static class LastReceiptReprintSelfTest
         public void Release() => _tcs.TrySetResult(PrintResult.Success());
     }
 
-    private static (ShopSetupViewModel Vm, List<string> Warnings, List<string> Infos) NewShopSetup(
+    /// <summary>Phase 39 — 옛 경고/정보 이벤트 두 개를 <c>AlertRequested</c> 하나로 받는다. 종류별로
+    /// 걸러 보는 <see cref="Warnings"/>/<see cref="Infos"/>는 문구만 모은다(판정에서 종류도 따로 확인한다).</summary>
+    private sealed class CollectedAlerts
+    {
+        public readonly List<AlertMessage> All = new();
+        public IEnumerable<string> Warnings => All.Where(m => m.Kind == AlertKind.Warning).Select(m => m.Text);
+        public IEnumerable<string> Infos => All.Where(m => m.Kind == AlertKind.Info).Select(m => m.Text);
+    }
+
+    private static (ShopSetupViewModel Vm, CollectedAlerts Alerts) NewShopSetup(
         IReceiptPrinter printer, LastReceiptStore store, string port, string speedDisplay)
     {
         // 설정 로더는 OFF — 재출력이 설정을 보지 않음을 화면 경로에서도 확인한다. 실제 레지스트리 값은
@@ -463,11 +503,9 @@ internal static class LastReceiptReprintSelfTest
             PrinterPort = port,
             PrinterSpeedSelection = speedDisplay,
         };
-        var warnings = new List<string>();
-        var infos = new List<string>();
-        vm.ResultMessageReady += (_, m) => { lock (warnings) warnings.Add(m); };
-        vm.InfoMessageReady += (_, m) => { lock (infos) infos.Add(m); };
-        return (vm, warnings, infos);
+        var alerts = new CollectedAlerts();
+        vm.AlertRequested += (_, m) => { lock (alerts.All) alerts.All.Add(m); };
+        return (vm, alerts);
     }
 
     private static bool RunShopSetupButtonCases()
@@ -478,22 +516,22 @@ internal static class LastReceiptReprintSelfTest
         {
             var store = new LastReceiptStore(dbPath);
 
-            // (a) 포트 빈 값 → 기존 오류창, 저장소·프린터 미호출.
+            // (a) 포트 빈 값 → 경고(Warning), 저장소·프린터 미호출.
             var fakeA = new FakeReceiptPrinter(PrintResult.Success());
             var a = NewShopSetup(fakeA, store, port: "", speedDisplay: "9600bps");
             a.Vm.RequestLastSlipPrintCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            bool aOk = a.Warnings.SequenceEqual(new[] { "프린터 포트번호를 입력해주세요." }) && a.Infos.Count == 0 && fakeA.CallCount == 0;
-            LogCheck("⑦ 포트 빈 값 → \"프린터 포트번호를 입력해주세요.\"", aOk,
-                $"경고=[{string.Join("|", a.Warnings)}], 안내=[{string.Join("|", a.Infos)}], 출력={fakeA.CallCount}");
+            bool aOk = a.Alerts.Warnings.SequenceEqual(new[] { "프린터 포트번호를 입력해주세요." }) && a.Alerts.Infos.Count() == 0 && fakeA.CallCount == 0;
+            LogCheck("⑦ 포트 빈 값 → Warning \"프린터 포트번호를 입력해주세요.\"", aOk,
+                $"경고=[{string.Join("|", a.Alerts.Warnings)}], 안내=[{string.Join("|", a.Alerts.Infos)}], 출력={fakeA.CallCount}");
             ok &= aOk;
 
-            // (b) 저장 없음 → 정보창, 출력 0회.
+            // (b) 저장 없음 → 정보(Info), 출력 0회.
             var fakeB = new FakeReceiptPrinter(PrintResult.Success());
             var b = NewShopSetup(fakeB, store, port: "7", speedDisplay: "9600bps");
             b.Vm.RequestLastSlipPrintCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            bool bOk = b.Infos.SequenceEqual(new[] { "출력할 직전 거래가 없습니다." }) && b.Warnings.Count == 0 && fakeB.CallCount == 0;
-            LogCheck("⑦ 저장 없음 → \"출력할 직전 거래가 없습니다.\"(정보)", bOk,
-                $"경고=[{string.Join("|", b.Warnings)}], 안내=[{string.Join("|", b.Infos)}], 출력={fakeB.CallCount}");
+            bool bOk = b.Alerts.Infos.SequenceEqual(new[] { "출력할 직전 거래가 없습니다." }) && b.Alerts.Warnings.Count() == 0 && fakeB.CallCount == 0;
+            LogCheck("⑦ 저장 없음 → Info \"출력할 직전 거래가 없습니다.\"", bOk,
+                $"경고=[{string.Join("|", b.Alerts.Warnings)}], 안내=[{string.Join("|", b.Alerts.Infos)}], 출력={fakeB.CallCount}");
             ok &= bOk;
 
             store.Save(Sample(), DateTime.Now);
@@ -506,22 +544,22 @@ internal static class LastReceiptReprintSelfTest
             expectedReceipt.TaxpayerNumber = MaskedTaxpayerNumber;
             expectedReceipt.IsReprint = true;
             byte[] expectedPayload = EscPosDocumentEncoder.Encode(NationalTaxReceiptComposer.Compose(expectedReceipt));
-            bool cOk = c.Warnings.Count == 0 && c.Infos.Count == 0 && fakeC.CallCount == 1
+            bool cOk = c.Alerts.All.Count == 0 && fakeC.CallCount == 1
                 && fakeC.LastConnection?.PortNumberText == "7" && fakeC.LastConnection?.BaudRate == 9600
                 && fakeC.LastPayload is not null && fakeC.LastPayload.SequenceEqual(expectedPayload);
             LogCheck("⑦ 저장 있음 + 성공 → 안내창 없음, 화면 포트·속도(7/9600), (재출력) 영수증", cOk,
-                $"경고={c.Warnings.Count}, 안내={c.Infos.Count}, 출력={fakeC.CallCount}, " +
+                $"알림={c.Alerts.All.Count}, 출력={fakeC.CallCount}, " +
                 $"port={fakeC.LastConnection?.PortNumberText}, baud={fakeC.LastConnection?.BaudRate}");
             ok &= cOk;
 
-            // (d) 실패 → 경고창(PRD §5 문구, 재출력 안내 없음).
+            // (d) 실패 → 경고(Warning, PRD §5 문구, 재출력 안내 없음).
             var fakeD = new FakeReceiptPrinter(PrintResult.Fail(PrintFailureReason.PortOpenFailed));
             var d = NewShopSetup(fakeD, store, port: "4", speedDisplay: "115200bps");
             d.Vm.RequestLastSlipPrintCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            bool dOk = d.Warnings.SequenceEqual(new[] { "전표 출력에 실패했습니다. (프린터 포트를 열 수 없습니다)" })
-                && d.Infos.Count == 0 && fakeD.LastConnection?.BaudRate == 115200;
-            LogCheck("⑦ 실패 → \"전표 출력에 실패했습니다. (프린터 포트를 열 수 없습니다)\"(재출력 안내 없음)", dOk,
-                $"경고=[{string.Join("|", d.Warnings)}], 안내={d.Infos.Count}");
+            bool dOk = d.Alerts.Warnings.SequenceEqual(new[] { "전표 출력 실패\n프린터 포트를 열 수 없습니다." })
+                && d.Alerts.Infos.Count() == 0 && fakeD.LastConnection?.BaudRate == 115200;
+            LogCheck("⑦ 실패 → Warning \"전표 출력 실패\\n프린터 포트를 열 수 없습니다.\"(재출력 안내 없음)", dOk,
+                $"경고=[{string.Join("|", d.Alerts.Warnings)}], 안내={d.Alerts.Infos.Count()}");
             ok &= dOk;
 
             // (e) 실행 중 버튼 비활성(CanExecute=false) → 완료 후 다시 활성. 진행 중 재실행 요청은 무시.

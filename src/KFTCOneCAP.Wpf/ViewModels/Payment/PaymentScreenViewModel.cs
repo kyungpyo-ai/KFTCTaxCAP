@@ -11,6 +11,7 @@ using KFTCOneCAP.Wpf.Services.Pos;
 using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
 using KFTCOneCAP.Wpf.Services.Storage;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
 
 namespace KFTCOneCAP.Wpf.ViewModels.Payment;
 
@@ -100,12 +101,12 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
     private readonly LastReceiptStore _lastReceiptStore;
 
     /// <summary>
-    /// Phase 34 P34-3(PRD §5) — 자동 출력이 실패했을 때 View에 경고 문구를 알린다. ViewModel은 MessageBox를
-    /// 모른다(계층 규칙, <c>ShopSetupViewModel.ResultMessageReady</c>와 같은 패턴). Skipped/Printed는 알리지
-    /// 않는다. 출력은 창과 무관하게 끝까지 진행되므로 창이 닫힌 뒤에 발생할 수 있다 — View는 닫힐 때
-    /// 구독을 해제한다.
+    /// Phase 34 P34-3(PRD §5) → Phase 39(docs/alert_dialog/PRD.md §4.3) — 자동 출력이 실패했을 때 View에
+    /// 경고를 알린다(항상 <see cref="AlertKind.Warning"/>). ViewModel은 알림창을 모른다(계층 규칙,
+    /// <c>ShopSetupViewModel.AlertRequested</c>와 같은 패턴). Skipped/Printed는 알리지 않는다. 출력은 창과
+    /// 무관하게 끝까지 진행되므로 창이 닫힌 뒤에 발생할 수 있다 — View는 닫힐 때 구독을 해제한다.
     /// </summary>
-    public event EventHandler<string>? ReceiptPrintWarningRequested;
+    public event EventHandler<AlertMessage>? AlertRequested;
 
     /// <summary>
     /// <c>HasResponse</c> PropertyChanged 핸들러에서 부르는 진입점. <c>async void</c>는 이벤트 핸들러 경로라서이며,
@@ -116,7 +117,7 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         await PrintReceiptIfApprovedAsync(approvalTab.TryReadResponseField);
 
     /// <summary>
-    /// 승인(PRD §2.3)이면 세 탭 값으로 영수증을 조립한 뒤 출력한다. 실패면 <see cref="ReceiptPrintWarningRequested"/>.
+    /// 승인(PRD §2.3)이면 세 탭 값으로 영수증을 조립한 뒤 출력한다. 실패면 <see cref="AlertRequested"/>.
     ///
     /// <b>실행 순서(CP1 M-1)</b>: 이 메서드는 <c>PaymentTelegramTabViewModel.SendAsync</c>의 <c>HasResponse = true</c>
     /// setter 안(= 그 메서드의 <c>finally { IsSending = false; }</c>보다 먼저)에서 동기로 불린다.
@@ -156,7 +157,7 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
             });
 
             if (outcome.Status == ReceiptPrintStatus.Failed)
-                ReceiptPrintWarningRequested?.Invoke(this, BuildReceiptPrintWarningMessage(outcome.Failure));
+                AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Warning, BuildReceiptPrintWarningMessage(outcome.Failure)));
         }
         catch (Exception ex)
         {
@@ -168,11 +169,12 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         }
     }
 
-    /// <summary>Phase 35 P35-1(PRD §5) — 자동 출력 경고창 끝에만 붙이는 재출력 안내 한 줄.</summary>
-    internal const string ReprintHintLine = "가맹점 설정의 '직전거래 전표출력'으로 다시 출력할 수 있습니다.";
+    /// <summary>Phase 35 P35-1(PRD §5) → Phase 39(docs/alert_dialog/PRD.md §4.4, 2026-10-01 확정 — 처음 안은
+    /// 한 줄 폭을 넘어 축약) — 자동 출력 경고창 끝에만 붙이는 재출력 안내 한 줄.</summary>
+    internal const string ReprintHintLine = "가맹점 설정에서 다시 출력하세요.";
 
     /// <summary>
-    /// PRD §5 — 결제창 <b>자동 출력</b> 경고 문구. 실패 사유 문장(<see cref="BuildReceiptPrintFailureMessage"/>) 끝에
+    /// PRD §5 — 결제창 <b>자동 출력</b> 경고 문구. 실패 제목(<see cref="BuildReceiptPrintFailureMessage"/>) 끝에
     /// 줄을 바꿔 재출력 안내(<see cref="ReprintHintLine"/>)를 붙인다(Phase 35, 2026-10-01 확정 — 재출력 실패 문구에는
     /// 붙이지 않는다).
     /// </summary>
@@ -180,14 +182,16 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         $"{BuildReceiptPrintFailureMessage(reason)}\n{ReprintHintLine}";
 
     /// <summary>
-    /// PRD §5 표의 실패 사유 문장(자동 출력·재출력 공통, 재출력 안내 없음). 가맹점 설정 화면의 재출력 실패
-    /// 경고창은 이 문장을 그대로 쓴다. PRD 표에 행이 없는 사유
+    /// PRD §5 표의 실패 제목 + 사유 문장(자동 출력·재출력 공통, 재출력 안내 없음). 가맹점 설정 화면의 재출력
+    /// 실패 경고창은 이 문구를 그대로 쓴다. docs/alert_dialog/PRD.md §4.4(2026-10-02 확정) — 알림창 제목은
+    /// 한 줄을 넘지 않으므로 첫 줄은 항상 <c>전표 출력 실패</c>(제목)이고, 사유가 있으면 둘째 줄에 마침표
+    /// 포함 문장을 둔다. PRD 표에 행이 없는 사유
     /// (<see cref="ReceiptPrintFailureReason.PrinterError"/>/<see cref="ReceiptPrintFailureReason.CompositionFailed"/>/
-    /// <see cref="ReceiptPrintFailureReason.Unexpected"/> 등)는 괄호 사유 없이 공통 문장만 보여 준다.
+    /// <see cref="ReceiptPrintFailureReason.Unexpected"/> 등)는 사유 줄 없이 제목만 보여 준다.
     /// </summary>
     internal static string BuildReceiptPrintFailureMessage(ReceiptPrintFailureReason reason)
     {
-        const string prefix = "전표 출력에 실패했습니다.";
+        const string title = "전표 출력 실패";
         string? detail = reason switch
         {
             ReceiptPrintFailureReason.InvalidPort => "프린터 포트 설정 확인",
@@ -198,7 +202,7 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
             ReceiptPrintFailureReason.WriteFailed => "전송 오류",
             _ => null,
         };
-        return detail is null ? prefix : $"{prefix} ({detail})";
+        return detail is null ? title : $"{title}\n{detail}.";
     }
 
     /// <summary>Phase 30 P30-4(PRD §13.3 "501008/800000 전송 성공 → 뒤 전문 탭 갱신") — <paramref

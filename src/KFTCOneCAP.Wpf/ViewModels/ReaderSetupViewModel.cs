@@ -11,6 +11,7 @@ using KFTCOneCAP.Wpf.Services.Diagnostics;
 using KFTCOneCAP.Wpf.Services.Reader;
 using KFTCOneCAP.Wpf.Services.Settings;
 using KFTCOneCAP.Wpf.Services.Storage;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
 
 namespace KFTCOneCAP.Wpf.ViewModels;
 
@@ -42,10 +43,10 @@ public enum IntegrityListState
 ///
 /// 이 클래스는 WPF Window/Control 타입을 알지 못한다(ViewModels → Services → Protocol → Interop
 /// 단방향 계층 규칙, docs/payment_relay/ROADMAP.md "계층 구조"). Window.Close()/DialogResult/
-/// MessageBox/Popup 배치/DWM 타이틀바처럼 창·OS에 직접 묶인 동작은 여전히
+/// 알림창/Popup 배치/DWM 타이틀바처럼 창·OS에 직접 묶인 동작은 여전히
 /// Views/ReaderSetupWindow.xaml.cs에 남아 있다(그쪽 파일 상단 주석에 이유를 남겨 둠). P12-3이
-/// 추가한 <see cref="ResultMessageReady"/>도 같은 이유로 이벤트로만 알리고 MessageBox를 직접
-/// 호출하지 않는다.
+/// 추가한 <see cref="AlertRequested"/>(Phase 39 — 문자열 하나만 알리던 옛 이벤트를 종류 포함
+/// 계약으로 교체)도 같은 이유로 이벤트로만 알리고 알림창을 직접 띄우지 않는다.
 /// </summary>
 public sealed partial class ReaderSetupViewModel : ObservableObject
 {
@@ -201,14 +202,20 @@ public sealed partial class ReaderSetupViewModel : ObservableObject
     public ReaderActionButtonViewModel Reader2UpdateButton { get; }
 
     /// <summary>
-    /// P12-3 — PRD §6.1/§6.2/§6.4가 요구하는 여러 줄 결과 문구는 화면 어디에도 인라인으로 놓을
-    /// 자리가 없어 모달 알림이 전제다. 다만 ViewModel이 MessageBox를 직접 호출하지 않는다(P7-2
-    /// 규칙 — Window 타입에 묶인 동작은 View 책임) — 이 이벤트로 "보여줄 문구가 준비됐다"만
-    /// 알리고, Views/ReaderSetupWindow.xaml.cs가 구독해 MessageBox.Show를 호출한다.
+    /// P12-3 → Phase 39(docs/alert_dialog/PRD.md §4.2·§4.3) — PRD §6.1/§6.2/§6.4가 요구하는 여러 줄
+    /// 결과 문구는 화면 어디에도 인라인으로 놓을 자리가 없어 모달 알림이 전제다. 다만 ViewModel이
+    /// 알림창을 직접 띄우지 않는다(P7-2 규칙 — Window 타입에 묶인 동작은 View 책임) — 이 이벤트로
+    /// "보여줄 문구와 종류가 준비됐다"만 알리고, Views/ReaderSetupWindow.xaml.cs가 구독해
+    /// <c>AlertDialog.Show</c>를 호출한다. 종류(성공/실패)는 <see cref="BuildMessage"/>/
+    /// <see cref="BuildKeyDownloadMessage"/>가 결과 객체로 정한다(문구를 파싱하지 않는다, PRD §4.2).
     /// </summary>
-    public event EventHandler<string>? ResultMessageReady;
+    public event EventHandler<AlertMessage>? AlertRequested;
 
-    private void RaiseResultMessage(string message) => ResultMessageReady?.Invoke(this, message);
+    // Phase 39(docs/alert_dialog/PRD.md §4.2 #12·#13) — View에 리터럴로 있던 문구를 옮겼다.
+    internal const string DuplicatePortMessage = "리더기 설정 실패\n리더기 포트가 동일합니다.\n서로 다른 포트를 선택해주세요.";
+    internal const string DiscardChangesQuestion = "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?";
+
+    private void RaiseResultMessage(AlertMessage message) => AlertRequested?.Invoke(this, message);
 
     /// <summary>0x60→0x70 초기화(PRD §6.1). Phase 9(P9-3) 파일럿을 정식 배선으로 교체했다 — 그때는
     /// 리더기1 하나만, 로그로만 남겼다. 지금은 리더기1/2 모두, 결과를 PRD 문구로 화면에도 보여준다.
@@ -225,7 +232,7 @@ public sealed partial class ReaderSetupViewModel : ObservableObject
 
         var outcome = await reader.SendInitCommandAsync(CommandTimeout);
         LogOutcome(readerLabel, "초기화", outcome.Kind, outcome.ResponseCode, outcome.DllResultName, outcome.DllResult, outcome.Detail);
-        // R-9(Phase 24 전체 Opus 리뷰) — RaiseResultMessage→MessageBox.Show가 동기 모달이라, 그
+        // R-9(Phase 24 전체 Opus 리뷰) — RaiseResultMessage→알림창(AlertDialog.Show)이 동기 모달이라, 그
         // 뒤에 LogActionBoundary를 부르면 사용자가 알림창을 닫을 때까지 "처리 종료" 로그가 안
         // 찍힌다. 이 로그는 "완료" 의미가 아니라 "로그 기록이 끝났다"는 뜻이므로 알림 직전이 더
         // 정확하다 — 순서를 뒤바꾼다.
@@ -299,7 +306,7 @@ public sealed partial class ReaderSetupViewModel : ObservableObject
     /// 키다운로드 5단계(PRD.md §3.2) 화면 배선(P24-6). 시퀀스 오케스트레이션 자체는
     /// <see cref="Services.Reader.KeyDownloadService"/>(P24-4)에 있다 — 이 메서드는
     /// <see cref="ExecuteIntegrityAsync"/>와 동일하게 포트를 연결 상태로 맞추고, 서비스를 호출해
-    /// 결과를 문구로 바꿔 <see cref="ResultMessageReady"/>로 알리기만 한다. 이력을 남기지 않으므로
+    /// 결과를 문구로 바꿔 <see cref="AlertRequested"/>로 알리기만 한다. 이력을 남기지 않으므로
     /// <see cref="RefreshIntegrityRowsAsync"/>를 호출하지 않고, <see cref="_integrityCheckStore"/>도
     /// 전혀 쓰지 않는다(PRD.md §3.1).
     ///
@@ -340,13 +347,15 @@ public sealed partial class ReaderSetupViewModel : ObservableObject
         RaiseResultMessage(BuildKeyDownloadMessage(outcome));
     }
 
-    /// <summary>P24-6 — <see cref="Services.Reader.KeyDownloadOutcome"/>은 <see cref="ReaderCommandOutcomeKind"/>와
-    /// 모양이 달라(단계 + 통합 실패 종류) <see cref="BuildMessage"/>를 재사용하지 않는다. 성공 문구엔
-    /// 모듈 ID를, 실패 문구엔 단계 + 응답코드를 담는다(PRD.md §3.6).</summary>
-    private static string BuildKeyDownloadMessage(Services.Reader.KeyDownloadOutcome outcome)
+    /// <summary>P24-6 → Phase 39(docs/alert_dialog/PRD.md §4.2 #10·#11) — <see cref="Services.Reader.KeyDownloadOutcome"/>은
+    /// <see cref="ReaderCommandOutcomeKind"/>와 모양이 달라(단계 + 통합 실패 종류) <see cref="BuildMessage"/>를
+    /// 재사용하지 않는다. 성공 문구엔 모듈 ID를, 실패 문구엔 단계 + 응답코드를 담는다(PRD.md §3.6). 종류는
+    /// <see cref="Services.Reader.KeyDownloadOutcome.IsSuccess"/>가 정한다(문구 뜻은 바꾸지 않는다, Phase 39).
+    /// <c>internal static</c> — P39-4 하네스가 결과 객체 조합을 직접 넣어 호출한다.</summary>
+    internal static AlertMessage BuildKeyDownloadMessage(Services.Reader.KeyDownloadOutcome outcome)
     {
         if (outcome.IsSuccess)
-            return $"리더기 키다운로드 성공\n모듈 ID : {outcome.ModuleId}";
+            return new AlertMessage(AlertKind.Success, $"리더기 키다운로드 성공\n모듈 ID : {outcome.ModuleId}");
 
         string stageLabel = outcome.Stage switch
         {
@@ -364,21 +373,25 @@ public sealed partial class ReaderSetupViewModel : ObservableObject
                 ? outcome.Detail
                 : $"응답코드: {outcome.ResponseCode}";
 
-        return string.IsNullOrEmpty(reason)
+        string text = string.IsNullOrEmpty(reason)
             ? $"리더기 키다운로드 실패\n단계: {stageLabel}"
             : $"리더기 키다운로드 실패\n단계: {stageLabel}\n{reason}";
+        return new AlertMessage(AlertKind.Error, text);
     }
 
-    /// <summary>P12-3 "실패 원인 구분"(PRD §6.6) — 명령 4종이 공유하는 결과 문구 매핑을 이 한 곳에
-    /// 모은다(버튼 핸들러마다 switch를 복사하지 않는다).</summary>
-    private static string BuildMessage(string commandLabel, ReaderCommandOutcomeKind kind, string? responseCode,
+    /// <summary>P12-3 "실패 원인 구분"(PRD §6.6) → Phase 39(docs/alert_dialog/PRD.md §4.2 #8·#9) — 명령
+    /// 4종이 공유하는 결과 문구 매핑을 이 한 곳에 모은다(버튼 핸들러마다 switch를 복사하지 않는다).
+    /// 종류는 <paramref name="kind"/>(결과 객체)가 정한다 — 문구를 파싱하지 않는다. <c>internal static</c> —
+    /// P39-4 하네스가 명령 3종 × 결과 조합을 직접 넣어 호출한다.</summary>
+    internal static AlertMessage BuildMessage(string commandLabel, ReaderCommandOutcomeKind kind, string? responseCode,
         string dllResultName, int dllResult, string detail, string? successExtra = null)
     {
         if (kind == ReaderCommandOutcomeKind.Success)
         {
-            return successExtra == null
+            string successText = successExtra == null
                 ? $"리더기 {commandLabel} 성공"
                 : $"리더기 {commandLabel} 성공\n{successExtra}";
+            return new AlertMessage(AlertKind.Success, successText);
         }
 
         string reason = kind switch
@@ -392,7 +405,7 @@ public sealed partial class ReaderSetupViewModel : ObservableObject
             _ => "알 수 없는 오류",
         };
 
-        return $"리더기 {commandLabel} 실패\n{reason}";
+        return new AlertMessage(AlertKind.Error, $"리더기 {commandLabel} 실패\n{reason}");
     }
 
     private static void LogOutcome(string readerLabel, string commandLabel, ReaderCommandOutcomeKind kind,

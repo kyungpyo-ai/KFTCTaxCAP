@@ -5,6 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using KFTCOneCAP.Wpf.ViewModels;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
+using KFTCOneCAP.Wpf.Views.Dialogs;
 
 namespace KFTCOneCAP.Wpf.Views;
 
@@ -26,7 +28,7 @@ namespace KFTCOneCAP.Wpf.Views;
 /// 3) IntegrityScrollViewer_ScrollChanged의 헤더 padding 보정 — 스크롤바 실제 렌더링 폭에 맞추는
 ///    순수 렌더링 보정으로, ViewModel이 알 수 없는 값(스크롤바 두께)에 의존한다.
 /// 여기에 더해 ConfirmButton.Focus()(초기 포커스, PRD 4.2)와 확인/취소 버튼의 Window.Close()/
-/// DialogResult/MessageBox 호출도 Window 타입 자체를 다루는 동작이라 View에 남아 있다 — dirty-check
+/// DialogResult/알림창(AlertDialog.Show) 호출도 Window 타입 자체를 다루는 동작이라 View에 남아 있다 — dirty-check
 /// "판단"과 레지스트리 "저장"은 ViewModel(IsDirty()/Save())에 위임하고, 그 결과로 창을 어떻게
 /// 닫을지만 여기서 결정한다.
 /// </summary>
@@ -54,7 +56,7 @@ public partial class ReaderSetupWindow : Window
         InitializeComponent();
         DataContext = ViewModel;
         ViewModel.ResultsUpdated += ViewModel_ResultsUpdated;
-        ViewModel.ResultMessageReady += ViewModel_ResultMessageReady;
+        ViewModel.AlertRequested += ViewModel_AlertRequested;
         SourceInitialized += ReaderSetupWindow_SourceInitialized;
         Closed += ReaderSetupWindow_Closed;
     }
@@ -109,12 +111,13 @@ public partial class ReaderSetupWindow : Window
     private void ViewModel_ResultsUpdated(object? sender, EventArgs e) => IntegrityScrollViewer.ScrollToTop();
 
     /// <summary>
-    /// P12-3 — ViewModel은 MessageBox를 직접 호출하지 않는다(계층 규칙, ReaderSetupViewModel 상단
-    /// 주석 참고). 초기화/상태체크/무결성체크 결과 문구(PRD §6.1/§6.2/§6.4)가 준비되면 이 이벤트로
-    /// 알려오고, 여기서만 모달로 보여준다.
+    /// P12-3 → Phase 39(docs/alert_dialog/PRD.md §4) — ViewModel은 알림창을 직접 띄우지 않는다(계층
+    /// 규칙, ReaderSetupViewModel 상단 주석 참고). 초기화/상태체크/무결성체크/키다운로드 결과 문구
+    /// (PRD §6.1/§6.2/§6.4, §3.6)가 준비되면 이 이벤트로 알려오고, 여기서만 모달로 보여준다. 종류
+    /// (성공/실패)는 <see cref="AlertMessage.Kind"/>가 정한다(문구를 파싱하지 않는다).
     /// </summary>
-    private void ViewModel_ResultMessageReady(object? sender, string message) =>
-        MessageBox.Show(this, message, "리더기 설정", MessageBoxButton.OK, MessageBoxImage.Information);
+    private void ViewModel_AlertRequested(object? sender, AlertMessage m) =>
+        AlertDialog.Show(this, m.Text, "리더기 설정", m.Kind);
 
     /// <summary>
     /// 흰색(라이트) 타이틀바 강제 적용. HomeWindow와 동일한 로직(중복이지만 이번 Phase 범위에서는
@@ -183,7 +186,7 @@ public partial class ReaderSetupWindow : Window
     // ===================== 확인 / 취소 (PRD 4.12) =====================
     // TODO(별도 단계, ROADMAP.md Phase 5 상단 안내): TRANSINFO_AOP 검증(포트 미지정 시 저장 차단)은
     // 이번 Phase 범위에서 제외됨. 여기서는 ViewModel의 dirty-check 판단(IsDirty)과 저장(Save)
-    // 결과에 따라 창을 닫을지만 결정한다 — Window.Close()/DialogResult/MessageBox는 Window 타입
+    // 결과에 따라 창을 닫을지만 결정한다 — Window.Close()/DialogResult/알림창은 Window 타입
     // 자체를 다루는 동작이라 View에 남는다(계층 규칙).
 
     /// <summary>
@@ -207,12 +210,7 @@ public partial class ReaderSetupWindow : Window
         // 실패한다(PRD에 이 케이스 규정이 없어 스펙 공백 — 저장 자체를 막기로 확정).
         if (ViewModel.IsDuplicatePortSelected())
         {
-            MessageBox.Show(
-                this,
-                "리더기1과 리더기2에 같은 COM 포트를 지정할 수 없습니다.\n서로 다른 포트를 선택해주세요.",
-                "리더기 설정",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            AlertDialog.Show(this, ReaderSetupViewModel.DuplicatePortMessage, "리더기 설정", AlertKind.Warning);
             return; // 창 유지, 저장하지 않음
         }
 
@@ -282,13 +280,13 @@ public partial class ReaderSetupWindow : Window
         if (!ViewModel.IsDirty())
             return true;
 
-        var result = MessageBox.Show(
+        var result = AlertDialog.Show(
             this,
-            "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?",
+            ReaderSetupViewModel.DiscardChangesQuestion,
             "리더기 설정",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            AlertKind.Question,
+            AlertButtons.YesNo);
 
-        return result == MessageBoxResult.Yes;
+        return result == AlertResult.Yes;
     }
 }

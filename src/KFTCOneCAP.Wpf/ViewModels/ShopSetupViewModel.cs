@@ -10,6 +10,7 @@ using KFTCOneCAP.Wpf.Services.Printer;
 using KFTCOneCAP.Wpf.Services.Receipt;
 using KFTCOneCAP.Wpf.Services.Settings;
 using KFTCOneCAP.Wpf.Services.Storage;
+using KFTCOneCAP.Wpf.ViewModels.Alerts;
 using KFTCOneCAP.Wpf.ViewModels.Payment;
 
 namespace KFTCOneCAP.Wpf.ViewModels;
@@ -18,9 +19,10 @@ namespace KFTCOneCAP.Wpf.ViewModels;
 /// 가맹점 설정 화면(Views/ShopSetupWindow.xaml)의 ViewModel.
 /// Phase 23(docs/operations/development_plan.md P23-3) — <see cref="ReaderSetupViewModel"/>과 같은
 /// 역할 분담을 따른다: 레지스트리 로드/저장·검증은 이 클래스가 맡고, <c>Window.Close()</c>/
-/// <c>DialogResult</c>/<c>MessageBox</c>는 <c>Views/ShopSetupWindow.xaml.cs</c>에 남는다(계층 규칙,
+/// <c>DialogResult</c>/알림창은 <c>Views/ShopSetupWindow.xaml.cs</c>에 남는다(계층 규칙,
 /// ViewModels → Services → Protocol → Interop 단방향, PRD.md §0.2). 이 클래스는 WPF 타입을 알지
-/// 못한다 — 검증 실패/저장 실패를 <see cref="ResultMessageReady"/> 이벤트로만 알린다.
+/// 못한다 — 검증 실패/저장 실패를 <see cref="AlertRequested"/> 이벤트(<see cref="AlertMessage"/>)로만
+/// 알린다(Phase 39, docs/alert_dialog/PRD.md §4.3).
 /// </summary>
 public sealed partial class ShopSetupViewModel : ObservableObject
 {
@@ -91,19 +93,25 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     /// true. <see cref="SlipPrintEnabled"/>/<see cref="PrinterPort"/> 변경 시 자동으로 다시 계산된다.</summary>
     public bool IsPrinterPortMissing => SlipPrintEnabled && string.IsNullOrWhiteSpace(PrinterPort);
 
-    /// <summary>P23-3 — 검증 실패(타임아웃 범위 위반) 또는 저장 실패(레지스트리 권한 등)를 View에
-    /// 알린다. ReaderSetupViewModel.ResultMessageReady와 같은 이유로 이벤트로만 알리고 MessageBox를
-    /// 직접 호출하지 않는다.</summary>
-    public event EventHandler<string>? ResultMessageReady;
-
-    /// <summary>Phase 31(P31-2) — 정보(안내) 아이콘으로 띄워야 하는 메시지 전용 이벤트. 기존
-    /// <see cref="ResultMessageReady"/>는 경고 전용 계약이 이미 굳어 있어(View가 항상
-    /// MessageBoxImage.Warning으로 처리) 시그니처를 바꾸지 않고 새 이벤트를 추가했다.</summary>
-    public event EventHandler<string>? InfoMessageReady;
+    /// <summary>P23-3 → Phase 39(docs/alert_dialog/PRD.md §4.3) — 검증 실패·저장 실패·안내(Phase 31)를
+    /// 전부 이 이벤트 하나로 알린다(옛 경고/정보 분리 이벤트 두 개를 통합). 종류는
+    /// <see cref="AlertMessage.Kind"/>가 정한다 — ViewModel은 알림창을 직접 띄우지 않고, View가 이 이벤트를 받아
+    /// 띄운다(계층 규칙).</summary>
+    public event EventHandler<AlertMessage>? AlertRequested;
 
     /// <summary>Phase 31(P31-2) — 포트 검증 실패 시 View가 포트 입력칸에 포커스를 주도록 요청한다.
     /// ViewModel은 WPF 컨트롤(TextBox)을 몰라야 하므로 포커스 자체는 View 책임이다(계층 규칙).</summary>
     public event EventHandler? FocusPrinterPortRequested;
+
+    // Phase 39(docs/alert_dialog/PRD.md §4.2·§4.4) — 고정 문구. View에 리터럴로 있던 #7도 여기로
+    // 옮겼다(문구의 주인은 각 화면 ViewModel, 중앙 카탈로그를 두지 않는다 — PRD §4.2).
+    internal const string TimeoutInvalidMessage = "입력값을 확인해주세요.\n카드입력 타임아웃은 30초 이상 입력해주세요.";
+    internal const string InvalidInputMessage = "입력값을 확인해주세요.";
+    internal const string SaveFailedMessage =
+        "설정 저장 실패\n설정을 저장하지 못했습니다.\n다시 시도하고, 반복되면 담당자에게\n문의해주세요.";
+    internal const string PrinterPortRequiredMessage = "프린터 포트번호를 입력해주세요.";
+    internal const string NoLastReceiptMessage = "출력할 직전 거래가 없습니다.";
+    internal const string DiscardChangesQuestion = "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?";
 
     // 2026-09-02 Opus 리뷰(CP1) 개선권장 9 — ReaderSetupViewModel의 dirty-check 스냅샷 패턴
     // (_snapshotReader1Port 등)과 동일하게, Load() 시점 값을 6개 필드 모두 따로 들고 있다가
@@ -127,9 +135,19 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     /// <summary>Phase 35 P35-1 — self 검증용 주입점(Fake 프린터를 쓴 출력 서비스, 임시 DB 경로 저장소).
     /// 운영 경로는 위 기본 생성자만 쓴다.</summary>
     internal ShopSetupViewModel(ReceiptPrintService receiptPrintService, LastReceiptStore lastReceiptStore)
+        : this(receiptPrintService, lastReceiptStore, saveOverride: null)
+    {
+    }
+
+    /// <summary>Phase 39 P39-1 — self 검증용 저장 주입점(#3 저장 실패를 재현하려면 레지스트리 쓰기 실패를
+    /// 유도할 수단이 없어 이 자리가 필요하다). <paramref name="saveOverride"/>가 null이면(운영 경로) 지금과
+    /// 같은 <see cref="_settingsService"/> 인스턴스의 <see cref="ShopSettingsService.Save"/>를 그대로 쓴다 —
+    /// 동작이 바뀌지 않는다.</summary>
+    internal ShopSetupViewModel(ReceiptPrintService receiptPrintService, LastReceiptStore lastReceiptStore, Action<ShopSettings>? saveOverride)
     {
         _receiptPrintService = receiptPrintService ?? throw new ArgumentNullException(nameof(receiptPrintService));
         _lastReceiptStore = lastReceiptStore ?? throw new ArgumentNullException(nameof(lastReceiptStore));
+        _saveSettings = saveOverride ?? _settingsService.Save;
         Load();
     }
 
@@ -137,6 +155,10 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     /// cref="ReceiptPrintService.ReprintAsync"/>).</summary>
     private readonly ReceiptPrintService _receiptPrintService;
     private readonly LastReceiptStore _lastReceiptStore;
+
+    /// <summary>Phase 39 P39-1 — 저장 동작. 운영 경로는 <see cref="_settingsService"/>의
+    /// <see cref="ShopSettingsService.Save"/>를 그대로 가리킨다(생성자 참고).</summary>
+    private readonly Action<ShopSettings> _saveSettings;
 
     private void Load()
     {
@@ -229,7 +251,7 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     {
         if (!IsValidTimeout(CardReadTimeoutSecondsText, out int timeoutSeconds))
         {
-            ResultMessageReady?.Invoke(this, "30초 이상 입력");
+            AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Warning, TimeoutInvalidMessage));
             return false;
         }
 
@@ -237,7 +259,7 @@ public sealed partial class ShopSetupViewModel : ObservableObject
         // 검증 다음에 둬서 기존 검증 순서(계획서 지시)를 바꾸지 않는다. 토글 OFF면 검증하지 않는다.
         if (SlipPrintEnabled && !IsValidPrinterPort(PrinterPort, out _))
         {
-            ResultMessageReady?.Invoke(this, "입력값을 확인해주세요.");
+            AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Warning, InvalidInputMessage));
             FocusPrinterPortRequested?.Invoke(this, EventArgs.Empty);
             return false;
         }
@@ -257,13 +279,16 @@ public sealed partial class ShopSetupViewModel : ObservableObject
 
         try
         {
-            _settingsService.Save(settings);
+            _saveSettings(settings);
         }
         catch (Exception ex)
         {
-            // PRD.md §2.6 — 저장 실패는 조용히 넘기지 않는다(사용자가 방금 한 조작이 반영되지
-            // 않았음을 알아야 한다). View는 이 메시지를 받으면 창을 닫지 않는다.
-            ResultMessageReady?.Invoke(this, $"설정을 저장하지 못했습니다.\n{ex.Message}");
+            // PRD.md §2.6, docs/alert_dialog/PRD.md §4.4(2026-10-01 확정) — 예외 메시지는 개발자용
+            // 문구라 화면에서 빼고(SaveFailedMessage는 고정 문구) 원인 추적용으로 로그에만 남긴다.
+            // 설정값·스택은 남기지 않는다(예외 타입·메시지만). 로그는 알림 전에 남긴다.
+            FileLogger.Error(LogCategory.Settings,
+                $"가맹점 설정 저장 실패 — {ex.GetType().Name}: {ex.Message}", code: null, transactionId: null);
+            AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Error, SaveFailedMessage));
             return false;
         }
 
@@ -326,7 +351,7 @@ public sealed partial class ShopSetupViewModel : ObservableObject
         {
             if (string.IsNullOrWhiteSpace(PrinterPort))
             {
-                ResultMessageReady?.Invoke(this, "프린터 포트번호를 입력해주세요.");
+                AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Warning, PrinterPortRequiredMessage));
                 return;
             }
 
@@ -336,7 +361,7 @@ public sealed partial class ShopSetupViewModel : ObservableObject
             NationalTaxReceipt? receipt = await Task.Run(() => _lastReceiptStore.TryLoad());
             if (receipt is null)
             {
-                InfoMessageReady?.Invoke(this, "출력할 직전 거래가 없습니다.");
+                AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Info, NoLastReceiptMessage));
                 return;
             }
 
@@ -344,7 +369,7 @@ public sealed partial class ShopSetupViewModel : ObservableObject
                 () => _receiptPrintService.ReprintAsync(receipt, connection, CancellationToken.None));
 
             if (outcome.Status == ReceiptPrintStatus.Failed)
-                ResultMessageReady?.Invoke(this, PaymentScreenViewModel.BuildReceiptPrintFailureMessage(outcome.Failure));
+                AlertRequested?.Invoke(this, new AlertMessage(AlertKind.Warning, PaymentScreenViewModel.BuildReceiptPrintFailureMessage(outcome.Failure)));
         }
         catch (Exception ex)
         {

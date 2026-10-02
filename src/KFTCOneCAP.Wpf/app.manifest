@@ -349,6 +349,21 @@
   [원복 완료, 2026-10-01] P38-5 사용자 피드백(레이어드 창 ClearType 꺼짐, 제목 한 줄 규칙) 수정 검증을 위해
   한시적으로 asInvoker로 낮췄다. 사용자가 관리자 권한 갤러리를 띄워 둔 상태라 bin 대신 scratchpad 출력
   경로로 빌드해 실행했고, 원본 문구 4개와 긴 제목을 캡처·확대 대조한 즉시 requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-10-02] Phase 39 P39-4(docs/alert_dialog/development_plan.md) 완료 조건 확인을 위해
+  alert-dialog-test self / receipt-print-test self 실행과 alert-gallery 화면 캡처(mcp__windows__*)를 위해
+  한시적으로 asInvoker로 낮췄다. alert-dialog-test self 종합=통과(Phase38·Phase39 모두), receipt-print-test
+  self 종합=통과, 갤러리 #3·#12·#14가 실제 상수·빌더 문구로 뜨는 것을 캡처로 확인한 즉시
+  requireAdministrator로 되돌렸다.
+
+  [원복 완료, 2026-10-02] Phase 39 CP1 L-1 수정(AlertFixedPhraseSelfTest의 Pretendard 로드 확인) 검증을 위해
+  한시적으로 asInvoker로 낮춰 alert-dialog-test self를 실행했다(Pretendard Bold·Regular 실제 로드, 종합=통과).
+  확인 즉시 requireAdministrator로 되돌리고 exe 임베딩까지 확인했다.
+
+  [원복 완료, 2026-10-02] Phase 39 P39-5(실제 화면 E2E, docs/alert_dialog/development_plan.md) 검증을 위해
+  한시적으로 asInvoker로 낮췄다. 가맹점 설정·리더기 설정·결제창(VAN 스텁 경로)·alert-gallery를
+  mcp__windows__*로 직접 조작·캡처해 PRD §4.2 14행의 종류·문구·버튼과 질문창 키 동작(Enter/ESC/Alt+F4)을
+  확인했다. 확인 즉시 requireAdministrator로 되돌리고 exe 임베딩까지 확인했다.
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">

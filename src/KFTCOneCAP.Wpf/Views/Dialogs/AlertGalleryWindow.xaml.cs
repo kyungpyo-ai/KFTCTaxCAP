@@ -3,7 +3,12 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using KFTCOneCAP.Wpf.Services.Reader;
+using KFTCOneCAP.Wpf.Services.Receipt;
+using KFTCOneCAP.Wpf.Services.Van;
+using KFTCOneCAP.Wpf.ViewModels;
 using KFTCOneCAP.Wpf.ViewModels.Alerts;
+using KFTCOneCAP.Wpf.ViewModels.Payment;
 
 namespace KFTCOneCAP.Wpf.Views.Dialogs;
 
@@ -42,27 +47,43 @@ public partial class AlertGalleryWindow : Window
         ("Error 긴 제목 + 본문 (넘침 확인)", "설정을 저장하지 못했습니다. 레지스트리 접근 권한을 확인하고 다시 시도해주세요.\n본문은 둘째 줄부터 그대로 표시됩니다.", AlertKind.Error, AlertButtons.OKCancel),
     };
 
+    // Phase 39 P39-4(C) — 리더기 설정 결과 문구의 대표값. StatusResponseParser.cs:53-54 /
+    // KeyDownloadStartResponseParser.cs:47 / KeyDownloadUsingKeyResponseParser.cs:35가 정한 SPEC 최대 길이
+    // (리더기 인증 식별번호 16자, 모듈 ID 10자)를 그대로 채운다 — AlertFixedPhraseSelfTest와 같은 값.
+    private const string RepresentativeReaderAuthId = "1234567890123456";
+    private const string RepresentativeModuleId = "C910540001";
+
     /// <summary>
-    /// PRD §4.2 재분류 표의 실제 문구 14행 — 각 행을 해당 종류·버튼으로 그대로 띄워 본다. 예외 메시지·
-    /// 사유처럼 런타임 값이 들어가는 자리는 self 검증과 무관한 화면 확인용이라 대표값을 채워 넣는다.
+    /// PRD §4.2 재분류 표의 실제 문구 14행 — 각 행을 해당 화면 ViewModel의 <c>internal const</c> 상수·문구
+    /// 빌더를 그대로 호출해 만든다(2026-10-02 사용자 확정 — 문구의 주인은 각 화면 ViewModel, 리터럴 중복
+    /// 금지). 예외 메시지·사유처럼 런타임 값이 들어가는 자리(#9·#11)는 self 검증과 무관한 화면 확인용이라
+    /// 대표값을 채워 넣는다.
     /// </summary>
     private static readonly (string RowNumber, string Screen, string Text, AlertKind Kind, AlertButtons Buttons)[] RealPhraseCases =
     {
-        // #1·#3·#6·#12·#14는 제목·본문 한 줄 규칙과 사용자용 표현에 맞춘 확정 문구(PRD §4.2·§4.4, 2026-10-01)
-        ("#1", "가맹점 설정", "입력값을 확인해주세요.\n카드입력 타임아웃은 30초 이상 입력해주세요.", AlertKind.Warning, AlertButtons.OK),
-        ("#2", "가맹점 설정", "입력값을 확인해주세요.", AlertKind.Warning, AlertButtons.OK),
-        ("#3", "가맹점 설정", "설정 저장 실패\n설정을 저장하지 못했습니다.\n다시 시도하고, 반복되면 담당자에게\n문의해주세요.", AlertKind.Error, AlertButtons.OK),
-        ("#4", "가맹점 설정", "프린터 포트번호를 입력해주세요.", AlertKind.Warning, AlertButtons.OK),
-        ("#5", "가맹점 설정", "출력할 직전 거래가 없습니다.", AlertKind.Info, AlertButtons.OK),
-        ("#6", "가맹점 설정(재출력)", "전표 출력 실패\n프린터 포트를 열 수 없습니다.", AlertKind.Warning, AlertButtons.OK),
-        ("#7", "가맹점 설정", "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?", AlertKind.Question, AlertButtons.YesNo),
-        ("#8", "리더기 설정", "리더기 상태체크 성공\n리더기 인증 식별번호 : 1234567890\n모듈 ID : C910540001", AlertKind.Success, AlertButtons.OK),
-        ("#9", "리더기 설정", "리더기 초기화 실패\n리더기가 연결되어 있지 않습니다.", AlertKind.Error, AlertButtons.OK),
-        ("#10", "리더기 설정", "리더기 키다운로드 성공\n모듈 ID : C910540001", AlertKind.Success, AlertButtons.OK),
-        ("#11", "리더기 설정", "리더기 키다운로드 실패\n단계: 3/5 (키 전송)", AlertKind.Error, AlertButtons.OK),
-        ("#12", "리더기 설정", "리더기 설정 실패\n리더기 포트가 동일합니다.\n서로 다른 포트를 선택해주세요.", AlertKind.Warning, AlertButtons.OK),
-        ("#13", "리더기 설정", "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?", AlertKind.Question, AlertButtons.YesNo),
-        ("#14", "결제창", "전표 출력 실패\n프린터 포트를 열 수 없습니다.\n가맹점 설정에서 다시 출력하세요.", AlertKind.Warning, AlertButtons.OK),
+        ("#1", "가맹점 설정", ShopSetupViewModel.TimeoutInvalidMessage, AlertKind.Warning, AlertButtons.OK),
+        ("#2", "가맹점 설정", ShopSetupViewModel.InvalidInputMessage, AlertKind.Warning, AlertButtons.OK),
+        ("#3", "가맹점 설정", ShopSetupViewModel.SaveFailedMessage, AlertKind.Error, AlertButtons.OK),
+        ("#4", "가맹점 설정", ShopSetupViewModel.PrinterPortRequiredMessage, AlertKind.Warning, AlertButtons.OK),
+        ("#5", "가맹점 설정", ShopSetupViewModel.NoLastReceiptMessage, AlertKind.Info, AlertButtons.OK),
+        ("#6", "가맹점 설정(재출력)", PaymentScreenViewModel.BuildReceiptPrintFailureMessage(ReceiptPrintFailureReason.PortOpenFailed), AlertKind.Warning, AlertButtons.OK),
+        ("#7", "가맹점 설정", ShopSetupViewModel.DiscardChangesQuestion, AlertKind.Question, AlertButtons.YesNo),
+        ("#8", "리더기 설정",
+            ReaderSetupViewModel.BuildMessage("상태체크", ReaderCommandOutcomeKind.Success, "00", string.Empty, 0, string.Empty,
+                successExtra: $"리더기 인증 식별번호 : {RepresentativeReaderAuthId}\n모듈 ID : {RepresentativeModuleId}").Text,
+            AlertKind.Success, AlertButtons.OK),
+        ("#9", "리더기 설정",
+            ReaderSetupViewModel.BuildMessage("초기화", ReaderCommandOutcomeKind.DllCallFailure, null,
+                "READER_PORT_NOT_OPEN", -1, "리더기가 연결되어 있지 않습니다").Text,
+            AlertKind.Error, AlertButtons.OK),
+        ("#10", "리더기 설정", ReaderSetupViewModel.BuildKeyDownloadMessage(KeyDownloadOutcome.Success(RepresentativeModuleId)).Text, AlertKind.Success, AlertButtons.OK),
+        ("#11", "리더기 설정",
+            ReaderSetupViewModel.BuildKeyDownloadMessage(
+                KeyDownloadOutcome.ServerFailure(KeyDownloadStage.Auth, KeyDownloadVanCallOutcome.NonSuccessResponseCode(string.Empty, "05"), RepresentativeModuleId)).Text,
+            AlertKind.Error, AlertButtons.OK),
+        ("#12", "리더기 설정", ReaderSetupViewModel.DuplicatePortMessage, AlertKind.Warning, AlertButtons.OK),
+        ("#13", "리더기 설정", ReaderSetupViewModel.DiscardChangesQuestion, AlertKind.Question, AlertButtons.YesNo),
+        ("#14", "결제창", PaymentScreenViewModel.BuildReceiptPrintWarningMessage(ReceiptPrintFailureReason.PortOpenFailed), AlertKind.Warning, AlertButtons.OK),
     };
 
     public AlertGalleryWindow()
