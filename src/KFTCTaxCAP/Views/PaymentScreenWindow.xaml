@@ -224,7 +224,8 @@
                         <Button Content="전송" Command="{Binding SendCommand}" Style="{StaticResource PrimaryButtonStyle}"
                                 Width="140" Margin="0,0,8,0"
                                 IsEnabled="{Binding IsSendBlocked, Converter={StaticResource InverseBoolConverter}}"/>
-                        <Button Content="임의값 재생성" Command="{Binding RegenerateCommand}" Style="{StaticResource ReaderSecondaryButtonStyle}"
+                        <Button Content="취소" Click="CancelButton_Click" Style="{StaticResource ReaderSecondaryButtonStyle}"
+                                Width="140"
                                 IsEnabled="{Binding IsSendBlocked, Converter={StaticResource InverseBoolConverter}}"/>
                     </StackPanel>
                 </StackPanel>

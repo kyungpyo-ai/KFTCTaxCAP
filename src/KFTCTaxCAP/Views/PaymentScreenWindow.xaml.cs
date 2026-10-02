@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -94,6 +95,20 @@ public partial class PaymentScreenWindow : Window
             Show();
         else
             Dispatcher.BeginInvoke(new Action(Show));
+    }
+
+    /// <summary>
+    /// "취소" 버튼(각 탭 콘텐츠 템플릿, 이전 "임의값 재생성" 자리) — 이 창을 닫는다. 결제 화면은
+    /// 저장할 상태가 없어(가맹점/리더기 설정과 달리 Dirty 확인이 필요 없다) ConfirmDiscardIfDirty
+    /// 같은 되묻기 없이 바로 닫는다. 버튼 자체가 IsSendBlocked(전송 중) 동안 비활성화되므로(XAML),
+    /// 여기서도 방어적으로 한 번 더 막는다.
+    /// </summary>
+    private void CancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.Tabs.Any(t => t.IsSending))
+            return;
+
+        Close();
     }
 
     /// <summary>흰색(라이트) 타이틀바 강제 적용 — HomeWindow/ReaderSetupWindow와 동일 로직.</summary>
