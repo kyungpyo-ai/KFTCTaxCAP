@@ -43,7 +43,7 @@
 
 앱이 `requireAdministrator`라 에이전트의 GUI 자동화(캡처·클릭)가 UIPI에 막힌다. 화면 검증이 필요할 때만
 `asInvoker`로 낮추고 **확인 즉시 `requireAdministrator`로 되돌린다**(Phase 23·31·33 선례). 되돌릴 때마다
-매니페스트 주석에 기록하고, 각 Phase 마지막 항목에서 원복을 확인한다. 실행 중인 `KFTCOneCAP.Wpf.exe`가 사용자
+매니페스트 주석에 기록하고, 각 Phase 마지막 항목에서 원복을 확인한다. 실행 중인 `KFTCTaxCAP.exe`가 사용자
 세션의 것인지 확인하지 않고 종료하지 않는다.
 
 ---
@@ -354,7 +354,7 @@ exe 임베딩 매니페스트를 직접 재실행했다. 앱 실행 GUI 동작(�
 | 3 | 리더기 결과 본문에 길이를 모르는 값(DLL 오류 `detail`, 통신 오류 상세, 예외 메시지)이 들어간다 | 고정 부분·길이가 정해진 값(응답코드 2자리 등)만 실패로 판정. 길이 미정 값이 든 줄은 **측정값만 로그(정보)** — 어절 단위 줄바꿈이 안전장치 |
 | 4 | #3(저장 실패)·#5(직전 영수증 없음)는 실화면 재현 수단이 마땅치 않다 | #3: VM 주입점으로 self 검증 + 갤러리, 실화면은 "재현 불가"로 기록. #5: 저장된 영수증이 이미 있으면 **DB를 지우거나 옮기지 않고** self(⑦b) + 갤러리로 대체 |
 | 5 | #10 키다운로드 성공은 IPEK을 소모하고, VAN은 mode=R에서만 응답한다(OT 미도달) | 실행 직전 사용자에게 다시 확인. 실패 시 재시도하지 않고 결과만 보고(재시도 = IPEK 추가 소모 가능) |
-| 6 | `asInvoker`로 낮춘 매니페스트를 원복하지 않은 채 커밋 | P39-6 체크 항목 + exe 임베딩 매니페스트 확인. 실행 중인 `KFTCOneCAP.Wpf.exe`가 사용자 세션 것인지 확인 없이 종료하지 않는다 |
+| 6 | `asInvoker`로 낮춘 매니페스트를 원복하지 않은 채 커밋 | P39-6 체크 항목 + exe 임베딩 매니페스트 확인. 실행 중인 `KFTCTaxCAP.exe`가 사용자 세션 것인지 확인 없이 종료하지 않는다 |
 | 7 | CP1(Phase 38) 참고 — 한 번도 표시되지 않은 owner로 `AlertDialog.Show`를 부르면 알림 없이 기본 결과 | 세 화면의 알림 발생 시점(버튼·명령·출력 완료)이 모두 창 표시 뒤인지 Opus가 diff로 확인. 리더기 설정 워밍업 인스턴스는 알림을 올리지 않는지 확인 |
 
 ## 체크포인트
@@ -412,7 +412,7 @@ exe 임베딩 매니페스트를 직접 재실행했다. 앱 실행 GUI 동작(�
 
 **완료 조건**
 - [x] 빌드 경고 0 증가(P39-1~3 합쳐서) — 전·후 모두 경고 0·오류 0
-- [x] `grep "ResultMessageReady\|InfoMessageReady\|ReceiptPrintWarningRequested" src/KFTCOneCAP.Wpf` 0건
+- [x] `grep "ResultMessageReady\|InfoMessageReady\|ReceiptPrintWarningRequested" src/KFTCTaxCAP` 0건
 - [x] PRD §4.2 각 행의 종류가 위 표대로(Opus가 diff로 대조)
 
 **검증 기록(2026-10-02, P39-1+2+3)** — `csharp-wpf-developer`(Sonnet)가 8개 파일 구현. 앱이 `requireAdministrator`라 exe 대신
@@ -440,7 +440,7 @@ x86 리플렉션 하네스(scratchpad의 `SelfTestHarness.exe`, 빌드 출력 �
 | 세 파일의 주석 | 클래스 요약·처리기 주석의 `MessageBox` 언급을 알림창으로 |
 
 **완료 조건**
-- [x] `grep -E "MessageBox\.Show\(|MessageBoxImage|MessageBoxResult|MessageBoxButton" src/KFTCOneCAP.Wpf` 0건
+- [x] `grep -E "MessageBox\.Show\(|MessageBoxImage|MessageBoxResult|MessageBoxButton" src/KFTCTaxCAP` 0건
 - [x] 캡션 3종(`가맹점 설정`·`리더기 설정`·`전표 출력`)이 바뀌지 않음
 
 ### Opus 확인 포인트 (P39-2)
@@ -528,7 +528,7 @@ x86 리플렉션 하네스(scratchpad의 `SelfTestHarness.exe`, 빌드 출력 �
 ## CP1 확인 항목 (`checkpoint-reviewer`에 그대로 전달)
 
 1. `dotnet build` 성공(경고 증가 없음), `--alert-dialog-test self`·`--receipt-print-test self` 전부 통과를 직접 재실행으로 확인.
-2. `src/KFTCOneCAP.Wpf`에서 `MessageBox.Show(`·`MessageBoxImage`·`MessageBoxResult`·`MessageBoxButton` 0건, 옛 이벤트 이름 0건.
+2. `src/KFTCTaxCAP`에서 `MessageBox.Show(`·`MessageBoxImage`·`MessageBoxResult`·`MessageBoxButton` 0건, 옛 이벤트 이름 0건.
 3. PRD §4.2 14행 — 각 행의 문구·종류·버튼·캡션이 코드와 일치(View가 띄우는 #7·#12·#13 포함).
 4. receipt_print PRD §5와 `PaymentScreenViewModel` 문구가 글자 단위로 일치, 사유 없는 실패 = 제목만.
 5. 계층: 변경된 ViewModel이 WPF 타입을 새로 참조하지 않음. 하네스가 View를 참조하지 않음.
@@ -544,7 +544,7 @@ x86 STA 호스트(Application·Dispatcher·리소스 8개 병합)로 `--alert-di
 
 | # | 지적 | 조치(Opus 직접) |
 |---|---|---|
-| L-1 | `AlertFixedPhraseSelfTest`가 앱 리소스 `PretendardFontFamily`를 쓰므로, Pretendard 로드에 실패하면(리뷰어 호스트에서 `pack://application`이 다른 어셈블리로 해석돼 재현) Malgun Gothic으로 조용히 재고도 "Pretendard" 라벨로 통과. 컴팩트 모드에서도 같은 일 | 글꼴을 어셈블리 명시 pack URI(`pack://application:,,,/KFTCOneCAP.Wpf;component/` + `./Assets/Fonts/#Pretendard, Malgun Gothic`)로 직접 만들고, 측정 전 `VerifyPretendardLoaded`가 Bold·Normal의 `GlyphTypeface.FontUri`에 Pretendard가 없으면 ★ 실패. `asInvoker` 일시 해제로 exe 직접 재실행(10:05) — `pretendard-bold.ttf`·`pretendard-regular.ttf` 실제 로드, 종합=통과, ★ 0건, 측정값 동일(검출력 352.2/408.9). 원복·exe 임베딩 확인 |
+| L-1 | `AlertFixedPhraseSelfTest`가 앱 리소스 `PretendardFontFamily`를 쓰므로, Pretendard 로드에 실패하면(리뷰어 호스트에서 `pack://application`이 다른 어셈블리로 해석돼 재현) Malgun Gothic으로 조용히 재고도 "Pretendard" 라벨로 통과. 컴팩트 모드에서도 같은 일 | 글꼴을 어셈블리 명시 pack URI(`pack://application:,,,/KFTCTaxCAP;component/` + `./Assets/Fonts/#Pretendard, Malgun Gothic`)로 직접 만들고, 측정 전 `VerifyPretendardLoaded`가 Bold·Normal의 `GlyphTypeface.FontUri`에 Pretendard가 없으면 ★ 실패. `asInvoker` 일시 해제로 exe 직접 재실행(10:05) — `pretendard-bold.ttf`·`pretendard-regular.ttf` 실제 로드, 종합=통과, ★ 0건, 측정값 동일(검출력 352.2/408.9). 원복·exe 임베딩 확인 |
 | L-2 | `MessageBox` 언급 주석 잔재 3곳(`ReaderSetupViewModel.cs:235`, `ReaderSetupWindow.xaml.cs:31`·`:189`) | "알림창(AlertDialog.Show)"으로 수정. 남은 `MessageBox` 문자열은 `AlertDialog.Show.cs` 요약(대체 대상 설명)·`HomeWindow.xaml.cs:124`(과거 경위)·`CModernMessageBox`(원본 이름)뿐 |
 
 - 참고(리뷰어, 결함 아님): (B)는 길이 미정 여부를 문구 단위로 매겨 해당 문구의 고정 제목 줄도 정보 로그가 되지만, 같은 줄이 다른 조합에서
@@ -557,7 +557,7 @@ x86 STA 호스트(Application·Dispatcher·리소스 8개 병합)로 `--alert-di
 ## P39-5. 실제 화면 E2E (`csharp-wpf-developer` 새 에이전트, **Sonnet** — 판독은 Opus)
 
 **준비**: 바꿀 설정(전표 인쇄·프린터 포트·리더기 포트)의 시작 전 값을 기록 → `app.manifest`를 `asInvoker`로(주석에 날짜·사유) → 빌드 → 실행.
-사용자 세션의 `KFTCOneCAP.Wpf.exe`가 떠 있으면 종료하지 말고 Opus에 보고. 리더기 실기 연결, 가맹점 설정의 금융결제원 서버 = 실제 거래 서버(R).
+사용자 세션의 `KFTCTaxCAP.exe`가 떠 있으면 종료하지 말고 Opus에 보고. 리더기 실기 연결, 가맹점 설정의 금융결제원 서버 = 실제 거래 서버(R).
 
 | 행 | 화면 | 띄우는 방법 | 확인 |
 |---|---|---|---|
@@ -607,7 +607,7 @@ x86 STA 호스트(Application·Dispatcher·리소스 8개 병합)로 `--alert-di
 | #13 | 포트 변경 → 취소 | Question [예][아니요] ✔(키 동작은 #7과 같은 `ConfirmDiscardIfDirty` — 별도 실측 없음) |
 | #14 | 결제창(스텁 VAN, `App.xaml.cs:199`) 902614 + 사용자 핀패드 PIN(11:12:52) → `000` 승인 → S12 `PortOpenFailed`(COM250) | **사용자 육안 확인**(경고창이 결제창 위에 떴고 사용자가 닫음 — 캡처 전에 닫혀 캡처 없음). 문구는 갤러리 #14 캡처(P39-4)와 같은 빌더. 앞선 10:50 시도는 PIN 대기 시간 초과(E02) |
 
-- **설정 원복**: 시작 전 값(HKCU `KFTC_VAN\KFTCTaxGiroCAP` — TIMEOUT=110, PRINTER_CHECK=1, PRINTER_SPEED=115200, PRINTER=6, COMPORT1=COM 05, COMPORT2=미사용, VAN_MODE=R)과
+- **설정 원복**: 시작 전 값(HKCU `KFTC_VAN\KFTCTaxCAP` — TIMEOUT=110, PRINTER_CHECK=1, PRINTER_SPEED=115200, PRINTER=6, COMPORT1=COM 05, COMPORT2=미사용, VAN_MODE=R)과
   같음을 Opus가 레지스트리로 확인. 바뀐 것은 PRINTER(6→250) 하나였고 문자열로 되돌림(`ShopSettingsService.cs:163`과 같은 형식).
 - **매니페스트**: `requireAdministrator` 원복(BOM 없음, 주석 기록 추가), 재빌드 경고 0·오류 0, bin exe 임베딩 `requireAdministrator` 확인. 검증용 인스턴스(PID 24228·54204·갤러리)는 모두 종료.
 - **알림 위치·포커스 이상 없음**: 모든 캡처에서 알림창이 owner 창 중앙에 뜸.

@@ -95,7 +95,7 @@
 
 ## ⚠️ 진행 중 임시 조치 — `app.manifest` 관리자 권한 해제 (2026-09-30, 반드시 원복)
 
-사용자 허용으로 Phase 33 검증 동안 `src/KFTCOneCAP.Wpf/app.manifest`의 `requestedExecutionLevel`을
+사용자 허용으로 Phase 33 검증 동안 `src/KFTCTaxCAP/app.manifest`의 `requestedExecutionLevel`을
 `requireAdministrator` → `asInvoker`로 낮춘다(Phase 23·31과 같은 조치). 하네스 실행 후 뜨는 창을 에이전트가
 닫지 못해 빌드가 막히는 문제(P33-1 첫 실행에서 발생) 때문이다.
 
@@ -662,7 +662,7 @@ P34-1~4(CP1 + 재검증 통과) + P34-5(결제창 실기) 완료. 결제창에�
   `#28 … 216, 284`. `PosTelegramSchema` 생성자가 POSITION 연속성·총 길이를 자체 검증한다.
 - `Services/Payment/PaymentOrchestrator.cs` `HandleCardInfoInquiryAsync` — `fillOneCapFields`에서 `cardNumber.Length < 8`
   방어 후 앞 8자리를 `char[8]`에 복사해 `request.Telegram.Write(14, bin)`, `finally`에서 클리어. 로그 "BIN 채움 완료".
-- `src/KFTCOneCAP.KioskSim/Protocol/TelegramSchemas.cs` — 시뮬레이터(Phase 19)의 별도 스키마 사본. 같은 변경 필요.
+- `src/KFTCTaxCAP.KioskSim/Protocol/TelegramSchemas.cs` — 시뮬레이터(Phase 19)의 별도 스키마 사본. 같은 변경 필요.
 - 테스트: `Services/Diagnostics/PaymentFlowTestScenarios.cs:239` `Read(14) == "94123456"`(BIN 기대) 등. 가짜 리더기
   카드번호 픽스처(`FakeReaderEndpoint` 등)가 구분자를 포함하는지 확인 필요.
 - 주석에 "BIN"이 남은 곳: `PosResponseTelegram.cs:100`, `StubVanRelayService.cs:113`, `PaymentTelegramTabViewModel.cs:71`,

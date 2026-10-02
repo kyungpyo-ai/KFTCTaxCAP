@@ -308,7 +308,7 @@
 ### 7.1 계층 (payment_relay ROADMAP "계층 구조" 규칙 연장)
 
 ```
-src/KFTCOneCAP.Wpf/
+src/KFTCTaxCAP/
 ├─ Protocol/Printer/     ESC/POS 명령 바이트, CP949 폭 계산·줄바꿈, 상태 응답 파서 — 순수 함수, I/O 없음
 ├─ Services/Printer/     시리얼 포트 열기·상태 조회·송신·닫기, 직렬화, 결과 객체 반환(예외 미전파)
 ├─ Services/Receipt/     (제안) 납부확인증 모델 → 인쇄 문서 변환(양식 규칙), 설정 확인 후 출력 서비스 호출

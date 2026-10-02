@@ -1,0 +1,85 @@
+<UserControl x:Class="KFTCTaxCAP.Views.Controls.PaymentProcessingIndicator"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             Width="340" Height="226.67"
+             d:DesignHeight="226.67" d:DesignWidth="340">
+    <!--
+        거래중 애니메이션 (docs/payment_relay/images/_preview_crop/거래중 애니메이션.png 참고):
+          2. 슬롯 내부 빛 흐름 (Sub): IC/MS 슬롯 홈 안쪽에서 하늘색 하이라이트가 좌상 -> 우하로
+             부드럽게 이동. VanProcessing 직전 카드 종류(IC 삽입 vs MS 스와이프)에 따라 둘 중 하나만
+             재생된다(PaymentNoticeWindow가 직전 상태를 기억해 Play(isMs)로 전달).
+
+        2026-08-24 자산 분리(원판 circle.png / 몸통 reader_kftc.png)에 따라 "1. 원형 진행광"과
+        "하단 베이스 펄스"는 <see cref="PaymentProcessingRing"/>로 옮겼다(원판 위·몸통 아래 z-order에
+        고정되어야 하므로). 이 컨트롤은 몸통 "표면"에 있어야 하는 효과(슬롯 빛 흐름)만 남는다 —
+        PaymentNoticeWindow.xaml에서 몸통(ReaderImage)보다 위 레이어(OverlayHost)에 배치된다.
+
+        2026-08-24 6차 수정: "3. 은은한 펄스"(로고 펄스, LogoPulseGlow/LogoCoreGlow)는 사용자
+        피드백("이상해 보인다")에 따라 완전히 제거했다.
+
+        2026-08-24 7차 수정(사용자 피드백 "IC칩쪽에 벗어나 있다"): reader_kftc.png를 Bitmap으로 다시
+        열어 alpha가 아니라 실제 렌더링된 진한 파란 홈 색상(R<B-80, B>180)을 마스크로 잡아 연결영역을
+        재실측했다 — 기존 bbox 기반 추정(약 (537,253)-(983,505))은 근사치였고, 실제로는 IC 슬롯이
+        (543,207)-(949,447)px 연결영역, 주축 각도 30.14도, 채널 폭(중앙 구간) 약 34.8px였다. 기존
+        Ellipse.Height=14는 340x226.67 스케일 변환 시 채널 폭(약 7.7px)의 거의 2배라 홈 밖으로
+        삐져나와 보였다 — Height를 8로 줄여 채널 폭 안에 갇히도록 정정했다.
+        같은 방식으로 MS(마그네틱) 슬롯 앞쪽 대각선 구간(리더기 뒤쪽 모서리에서 꺾이기 전 부분,
+        연결영역 (585,98)-(1000,329)px 중 y<330 구간만)도 실측했다 — 주축 각도 29.86도, 채널 폭 약
+        33.7px로 IC와 거의 동일한 형태다. SlotFlowMs를 IC와 같은 스타일로 추가했다.
+    -->
+    <Canvas IsHitTestVisible="False" Width="340" Height="226.67" ClipToBounds="False">
+
+        <!-- ===== 2a. IC 슬롯 내부 빛 흐름 =====
+             reader_kftc.png 실측(진한 파란 홈 색상 연결영역, 1536x1024 기준 (543,207)-(949,447)px,
+             주축 p0(546.86,213.79)->p1(942.73,443.63), 폭 약 34.8px)을 340x226.67로 스케일
+             변환(계수 0.221354): 시작점 (121.05,47.32) -> 끝점 (208.66,98.19), 각도 30.14도. -->
+        <Ellipse x:Name="SlotFlow" Width="36" Height="8" Canvas.Left="103.05" Canvas.Top="43.32"
+                 Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Ellipse.RenderTransform>
+                <TransformGroup>
+                    <RotateTransform Angle="30.14"/>
+                    <TranslateTransform x:Name="SlotFlowTranslate" X="0" Y="0"/>
+                </TransformGroup>
+            </Ellipse.RenderTransform>
+            <Ellipse.Fill>
+                <RadialGradientBrush>
+                    <GradientStop Color="#FFFFFF" Offset="0"/>
+                    <GradientStop Color="#8038BDF8" Offset="0.5"/>
+                    <GradientStop Color="#0038BDF8" Offset="1"/>
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+            <Ellipse.Effect>
+                <BlurEffect Radius="3"/>
+            </Ellipse.Effect>
+        </Ellipse>
+
+        <!-- ===== 2b. MS 슬롯 내부 빛 흐름 =====
+             reader_kftc.png 실측(같은 마스크, y<330 구간만 = 리더기 뒤쪽 모서리로 꺾이기 전 앞쪽
+             대각선 구간, (585,98)-(1000,329)px, 주축 p0(585.66,108.08)->p1(992.69,341.74), 폭 약
+             33.7px)을 같은 스케일로 변환: 시작점 (129.63,23.92) -> 끝점 (219.72,75.65), 각도 29.86도.
+             VanProcessing 진입 직전이 FallbackCardRequest(MS)였을 때만 재생된다. -->
+        <Ellipse x:Name="SlotFlowMs" Width="36" Height="8" Canvas.Left="111.63" Canvas.Top="19.92"
+                 Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Ellipse.RenderTransform>
+                <TransformGroup>
+                    <RotateTransform Angle="29.86"/>
+                    <TranslateTransform x:Name="SlotFlowMsTranslate" X="0" Y="0"/>
+                </TransformGroup>
+            </Ellipse.RenderTransform>
+            <Ellipse.Fill>
+                <RadialGradientBrush>
+                    <GradientStop Color="#FFFFFF" Offset="0"/>
+                    <GradientStop Color="#8038BDF8" Offset="0.5"/>
+                    <GradientStop Color="#0038BDF8" Offset="1"/>
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+            <Ellipse.Effect>
+                <BlurEffect Radius="3"/>
+            </Ellipse.Effect>
+        </Ellipse>
+
+    </Canvas>
+</UserControl>

@@ -1,0 +1,307 @@
+<Window x:Class="KFTCTaxCAP.Views.PaymentNoticeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:KFTCTaxCAP.Views.Controls"
+        mc:Ignorable="d"
+        Title="결제 알림"
+        Width="600" Height="520"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        Background="#F7F7F7">
+    <!--
+        development_plan.md P13-3: Owner를 설정하지 않는다(홈 화면을 Owner로 지정하면 알림창을 띄울 때
+        홈 화면까지 활성화되어 PRD §5.1을 위반한다). 상태 전환은 이 창을 재생성하지 않고 State 변경 +
+        전환 애니메이션으로만 처리한다(아래 ApplyState).
+
+        ===== 자산 구조(2026-08-24 재구성, 원판/몸통 분리) =====
+        이전에는 리더기 몸통+원판+그림자가 한 장으로 합성된 이미지(reader.png)였으나, 지금은
+        원판(circle.png)과 몸통(reader_kftc.png)이 분리된 자산이다. 진행광 링(PaymentProcessingRing)이
+        원판 위·몸통 아래 z-order에 있어야 "몸통 뒤로 지나가는" 부분이 몸통의 불투명 픽셀에 자연스럽게
+        가려지므로, Canvas 자식 순서를 다음과 같이 쌓는다(뒤에 선언된 요소가 위에 그려짐):
+          1. 원판(PlateImage) — IC/FALLBACK/PROCESSING 3개 상태 모두 동일, 교체·페이드 없음.
+          2. 진행광 링(ProcessingRing) — VanProcessing 상태에서만 표시(원판 테두리를 도는 빛).
+          3. 정지 리더기 몸통(ReaderImage) — 마찬가지로 3개 상태 공용.
+          4. 화살표/카드/슬롯·로고 효과(OverlayHost, CardImage) — 상태 전환 시 이전 것 페이드아웃 →
+             새 것 페이드인. 몸통 "표면" 위에 있어야 하는 효과(슬롯 빛 흐름, 로고 펄스)라 몸통보다
+             위 레이어에 둔다.
+        문구(TextPanelA/B)는 기존과 동일하게 크로스페이드(겹쳐서 동시에 반대 방향 페이드)한다 —
+        화살표/카드/로딩 인디케이터는 겹치지 않고 순차 페이드(페이드아웃 완료 후 페이드인)이므로 문구와는
+        전환 방식이 다르다(development_plan.md 지시 원문: "화살표/카드/로딩 인디케이터는... 이전 것
+        페이드아웃 → 새 것 페이드인").
+        리더기/원판/화살표 → 이미지 매핑은 Views/PaymentNoticeBackgroundSource.cs 한 곳에서만 이루어진다.
+    -->
+    <Window.Resources>
+        <!--
+            Phase 18(P18-2) PIN 키패드 버튼 스타일. Themes/Buttons.xaml의 ModernButtonBase를 그대로
+            베이스로 쓰되(눌림 시 살짝 축소되는 클릭 피드백 재사용), 배경/보더/폰트만 시안(pin입력.png)에
+            맞춘다 — 흰 배경 + 얇은 회색 보더 + 큰 볼드 숫자. 이 창 전용이라 전역 Buttons.xaml에는
+            넣지 않는다.
+        -->
+        <Style x:Key="PinKeypadButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonBase}">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource TblBorderBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TitleTextBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>
+            <Setter Property="FontSize" Value="26"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="0"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F5F7FA"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#EAEDF1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <!-- 2026-08-24 8차 수정(사용자 피드백 "창이 너무 크다"): 내부 좌표는 그대로 두고 Viewbox로
+             감싸 전체 비율을 유지한 채 스케일만 축소한다. Canvas(750x650)와 취소 버튼을 750x650
+             고정 크기 Grid 하나로 묶어야 Viewbox가 스케일을 함께 적용한다 — 원래 Window Width/Height
+             였던 750x650 대비 약 80%인 600x520으로 Window 자체를 줄였다(비율 750:650 = 600:520 유지). -->
+        <Viewbox Stretch="Uniform">
+        <Grid Width="750" Height="650">
+        <Canvas Width="750" Height="650">
+
+            <!-- ===== 바닥 원판 (진행광 링보다 먼저 그려져 가장 아래) =====
+                 2026-08-24 4차 수정(사용자 실측 피드백 #1): BitmapScalingMode 기본값(Linear 계열)으로
+                 1536x1024 원본을 340x226.67로 4.5배 축소 렌더링하면 원판 테두리/로고 경계에 앨리어싱이
+                 생긴다 — HighQuality(고품질 축소 필터)로 지정해 경계를 매끈하게 한다. -->
+            <Image x:Name="PlateImage"
+                   Stretch="Uniform" Width="340" Height="226.67"
+                   Canvas.Left="205" Canvas.Top="260" IsHitTestVisible="False"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+
+            <!-- ===== 원형 진행광 링 (원판 위, 몸통 아래) ===== -->
+            <controls:PaymentProcessingRing x:Name="ProcessingRing"
+                   Width="340" Height="226.67"
+                   Canvas.Left="205" Canvas.Top="260"
+                   Visibility="Collapsed" IsHitTestVisible="False"/>
+
+            <!-- ===== 정지 리더기 몸통 =====
+                 2026-08-24 4차 수정(사용자 실측 피드백 #1): 로고(원 안 4분할 무늬) 등 세부 무늬가
+                 축소 렌더링 시 깨져 보이는 문제 — HighQuality 스케일링으로 개선. -->
+            <Image x:Name="ReaderImage"
+                   Stretch="Uniform" Width="340" Height="226.67"
+                   Canvas.Left="205" Canvas.Top="260" IsHitTestVisible="False"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+
+            <!-- ===== 문구 크로스페이드 레이어 ===== -->
+            <StackPanel x:Name="TextPanelA" Canvas.Left="0" Canvas.Top="38" Width="750" Opacity="1"
+                        HorizontalAlignment="Center">
+                <TextBlock x:Name="TextAKr1" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource TitleTextBrush}"/>
+                <TextBlock x:Name="TextAKr2" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource TitleTextBrush}" Margin="0,4,0,0"/>
+                <TextBlock x:Name="TextAEn1" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           Foreground="{StaticResource SubTextBrush}" Margin="0,14,0,0"/>
+                <TextBlock x:Name="TextAEn2" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           Foreground="{StaticResource SubTextBrush}" Margin="0,2,0,0"/>
+            </StackPanel>
+
+            <StackPanel x:Name="TextPanelB" Canvas.Left="0" Canvas.Top="38" Width="750" Opacity="0"
+                        HorizontalAlignment="Center">
+                <TextBlock x:Name="TextBKr1" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource TitleTextBrush}"/>
+                <TextBlock x:Name="TextBKr2" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource TitleTextBrush}" Margin="0,4,0,0"/>
+                <TextBlock x:Name="TextBEn1" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           Foreground="{StaticResource SubTextBrush}" Margin="0,14,0,0"/>
+                <TextBlock x:Name="TextBEn2" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           Foreground="{StaticResource SubTextBrush}" Margin="0,2,0,0"/>
+            </StackPanel>
+
+            <!-- ===== 카드 (IC 삽입 / MS 스와이프 / 거래중 카드) ===== -->
+            <Image x:Name="CardImage" Stretch="Uniform" Opacity="0" IsHitTestVisible="False"
+                   Panel.ZIndex="5"
+                   RenderTransformOrigin="0.5,0.5"
+                   RenderOptions.BitmapScalingMode="HighQuality">
+                <Image.RenderTransform>
+                    <TranslateTransform x:Name="CardTranslate" X="0" Y="0"/>
+                </Image.RenderTransform>
+            </Image>
+
+            <!-- ===== 화살표(IC/FALLBACK) / 로딩 인디케이터(PROCESSING) 오버레이 ===== -->
+            <Grid x:Name="OverlayHost" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="10">
+                <Image x:Name="ArrowImage" Stretch="Uniform" Visibility="Collapsed"
+                       RenderTransformOrigin="0.5,0.5"
+                       RenderOptions.BitmapScalingMode="HighQuality">
+                    <Image.RenderTransform>
+                        <TransformGroup>
+                            <RotateTransform x:Name="ArrowRotate" Angle="0"/>
+                            <TranslateTransform x:Name="ArrowTranslate" X="0" Y="0"/>
+                        </TransformGroup>
+                    </Image.RenderTransform>
+                    <Image.Resources>
+                        <!-- IC: 아래로 부드러운 바운스 (슬롯 방향) -->
+                        <Storyboard x:Key="ArrowBounceDownStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+                            <DoubleAnimation Storyboard.TargetName="ArrowTranslate" Storyboard.TargetProperty="Y"
+                                             From="0" To="10" Duration="0:0:0.6">
+                                <DoubleAnimation.EasingFunction>
+                                    <SineEase EasingMode="EaseInOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                        </Storyboard>
+                        <!-- FALLBACK: 대각선 바운스 (MS 슬롯 스와이프 방향 — 오른쪽 아래에서 왼쪽 위로
+                             긁는 31.4도 대각선 안내). 2026-08-24 4차 수정(사용자 실측 피드백 #4):
+                             arrow_ms.png 자체가 이미 좌상단을 향하는 화살표 모양(약 31도)이므로,
+                             바운스는 그 "화살표가 가리키는 방향"과 같은 부호(X: 왼쪽=음수, Y: 위=음수)
+                             로 움직여야 한다. 기존 코드는 Y를 +7(아래쪽)로 둬서 화살표 모양이 가리키는
+                             방향과 반대로 움직였고, 진폭(10/7px)도 작아 사용자 눈에는 사실상 위아래
+                             바운스(IC와 동일한 인상)로 보였다. X/Y 모두 부호를 화살표 방향(좌상)에
+                             맞추고 진폭을 키워(20/12px, tan31.4°≈0.61 비율 유지) IC(세로 직선 바운스)와
+                             뚜렷이 구분되는 대각선 왕복으로 만든다. -->
+                        <Storyboard x:Key="ArrowBounceLeftStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+                            <DoubleAnimation Storyboard.TargetName="ArrowTranslate" Storyboard.TargetProperty="X"
+                                             From="0" To="-20" Duration="0:0:0.6">
+                                <DoubleAnimation.EasingFunction>
+                                    <SineEase EasingMode="EaseInOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="ArrowTranslate" Storyboard.TargetProperty="Y"
+                                             From="0" To="-12" Duration="0:0:0.6">
+                                <DoubleAnimation.EasingFunction>
+                                    <SineEase EasingMode="EaseInOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                        </Storyboard>
+                    </Image.Resources>
+                </Image>
+                <controls:PaymentProcessingIndicator x:Name="ProcessingIndicator" Visibility="Collapsed"/>
+            </Grid>
+
+            <!-- ===== 신호 웨이브 인디케이터 (리더기 위쪽 공중, VanProcessing 전용) =====
+                 2026-08-24 신설: 문구(TextPanelA/B, Top=38)와 리더기(ReaderImage, Top=260) 사이 여백에
+                 배치한다. 컨트롤 자체 너비 300 기준 창 폭(750) 중앙 정렬 Left=225, Top=180. -->
+            <controls:PaymentSignalWaveIndicator x:Name="SignalWaveIndicator"
+                   Canvas.Left="225" Canvas.Top="180"
+                   Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="10"/>
+
+            <!-- ===== PIN 입력 패널 (Phase 18 P18-2, PinEntry 전용) =====
+                 `Assets/Images/PaymentNotice/pin입력.png` 시안의 요소 구성(아이콘 → 문구 2줄 → PIN
+                 4칸 → 3x4 키패드 → 취소)을 따르되, 시안은 세로형(1087x1447)이라 750x650 가로형에
+                 맞춰 배치를 다시 실측했다. 문구는 기존 TextPanelA/B 크로스페이드 레이어를 그대로
+                 쓴다(여기서는 아이콘/PIN 4칸/키패드만 배치). 리더기/원판/카드/화살표 레이어는
+                 PinEntry 상태에서 코드비하인드(ConfigureCard/ConfigureOverlay)가 이미 숨긴다.
+                 Panel.ZIndex=20으로 다른 모든 레이어보다 위에 둔다. -->
+            <Grid x:Name="PinPanel" Canvas.Left="0" Canvas.Top="0" Width="750" Height="650"
+                  Opacity="0" Visibility="Collapsed" Panel.ZIndex="20">
+
+                <!-- 아이콘: 카드+자물쇠, 배경 투명. Top=14, 76x76, 가로 중앙(Left=337). -->
+                <Image x:Name="PinIconImage" Width="76" Height="76"
+                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                       Margin="337,14,0,0" Stretch="Uniform" IsHitTestVisible="False"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                <!-- PIN 4칸: 미입력/입력됨/현재 위치 강조 3가지 시각 상태를 표현할 수 있도록 각 칸을
+                     개별 Border(+내부 Ellipse 점)로 분리해 둔다(P18-3에서 ViewModel 프로퍼티 바인딩
+                     대상). 기본값은 "1번째 칸이 강조된 초기 상태"(0자리 입력) — 나머지 3칸은 빈 칸. -->
+                <StackPanel x:Name="PinDigitsPanel" Orientation="Horizontal"
+                            HorizontalAlignment="Center" VerticalAlignment="Top"
+                            Margin="0,186,0,0">
+                    <Border x:Name="PinDigitBox1" Width="54" Height="54" Margin="0,0,18,0"
+                            Background="White" CornerRadius="8"
+                            BorderBrush="{StaticResource Blue500Brush}" BorderThickness="2">
+                        <Grid>
+                            <Ellipse x:Name="PinDigitDot1" Width="12" Height="12"
+                                     Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
+                            <TextBlock x:Name="PinDigitText1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <Border x:Name="PinDigitBox2" Width="54" Height="54" Margin="0,0,18,0"
+                            Background="White" CornerRadius="8"
+                            BorderBrush="{StaticResource TblBorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <Ellipse x:Name="PinDigitDot2" Width="12" Height="12"
+                                     Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
+                            <TextBlock x:Name="PinDigitText2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <Border x:Name="PinDigitBox3" Width="54" Height="54" Margin="0,0,18,0"
+                            Background="White" CornerRadius="8"
+                            BorderBrush="{StaticResource TblBorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <Ellipse x:Name="PinDigitDot3" Width="12" Height="12"
+                                     Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
+                            <TextBlock x:Name="PinDigitText3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <Border x:Name="PinDigitBox4" Width="54" Height="54"
+                            Background="White" CornerRadius="8"
+                            BorderBrush="{StaticResource TblBorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <Ellipse x:Name="PinDigitDot4" Width="12" Height="12"
+                                     Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
+                            <TextBlock x:Name="PinDigitText4" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- 3x4 키패드: 1~9 / ⌫(삭제) / 0 / 빈칸. Command 배선은 P18-3 — 지금은 클릭해도
+                     동작하지 않는다(x:Name만 미리 부여해 둔다). -->
+                <UniformGrid x:Name="PinKeypad" Rows="4" Columns="3"
+                             Width="500" Height="260"
+                             HorizontalAlignment="Center" VerticalAlignment="Top"
+                             Margin="0,268,0,0">
+                    <Button x:Name="PinButton1" Content="1" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="1"/>
+                    <Button x:Name="PinButton2" Content="2" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="2"/>
+                    <Button x:Name="PinButton3" Content="3" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="3"/>
+                    <Button x:Name="PinButton4" Content="4" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="4"/>
+                    <Button x:Name="PinButton5" Content="5" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="5"/>
+                    <Button x:Name="PinButton6" Content="6" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="6"/>
+                    <Button x:Name="PinButton7" Content="7" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="7"/>
+                    <Button x:Name="PinButton8" Content="8" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="8"/>
+                    <Button x:Name="PinButton9" Content="9" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="9"/>
+                    <Button x:Name="PinButtonBackspace" Content="⌫" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinBackspaceCommand}"/>
+                    <Button x:Name="PinButton0" Content="0" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Command="{Binding PinDigitCommand}" CommandParameter="0"/>
+                    <!-- 빈칸(오른쪽 아래) — 시안대로 버튼 없이 자리만 유지 -->
+                    <Grid/>
+                </UniformGrid>
+            </Grid>
+
+        </Canvas>
+
+        <!-- ===== 취소 버튼 ===== -->
+        <Button x:Name="CancelButton" Content="취소"
+                Style="{StaticResource ReaderSecondaryButtonStyle}"
+                Width="140" Height="40"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,24"
+                Command="{Binding CancelCommand}"/>
+        </Grid>
+        </Viewbox>
+    </Grid>
+</Window>

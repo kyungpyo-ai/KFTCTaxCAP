@@ -1,0 +1,29 @@
+<UserControl x:Class="KFTCTaxCAP.Views.Dialogs.AlertIcon"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="{StaticResource AlertIconSize}"
+             Height="{StaticResource AlertIconSize}"
+             Focusable="False"
+             IsTabStop="False"
+             SnapsToDevicePixels="False">
+    <!--
+        알림창 아이콘(Phase 38 P38-2, docs/alert_dialog/PRD.md §2.1·§3.3 D2) — 파스텔 원 40×40 + 벡터 심볼.
+        원본은 원 위에 폰트 글자(i ! × ✓ ?)를 그렸지만, 폰트·DPI에 따라 굵기·위치가 흔들리던 것(§2.5 #3)을
+        없애려고 40×40 좌표계의 Path로 그린다. 색·모양 전환은 Kind 의존 속성 하나로만 한다 — 아이콘 관련
+        코드는 이 컨트롤 밖에 두지 않는다(development_plan 위험 #5: 필요하면 글자 심볼로 되돌릴 자리).
+    -->
+    <Grid>
+        <Ellipse x:Name="Circle"/>
+        <Path x:Name="Symbol"
+              Width="{StaticResource AlertIconSize}"
+              Height="{StaticResource AlertIconSize}"
+              Stretch="None"
+              StrokeStartLineCap="Round"
+              StrokeEndLineCap="Round"
+              StrokeLineJoin="Round"/>
+        <Path x:Name="Dot"
+              Width="{StaticResource AlertIconSize}"
+              Height="{StaticResource AlertIconSize}"
+              Stretch="None"/>
+    </Grid>
+</UserControl>

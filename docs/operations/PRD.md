@@ -53,7 +53,7 @@
 
 ### 0.3 설정 저장 위치
 
-**레지스트리 루트는 `HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP\`** 이다(2026-08-31 확정).
+**레지스트리 루트는 `HKCU\Software\KFTC_VAN\KFTCTaxCAP\`** 이다(2026-08-31 확정).
 원본 MFC 앱은 `...\KFTC_VAN\KFTCOneCAP\`을 쓰므로 **같은 PC에 원본이 함께 설치돼 있어도 서로
 간섭하지 않는다.** 기존 리더기 설정(`SERIALPORT` 섹션)이 이미 이 루트를 쓰고 있다.
 
@@ -91,7 +91,7 @@
 
 `Services/Diagnostics/FileLogger.cs`가 이미 **일자별 파일 로깅**을 하고 있다.
 
-- 현재 위치: `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\yyyy-MM-dd.log`
+- 현재 위치: `%LOCALAPPDATA%\KFTCTaxCAP\logs\yyyy-MM-dd.log`
 - 형식: `[yyyy-MM-dd HH:mm:ss.fff] [LEVEL] 메시지`
 - 프로세스 전역 `lock`으로 직렬화(리더기 CALLBACK이 별도 스레드에서 기록하므로 필요)
 - 로깅 실패는 조용히 무시(디스크 가득참·권한 문제로 앱이 죽으면 본말전도)
@@ -117,7 +117,7 @@
 
 - **`app.manifest`에 `requireAdministrator`를 추가한다.** 이 뒤로 앱을 실행하면 항상 관리자 권한
   상승이 필요해진다(수동 실행 시 UAC 프롬프트가 뜬다).
-- **DB 경로(§1.6, SQLite)는 옮기지 않는다** — `%LOCALAPPDATA%\KFTCTaxGiroCAP\`에 그대로 둔다.
+- **DB 경로(§1.6, SQLite)는 옮기지 않는다** — `%LOCALAPPDATA%\KFTCTaxCAP\`에 그대로 둔다.
   관리자 권한으로 실행되면 쓰기 권한 문제가 어차피 없으므로, 굳이 옮겨서 `IntegrityCheckStore`와
   경로 규칙을 갈라놓을 이유가 없다.
 - **설치 시 폴더를 미리 만들어 둘 필요는 없다** — 앱이 관리자 권한으로 실행되므로 최초 기동 시
@@ -143,8 +143,8 @@ PRD가 요구사항으로 못박아 둔다**):
 **5번(관리자 그룹)이 단순 권장이 아니라 이 설계의 필수 전제인 이유**(2026-09-01, P22-0 코드 리뷰
 과정에서 확인): "DB 경로를 옮기지 않는다"는 위 결정은 **승격 후에도 로그온 계정이 바뀌지 않는다**는
 전제에서만 성립한다. 만약 키오스크 계정이 표준 사용자이고 UAC 동의 시 **다른 관리자 계정**으로
-로그온한다면, 그 계정의 `%LOCALAPPDATA%\KFTCTaxGiroCAP\`(SQLite DB, §1.6)와
-`HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP`(리더기 설정)가 원래 키오스크 계정의 것과 **다른 프로필로
+로그온한다면, 그 계정의 `%LOCALAPPDATA%\KFTCTaxCAP\`(SQLite DB, §1.6)와
+`HKCU\Software\KFTC_VAN\KFTCTaxCAP`(리더기 설정)가 원래 키오스크 계정의 것과 **다른 프로필로
 갈라진다** — 기존 설정·이력이 갑자기 사라진 것처럼 보이는 장애로 이어진다. 그러므로 "키오스크
 계정 자체를 관리자 그룹에 넣어, 승격이 별도 계정 전환 없이 같은 프로필 안에서 일어나게 한다"가
 반드시 지켜져야 한다.
@@ -425,10 +425,10 @@ POS 쪽에서 들어와도 같은 번호로 원캡 로그를 찾을 수 있기 �
   저장 지점만 연결하면 된다.
 - 리더기 2대 구성이면 포트별로 각각 저장한다(모델이 다를 수 있다).
 
-> `IntegrityCheckStore.PosId`(`"KFTCTAXGIROCAP01"`)는 **모든 단말이 공유하는 하드코딩 상수**라
+> `IntegrityCheckStore.PosId`(`"##KFTCTAXCAP1001"`)는 **모든 단말이 공유하는 하드코딩 상수**라
 > 식별에 쓸 수 없다. 신원 키로 착각하지 않는다.
 
-**저장 위치**: 기존 SQLite(`%LOCALAPPDATA%\KFTCTaxGiroCAP\`, `IntegrityCheckStore`와 같은 DB)에
+**저장 위치**: 기존 SQLite(`%LOCALAPPDATA%\KFTCTaxCAP\`, `IntegrityCheckStore`와 같은 DB)에
 테이블 하나를 추가한다. **레지스트리에 두지 않는다** — 레지스트리는 사용자가 설정한 값을 두는
 곳이고, 이것들은 장비·전문에서 관측한 값이라 성격이 다르다. 설정 초기화 때 같이 날아가거나
 사용자가 편집 가능한 값처럼 보이면 안 된다.

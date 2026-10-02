@@ -1,0 +1,51 @@
+<Window x:Class="KFTCTaxCAP.Views.Dialogs.AlertGalleryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Alert Gallery"
+        Width="680" Height="760"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource HomeBgBrush}">
+    <!--
+        알림창 갤러리(인자 alert gallery, Phase 38 P38-4 확장). 세 구역:
+        1) 조합 선택(종류 × 본문 길이 × 버튼) — 콤보 3개 + "띄우기" 버튼 하나로 조합 폭발을 피한다.
+        2) 원본 문구 4개 + PRD §4.2 실제 문구 14행 버튼 목록(각 호출부 종류·버튼 그대로).
+        3) 특수 버튼 4개(백그라운드 스레드 / owner 없음 / owner 최소화 / 닫힌 owner).
+        하단 ResultText에 AlertResult를 표시한다. 진단용 코드비하인드 — 코드비하인드에서 버튼을 생성한다.
+    -->
+    <DockPanel Margin="20">
+        <Border DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="12" Background="White"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8">
+            <TextBlock x:Name="ResultText" AutomationProperties.AutomationId="ResultText"
+                       FontFamily="{StaticResource PretendardFontFamily}" FontSize="14"
+                       Foreground="{StaticResource TitleTextBrush}" TextWrapping="Wrap" Text="결과: (없음)"/>
+        </Border>
+
+        <Border DockPanel.Dock="Top" Margin="0,0,0,12" Padding="12" Background="White"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8">
+            <StackPanel>
+                <TextBlock Text="조합 선택" FontFamily="{StaticResource PretendardFontFamily}" FontSize="14"
+                           FontWeight="Bold" Foreground="{StaticResource TitleTextBrush}" Margin="0,0,0,8"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="KindCombo" Grid.Column="0" Height="36"/>
+                    <ComboBox x:Name="BodyCombo" Grid.Column="2" Height="36"/>
+                    <ComboBox x:Name="ButtonsCombo" Grid.Column="4" Height="36"/>
+                    <Button x:Name="FireButton" Grid.Column="6" Content="띄우기" Width="90" Height="36"
+                            Style="{StaticResource ReaderButtonStyle}" Click="FireButton_Click"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="CasePanel"/>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

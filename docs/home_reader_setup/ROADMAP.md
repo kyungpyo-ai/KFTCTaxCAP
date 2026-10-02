@@ -1,4 +1,4 @@
-# ROADMAP: KFTCOneCAP WPF 재구현
+# ROADMAP: KFTCTaxCAP WPF 재구현
 
 > 이 문서는 `PRD_WPF.md`(무엇을 만들지)를 기준으로, **어떤 순서로 얼마나 작은 단위로 구현할지**를 정의한다.
 > 각 Phase는 "빌드되고 눈으로 확인 가능한 상태"로 끝나는 것을 원칙으로 한다 — 다음 Phase로 넘어가기 전 반드시 실행/캡처로 검증한다.
@@ -32,8 +32,8 @@
 **목표**: 빈 WPF 앱이 빌드되고 실행되는 상태.
 
 - [x] `.NET` 버전 결정 → **.NET Framework 4.8** (`net48`)로 확정. **Windows 7(SP1) 지원 요구사항** 때문에 .NET 6/8 등 최신 .NET(Core 계열)은 Windows 7에서 실행 자체가 불가하여 제외 — Win7~Win11까지 폭넓게 지원되는 .NET Framework 4.8이 유일한 현실적 선택지. (최초 스캐폴딩은 net8.0-windows로 시작했다가 요구사항 확인 후 net48로 재작업함 — 상세: PRD 1.4)
-- [x] `KFTCOneCAP.Wpf.sln` + `src/KFTCOneCAP.Wpf/KFTCOneCAP.Wpf.csproj` (WPF, net48)
-- [x] 폴더 구조: `src/KFTCOneCAP.Wpf/Views/`, `ViewModels/`, `Themes/`, `Assets/Icons/`, `Assets/Images/`
+- [x] `KFTCTaxCAP.sln` + `src/KFTCTaxCAP/KFTCTaxCAP.csproj` (WPF, net48)
+- [x] 폴더 구조: `src/KFTCTaxCAP/Views/`, `ViewModels/`, `Themes/`, `Assets/Icons/`, `Assets/Images/`
 - [x] `App.xaml` / `App.xaml.cs`, `MainWindow.xaml`(빈 창 껍데기, 템플릿 기본값)
 - [x] MVVM 기반 골격 → **CommunityToolkit.Mvvm 8.4.2** 추가 (표준적이고 소스 제너레이터 기반이라 보일러플레이트 최소화)
 - [x] `dotnet build` 성공, 빈 창 실행 확인 (`mcp__windows__windows_launch` + `windows_screenshot`으로 실측 검증, net8.0-windows/net48 양쪽 모두 검증)
@@ -48,7 +48,7 @@
 
 - [x] `Themes/Colors.xaml` — PRD 2.1 색상 팔레트 전체를 `SolidColorBrush` 리소스로 정의 (홈 화면/리더기설정 화면 토큰 전체, 결과 정상/오류 칩 포함)
 - [x] `Themes/Typography.xaml` — Pretendard/Malgun Gothic 폰트 리소스 + 화면별 크기/굵기 `Style` (일반 모드 기준값 우선, 컴팩트 분기는 Phase 6 이후 별도 검토). PRD 표의 pt 값은 96dpi 기준 `pt × 96/72` 로 환산해 WPF `FontSize`(px 단위)에 적용
-- [x] Pretendard 폰트 파일 확보 및 포함 — 원본 `C:\Project\MerchantSetup_OnPaintIcons_Clean_CP949\fonts\`의 Regular/Medium/Bold 3종을 `src/KFTCOneCAP.Wpf/Assets/Fonts/`에 복사, `Resource` 빌드 액션으로 csproj에 포함(OFL 라이선스라 임베딩 문제 없음). **ExtraBold(800) 파일이 원본에 없어 홈 타이틀은 Bold(700)로 폴백** — 추후 ExtraBold 파일이 확보되면 `Typography.xaml`의 `HomeTitleTextStyle`만 교체하면 됨
+- [x] Pretendard 폰트 파일 확보 및 포함 — 원본 `C:\Project\MerchantSetup_OnPaintIcons_Clean_CP949\fonts\`의 Regular/Medium/Bold 3종을 `src/KFTCTaxCAP/Assets/Fonts/`에 복사, `Resource` 빌드 액션으로 csproj에 포함(OFL 라이선스라 임베딩 문제 없음). **ExtraBold(800) 파일이 원본에 없어 홈 타이틀은 Bold(700)로 폴백** — 추후 ExtraBold 파일이 확보되면 `Typography.xaml`의 `HomeTitleTextStyle`만 교체하면 됨
 - [x] `Themes/Buttons.xaml` — `CModernButton` 대응 `Button` Style: `AutoButtonStyle`/`DefaultButtonStyle`/`PrimaryButtonStyle`/`ReaderButtonStyle` 4종, 호버/눌림 Trigger 포함
 - [x] `Themes/ComboBox.xaml` — `CSkinnedComboBox` 대응 라운드(6px) 콤보 Style, 포커스 시 2px 파란 보더로 전환하는 커스텀 `ControlTemplate`
 - [x] `Themes/ToggleSwitch.xaml` — `CModernToggleSwitch` 대응 커스텀 토글(좌측 라벨 + 우측 노브, `BackEase` 슬라이드 애니메이션). `IsPending` 스피너는 이번 Phase 필수 아니라 시각 요소(회전 링 Border)만 템플릿에 남겨두고 트리거 배선은 보류
@@ -250,7 +250,7 @@
 
 - [x] 버튼 클릭(초기화/상태체크/키다운로드/무결성체크/업데이트) → 로딩 상태(스피너+텍스트) → 3초 후 자동 완료 (원본 동작 재현, `Task.Delay` 기반 비동기로 — UI 스레드 블로킹 금지). **실제 리더기 통신 로직은 이 Phase의 범위가 아니며, 원본도 미구현이라 이후에도 별도 단계로 다룰 예정**(사용자 지시).
 - [x] 조회 버튼 → 로딩(2초) → 더미 데이터로 리스트 갱신 (조회기간별 행 수: 오늘 3 / 7일 5 / 30일·100일 10)
-- [x] 레지스트리 저장: `COMPORT1_FIELD`/`COMPORT2_FIELD`, `MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`(반전 인코딩), 경로 `HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT` — PRD 5장 참고(2026-08-14 확정: 원본과 레지스트리 공유하지 않고 별도 앱 이름 사용)
+- [x] 레지스트리 저장: `COMPORT1_FIELD`/`COMPORT2_FIELD`, `MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`(반전 인코딩), 경로 `HKCU\Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT` — PRD 5장 참고(2026-08-14 확정: 원본과 레지스트리 공유하지 않고 별도 앱 이름 사용)
 - [x] 정보 팝오버(멀티패드) — PRD 4.10 문구 그대로
 - [x] 스냅샷/dirty-check(PRD 4.13): 콤보1/2 + 멀티패드1/2 추적, 취소 시 확인창
 
@@ -261,7 +261,7 @@
 - "동시에 하나의 작업만 진행 가능"(PRD 4.7)은 `_isBusy` bool 플래그 + `SetGlobalEnabled(bool)` 헬퍼로 구현 — 작업이 시작되면 리더기1/2 콤보·액션버튼패널·멀티패드토글·조회기간콤보·조회버튼·확인·취소 버튼 전체를 한 번에 잠그고(개별 카드 단위가 아니라 화면 전체 단위), 완료 후 전체를 풀고 나서 기존 `ApplyReaderCardEnabled`(Phase 4에 이미 있던 "미사용" 콤보 기준 활성/비활성 로직)를 리더기1/2 양쪽에 재적용한다. `_isBusy`가 true인 동안의 클릭은 핸들러 최상단에서 즉시 return(추가로 컨트롤 자체도 disabled라 이중 방어).
 - 무결성 체크 리스트: 기존 "항상 빈 상태"였던 정적 `Grid`를 `ItemsControl`(x:Name="IntegrityListItemsControl")로 교체하고, 빈 상태 문구(`IntegrityEmptyText`)/로딩 문구(`IntegrityLoadingText`, "조회 중입니다...")와 함께 같은 `Grid`에 겹쳐 놓은 뒤 코드비하인드에서 `Visibility`로 세 상태를 전환한다. 각 행의 `DataTemplate`은 헤더와 동일한 6열 비율(20/11/8/18/23/20)의 `Grid`를 재사용하고, 결과 칩(정상/오류)은 `Models/IntegrityCheckRow.cs`에 새로 만든 모델이 `Themes/Colors.xaml`의 기존 `ResultOkBgBrush`/`ResultErrorBgBrush` 등 리소스를 `Application.Current.Resources[...]`로 그대로 참조해 리터럴 색상 중복 없이 바인딩한다. 더미 데이터는 `BuildDummyRows(period)`가 조회기간에 따라 3/5/10행을 생성하고, 4번째 행마다 결과코드 "01"(오류)을 섞어 정상/오류 칩이 둘 다 보이도록 구성했다.
 - 정보 팝오버(PRD 4.10): 리더기1/2의 멀티패드 info 버튼("?" 아이콘) 2개가 XAML에 하나만 선언한 공용 `Popup`(`MultipadInfoPopup`, `StaysOpen="False"`)을 공유한다. `MultipadInfoButton_Click`이 클릭된 버튼을 `PlacementTarget`으로 지정해 여는데, 같은 버튼을 다시 클릭하면(= 이미 그 버튼을 대상으로 열려 있으면) 닫고, 다른 버튼을 클릭하면 `PlacementTarget`만 바뀌면서 자연스럽게 이전 팝오버가 닫히고 새 팝오버가 그 자리에 뜬다. "포트 열기" info 버튼은 자리 자체가 `Visibility="Hidden"`이라 배선하지 않음(지시대로).
-- 레지스트리 저장(PRD 5장/4.12): `SaveToRegistry()`가 `Registry.CurrentUser.CreateSubKey(@"Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT")` 하위에 `COMPORT1_FIELD`/`COMPORT2_FIELD`(콤보 선택 텍스트 그대로)와 `MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`(반전 인코딩: `IsChecked==true` → `"0"`, 아니면 `"1"`)를 저장하고, `ConfirmButton_Click`이 저장 직후 `DialogResult=true; Close()`.
+- 레지스트리 저장(PRD 5장/4.12): `SaveToRegistry()`가 `Registry.CurrentUser.CreateSubKey(@"Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT")` 하위에 `COMPORT1_FIELD`/`COMPORT2_FIELD`(콤보 선택 텍스트 그대로)와 `MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`(반전 인코딩: `IsChecked==true` → `"0"`, 아니면 `"1"`)를 저장하고, `ConfirmButton_Click`이 저장 직후 `DialogResult=true; Close()`.
 - 스냅샷/dirty-check(PRD 4.12/4.13): `Loaded` 핸들러 마지막에 콤보1/2 선택 텍스트와 멀티패드1/2 `IsChecked` 값을 필드 4개에 저장해두고, `CancelButton_Click`이 열려있는 팝오버를 먼저 닫은 뒤 현재 값과 스냅샷을 비교 — 하나라도 다르면 `MessageBox.Show(..., YesNo)`로 "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?"를 띄우고, "아니요"면 `return`(창 유지), "예"거나 애초에 변경사항이 없으면 `DialogResult=false; Close()`.
 
 **임의 판단/근사 처리 항목** (PRD/작업 지시에 명시되지 않아 직접 결정한 세부사항):
@@ -276,7 +276,7 @@
 - 조회 버튼 클릭(조회기간 기본값 "오늘") → 버튼 텍스트가 "조회중..."으로 바뀌고 리스트 영역이 "조회 중입니다..."로 전환된 뒤 2초 후 더미 행 3개(체크일시/포트/결과칩/모듈ID/리더기식별번호/POS식별번호, 결과 "정상" 초록 칩)가 헤더와 컬럼 정렬이 맞게 표시되는 것을 스크린샷으로 확인. 조회기간을 "7일"로 바꿔 재조회 → 5행 표시(가시 3행 고정 + 세로 스크롤바 등장) 및 4번째 행이 "오류" 빨강 칩으로 렌더링되는 것을 확인.
 - 리더기1 멀티패드 토글 ON → info 버튼("?") 클릭 → "멀티패드 여부" 제목과 PRD 4.10 문구(ON/OFF 설명 + 스캐너 각주) 그대로인 팝오버가 버튼 아래에 뜨는 것을 스크린샷으로 확인. 같은 버튼 재클릭 → 팝오버가 닫히는 것을 스크린샷으로 확인.
 - 멀티패드 토글을 켠 상태에서 취소 클릭 → "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?" 확인창(예/아니요)이 뜨는 것을 확인, "아니요" 클릭 시 창이 닫히지 않고 유지되는 것을 확인(윈도우 목록으로 재확인).
-- 같은 상태에서 확인 클릭 → 창이 닫히고, PowerShell `Get-ItemProperty -Path HKCU:\Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT`로 조회한 결과 `COMPORT1_FIELD=COM 01`, `COMPORT2_FIELD=미사용`, `MULTIPAD1_FIELD=0`(켜짐→반전 "0"), `MULTIPAD2_FIELD=1`(기본 꺼짐)이 실제로 저장된 것을 확인.
+- 같은 상태에서 확인 클릭 → 창이 닫히고, PowerShell `Get-ItemProperty -Path HKCU:\Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT`로 조회한 결과 `COMPORT1_FIELD=COM 01`, `COMPORT2_FIELD=미사용`, `MULTIPAD1_FIELD=0`(켜짐→반전 "0"), `MULTIPAD2_FIELD=1`(기본 꺼짐)이 실제로 저장된 것을 확인.
 - 새로 리더기 설정 창을 열어(레지스트리 로드는 이번 Phase 범위 아니므로 XAML 기본값으로 리셋된 상태) 값을 전혀 바꾸지 않고 바로 취소 클릭 → 확인창 없이 즉시 창이 닫히는 것을 확인.
 
 ---
@@ -286,7 +286,7 @@
 위 Phase 5 1차 구현은 레지스트리 **저장**만 있고 창을 열 때 저장된 값을 다시 **불러오는** 부분이 없었다(항상 XAML 기본값 `SelectedIndex="0"`으로 시작 — 즉 리더기1은 매번 "COM 01"이 기본으로 보임). 또한 액션/조회 버튼의 로딩 상태가 텍스트 전환뿐이라 시각적 스피너가 없었다. 두 가지를 보완했다.
 
 **1) 레지스트리 값 로드 (PRD 4.13/5장)**:
-- `Views/ReaderSetupWindow.xaml.cs`에 `LoadFromRegistry()`를 추가하고 `ReaderSetupWindow_Loaded`의 가장 첫 단계(콤보 `SelectionChanged` 구독/`ApplyReaderCardEnabled`/dirty-check 스냅샷 캡처보다 먼저)에서 호출한다 — `HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT`의 `COMPORT1_FIELD`/`COMPORT2_FIELD`/`MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`를 읽어 콤보 선택값/토글 `IsChecked`에 반영한다. 이 순서 덕분에 이후의 활성화 연동과 dirty-check 스냅샷이 "로드된 값" 기준으로 정확히 잡힌다(스냅샷 캡처가 로드 이후 시점이라 순서가 꼬이지 않음을 코드 리뷰로 확인).
+- `Views/ReaderSetupWindow.xaml.cs`에 `LoadFromRegistry()`를 추가하고 `ReaderSetupWindow_Loaded`의 가장 첫 단계(콤보 `SelectionChanged` 구독/`ApplyReaderCardEnabled`/dirty-check 스냅샷 캡처보다 먼저)에서 호출한다 — `HKCU\Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT`의 `COMPORT1_FIELD`/`COMPORT2_FIELD`/`MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`를 읽어 콤보 선택값/토글 `IsChecked`에 반영한다. 이 순서 덕분에 이후의 활성화 연동과 dirty-check 스냅샷이 "로드된 값" 기준으로 정확히 잡힌다(스냅샷 캡처가 로드 이후 시점이라 순서가 꼬이지 않음을 코드 리뷰로 확인).
 - `SelectComboValue(ComboBox, string?)` 헬퍼: 저장된 값과 문자열이 일치하는 `ComboBoxItem`이 있으면 그 항목을 선택하고, 값이 비어있거나(키/값 없음) 콤보 항목에 없는 값이면 안전하게 "미사용" 항목으로 폴백한다.
 - 토글은 반전 인코딩 규칙 그대로(`MULTIPAD{N}_FIELD == "0"`일 때만 켜짐, 그 외/없음은 꺼짐)를 역방향으로 적용해 `IsChecked`를 초기화한다.
 - 레지스트리 접근 자체(`Registry.CurrentUser.OpenSubKey`)를 `try/catch`로 감싸 권한 문제 등으로 예외가 나도 창 밖으로 전파하지 않고 조용히 기본값(미사용/꺼짐)으로 폴백하도록 했다.
@@ -312,7 +312,7 @@
 > **2026-08-14 범위 조정(사용자 지시)**: 기존 "Phase 6 — 실제 COM 포트 연동"(더미 콤보 대신
 > `System.IO.Ports.SerialPort.GetPortNames()`로 실제 COM 포트 열거, PRD 4.13)을 이 저장소의
 > 로드맵에서 제거했다. 실제 리더기 연동은 **외부 DLL을 붙이는 방식으로 진행될 예정이며, 별도
-> PRD 문서로 범위/요구사항을 새로 정의해서 진행**하기로 했다 — 이 프로젝트(KFTCTAXGIROCAP)는
+> PRD 문서로 범위/요구사항을 새로 정의해서 진행**하기로 했다 — 이 프로젝트(KFTCTaxCAP)는
 > "리더기 설정 화면의 UX/UI 구현"까지가 목표이고, 실제 하드웨어/DLL 연동은 그 후속 작업(별도
 > 문서·별도 단계)으로 명확히 분리한다. 그래서 원래 Phase 7이었던 "통합 검증 & 마무리"가 이
 > 저장소 기준 마지막 단계(Phase 6)가 된다.
@@ -431,7 +431,7 @@
 Phase 7부터의 계획은 **`docs/payment_relay/ROADMAP.md`**에 있습니다. 이 문서(`home_reader_setup/`)는 1차 범위
 — 홈 화면과 리더기 설정 화면의 UX/UI 재구현(Phase 0~6) — 의 계획과 이력만 다룹니다.
 
-Phase 번호는 두 문서에 걸쳐 이어집니다(여기 0~6, 저기 7~). 같은 앱(`KFTCOneCAP.Wpf`)을 계속 확장하는 것이라
+Phase 번호는 두 문서에 걸쳐 이어집니다(여기 0~6, 저기 7~). 같은 앱(`KFTCTaxCAP`)을 계속 확장하는 것이라
 번호를 새로 시작하지 않습니다.
 
 ---

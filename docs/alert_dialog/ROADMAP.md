@@ -82,7 +82,7 @@
 
 ### 완료 기준
 
-- `src/KFTCOneCAP.Wpf`에서 `MessageBox.Show` grep 0건.
+- `src/KFTCTaxCAP`에서 `MessageBox.Show` grep 0건.
 - PRD §4.2 14행이 표의 종류·버튼으로 뜬다(실제 화면 캡처 또는 사용자 확인).
 - `--receipt-print-test self` 통과(재출력·조립 하네스 포함).
 - 질문창: 예 → 닫힘, 아니오·ESC → 창 유지(기존 dirty-check 동작 유지).

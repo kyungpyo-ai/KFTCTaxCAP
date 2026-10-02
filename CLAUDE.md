@@ -6,16 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 기존 MFC(Win32)로 개발된 `KFTCOneCAP` 가맹점 결제 단말 관리 프로그램의 **홈 화면**과 **리더기 설정 화면**을 C# WPF로 동일한 UI/UX와 비즈니스 로직으로 재구현하는 프로젝트. 1차 범위는 이 두 화면이며, 나머지 화면(가맹점 설정, 결제, 전표 설정 등)은 범위 밖이다.
 
+**프로그램/프로젝트명은 `KFTCTaxCAP`**(2026-10-02 변경 — 이전 `KFTCOneCAP.Wpf`/저장소 `KFTCTAXGIROCAP`). 네임스페이스·어셈블리·레지스트리(`HKCU\Software\KFTC_VAN\KFTCTaxCAP\`)·DB 폴더(`%LOCALAPPDATA%\KFTCTaxCAP\`)가 모두 이 이름이다. 문서에 남은 `KFTCOneCAP`은 원본 MFC 앱이나 SPEC 원문 인용, 과거 기록을 가리킨다. 보안인증 식별번호(POS 식별번호 겸 902614 #43 프로그램 식별자)는 `##KFTCTAXCAP1001`.
+
 **현재 상태: 1차 범위(홈 화면 + 리더기 설정 화면 UX/UI 재구현, Phase 0~6) 완료.** 1차 범위 문서는 `docs/home_reader_setup/`(PRD_WPF.md, ROADMAP.md, screenshots/)에 모아 관리한다.
 
-**2차 범위(결제 중계 기능, Phase 7~, 준비 단계): `docs/payment_relay/PRD.md`가 요구사항 정본.** 소켓 서버(`localhost:8002`)로 POS 결제 요청을 받아 `ReaderSerial.dll`로 카드를 리딩하고 `KFTC_GIRO.dll`(`FNAISCRDVAN`)로 VAN 서버에 결제를 요청하는 기능을 **같은 `KFTCOneCAP.Wpf` 앱에 통합**한다(별도 실행 파일 아님). Phase 진행은 `docs/payment_relay/ROADMAP.md`에 Phase 7부터 이어서 기록한다.
+**2차 범위(결제 중계 기능, Phase 7~, 준비 단계): `docs/payment_relay/PRD.md`가 요구사항 정본.** 소켓 서버(`localhost:8002`)로 POS 결제 요청을 받아 `ReaderSerial.dll`로 카드를 리딩하고 `KFTC_GIRO.dll`(`FNAISCRDVAN`)로 VAN 서버에 결제를 요청하는 기능을 **같은 `KFTCTaxCAP` 앱에 통합**한다(별도 실행 파일 아님). Phase 진행은 `docs/payment_relay/ROADMAP.md`에 Phase 7부터 이어서 기록한다.
 
 ## 빌드 / 실행
 
 - 타겟 프레임워크: **`net48` (.NET Framework 4.8)** — Windows 7(SP1) 지원 요구사항 때문. .NET 6/8 등 최신 .NET(Core 계열)은 Windows 7에서 실행 자체가 불가하므로 사용 금지. 상세: `docs/home_reader_setup/PRD_WPF.md` 1.4장.
-- 솔루션: `KFTCOneCAP.Wpf.sln` (루트) → 프로젝트: `src/KFTCOneCAP.Wpf/KFTCOneCAP.Wpf.csproj`
+- 솔루션: `KFTCTaxCAP.sln` (루트) → 프로젝트: `src/KFTCTaxCAP/KFTCTaxCAP.csproj`
 - 빌드: `dotnet build` (루트에서 실행)
-- 실행: `dotnet run --project src/KFTCOneCAP.Wpf/KFTCOneCAP.Wpf.csproj`
+- 실행: `dotnet run --project src/KFTCTaxCAP/KFTCTaxCAP.csproj`
 - MVVM: `CommunityToolkit.Mvvm` 사용 (소스 제너레이터 기반 `[ObservableProperty]`/`[RelayCommand]`, .NET Framework 4.6.2+ 호환 확인됨). **1차 범위(Phase 0~6)는 패키지만 넣고 실제로는 코드비하인드로 구현됐다** — Phase 7(`docs/payment_relay/ROADMAP.md`)에서 두 화면을 ViewModel 기반으로 전환하며, **그 이후 모든 화면 작업은 MVVM으로 한다**(새 화면을 코드비하인드로 만들지 않는다). 단 트레이 아이콘·DWM 타이틀바처럼 창 핸들/OS에 직접 묶인 코드는 코드비하인드에 남긴다.
 - **Windows 10 1809+ 전용 API(DWM 이머시브 타이틀바 등) 사용 시 반드시 OS 버전 체크 후 조건부 적용** — Win7에서 no-op 처리 필요 (원본 MFC 앱도 동일 패턴).
 
@@ -60,7 +62,7 @@ KioskSim은 범위 밖. 원본 캡처는 `docs/alert_dialog/screenshots/`(캡처
 - `.claude/agents/receipt-printer-developer.md` — 영수증 프린터(시리얼 COM + ESC/POS) 출력 계층 개발 전담(`Protocol/Printer/`, `Services/Printer/`, 프린터 진단 하네스). 근거는 `docs/receipt_print/`(특히 `escpos_reference.md`). 영수증 값 조립·화면 작업은 `csharp-wpf-developer`와 나눠 맡는다.
 - `.claude/agents/reader-pinpad-spec-expert.md` — 리더기/핀패드 SPEC 원문 및 `ReaderSerial.dll` API 계약 확인 전담(아래 "리더기 연동 DLL" 절 참고).
 - `.claude/agents/reader-dll-integration-developer.md` — `ReaderSerial.dll` P/Invoke 연동 개발 전담(아래 "리더기 연동 DLL" 절 참고).
-- `.claude/agents/pos-onecap-spec-expert.md` — POS ↔ KFTCOneCAP 간 전문(telegram) SPEC 확인 전담. 근거 문서는
+- `.claude/agents/pos-onecap-spec-expert.md` — POS ↔ KFTCTaxCAP 간 전문(telegram) SPEC 확인 전담. 근거 문서는
   `docs/payment_relay/spec/국세 베리어프리 키오스크용 전산설계서(POS-원캡)_20260930.pdf`(hwp 원본은 DRM
   배포용 문서 래퍼라 열 수 없음, PDF가 유일하게 파싱 가능 — **2026-09-30판이 최신 정본**이다. 이 판의 변경은
   800000 한 전문뿐: `#14`가 `BIN`(AN8) → `마스킹 카드번호`(AN19)로 바뀌어 `#15~#28` POSITION이 +11 밀리고

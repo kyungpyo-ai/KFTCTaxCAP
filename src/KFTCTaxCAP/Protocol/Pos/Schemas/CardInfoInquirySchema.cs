@@ -1,0 +1,96 @@
+using System.Collections.Generic;
+using System.Linq;
+
+namespace KFTCTaxCAP.Protocol.Pos.Schemas;
+
+/// <summary>
+/// 카드 정보 조회 전문(800000), SPEC 20260930판 p.13~14(이전 판 p.12). 본문 총 길이 500바이트.
+/// <b>원캡 담당 필드는 #14 마스킹 카드번호(AN19) 1개뿐</b>이다(docs/payment_relay/development_plan.md
+/// P17-2/P17-6, docs/receipt_print/development_plan.md Phase 36) — 카드리딩 응답의 카드번호에서 구분자
+/// 앞의 숫자·'*' 부분(이미 리더기가 마스킹, 앞 8자리 BIN은 마스킹 제외)을 채운다.
+/// </summary>
+internal static class CardInfoInquirySchema
+{
+    private const string TransactionTypeCode = "800000";
+
+    /// <summary>
+    /// 거래 구분 코드 고정값. SPEC p.5의 "#3/#4 고정값 선언 표"에는 501008·902614만 등재되어 있고
+    /// 800000은 p.12 흐름도(①0200/800000 → ④0210/800000)에서만 유추 가능하다(별도 선언 문장 없음,
+    /// 2026-08-26 재확인) — 흐름도가 유일한 근거이므로 그대로 채택한다.
+    /// </summary>
+    internal const string FixedTransactionType = TransactionTypeCode;
+
+    internal static PosTelegramSchema Create()
+    {
+        // 공통부 SET 장소(p.12 표): VAN/인터넷지로/kiosk 조합(디지털예산 없음). #10/#13은 표시 없음.
+        //
+        // **정정(2026-08-28, Phase 19 P19-5 후속 수정 2)**: #6/#8은 초기 전사 당시 VAN 열로
+        // 잘못 읽었다 — SPEC 표(p.12)를 사용자가 하이라이트로 표시해 재확인한 결과 실제로는
+        // 인터넷지로+kiosk 열이 체크되어 있다(VAN 열이 아니다). 800000 표는 다른 두 전문에 없는
+        // VAN 열이 추가로 있어 인터넷지로 열의 위치가 한 칸 밀려 보이는 착시가 원인이었다
+        // (src/KFTCTaxCAP.KioskSim/Protocol/TelegramSchemas.cs, docs/payment_relay/development_plan.md
+        // "P19-5 후속 수정 2" 참고 — 독립 전사본인 KioskSim 쪽에서 먼저 정정됐고 이 파일은 그 뒤
+        // 뒤늦게 맞췄다).
+        var headerOwners = new[]
+        {
+            PosFieldOwner.None, // 0 (미사용)
+            PosFieldOwner.Kiosk, // 1 업무 구분
+            PosFieldOwner.Kiosk, // 2 요청기관 코드
+            PosFieldOwner.Van | PosFieldOwner.Kiosk, // 3 전문 종별 코드
+            PosFieldOwner.Kiosk, // 4 거래 구분 코드
+            PosFieldOwner.InternetGiro | PosFieldOwner.Van, // 5 상태 코드
+            PosFieldOwner.InternetGiro | PosFieldOwner.Kiosk, // 6 송·수신 FLAG(정정: VAN이 아니라 kiosk)
+            PosFieldOwner.InternetGiro, // 7 응답 코드
+            PosFieldOwner.InternetGiro | PosFieldOwner.Kiosk, // 8 전송 일시(정정: VAN이 아니라 kiosk)
+            PosFieldOwner.Kiosk, // 9 은행/센터 전문 관리 번호
+            PosFieldOwner.None, // 10 이용기관/센터 전문 관리 번호 — SPEC 표시 없음
+            // 11/12: SPEC 20260922 개정(pos-onecap-spec-expert 재확인, 2026-09-22)으로 SET 장소 표시가
+            // 인터넷지로/VAN/kiosk/원캡 4개 열 전부 삭제됐다 — 이전엔 kiosk ○였다. kiosk가 더 이상
+            // 채우지 않고 공백으로 보낸다(발주처 확인: 이용기관 식별은 #2로 충분, 수수료율 등은 #14
+            // (당시 BIN, 현 마스킹 카드번호의 앞 8자리) 기반 서버 조회라 이 값이 없어도 지장 없음, docs/payment_relay/spec_open_questions.md
+            // Q9). 501008/902614의 #11/#12는 이번 개정에서 변경 없음(각 스키마 파일의 headerOwners는
+            // 전문별로 독립이라 이 변경은 800000에만 적용된다).
+            PosFieldOwner.None, // 11 이용기관 발행기관 분류코드
+            PosFieldOwner.None, // 12 이용기관 지로 번호
+            PosFieldOwner.None, // 13 FILLER(응답 코드 구분) — SPEC 표시 없음
+        };
+
+        IEnumerable<PosField> header = PosCommonHeader.Create(CommonHeaderNameVariant.Shared800000And902614, headerOwners);
+
+        var I = PosFieldOwner.InternetGiro;
+        var business = new List<PosField>
+        {
+            // #14 마스킹 카드번호(SPEC 20260930 p.13~14 개정 — 이전 판은 "BIN" AN8). 원캡이 리더기
+            // 카드번호에서 구분자 앞의 숫자·'*' 부분만 왼쪽 정렬 + 공백 채움으로 넣는다(리더기가 이미
+            // 9~12번째·마지막 자리를 '*'로 마스킹 — 원캡은 추가 마스킹하지 않음, Phase 36 확정 사항 2/3,
+            // Services/Payment/MaskedCardNumberExtractor). 이 19바이트 확장으로 #15~#28 POSITION이 +11 밀리고
+            // #28 예비 정보 FIELD가 216→205로 줄어 총 길이 500은 그대로다.
+            new(14, "마스킹 카드번호", PosFieldType.AN, 19, 70, PosFieldOwner.OneCap),
+            new(15, "납부세액", PosFieldType.N, 15, 89, PosFieldOwner.Kiosk),
+            new(16, "납세자 유형", PosFieldType.AN, 2, 104, PosFieldOwner.Kiosk),
+            new(17, "카드사 코드", PosFieldType.AN, 2, 106, I),
+            new(18, "카드사명", PosFieldType.AHN, 30, 108, I),
+            new(19, "체크카드 여부", PosFieldType.AN, 1, 138, I),
+            new(20, "납부가능 시간 여부", PosFieldType.AN, 1, 139, I),
+            new(21, "포인트 납부 가능 여부", PosFieldType.AN, 1, 140, I),
+            // 할부개월 LIST: 할부개월수 2Byte 단위 코드를 연속 구성(예: "01020304", space padding),
+            // 총 60Byte로 최대 30개(SPEC p.12 각주). 값 조합 로직은 이 전문을 채우는 쪽(VAN/인터넷지로
+            // 응답 파싱)의 책임이며, 이 스키마는 60바이트 통짜 필드로만 다룬다(P17-1 원본 보존 원칙).
+            new(22, "카드 할부개월 LIST", PosFieldType.AN, 60, 141, I),
+            new(23, "포인트 할부개월 LIST", PosFieldType.AN, 60, 201, I),
+            new(24, "납부대행 수수료 금액", PosFieldType.N, 12, 261, I),
+            new(25, "합계금액", PosFieldType.N, 12, 273, I),
+            // #26 신규 추가(SPEC 20260831 개정, pos-onecap-spec-expert 재확인 완료). 뒤따르는 #27/#28은
+            // 이 삽입으로 번호·POSITION이 한 칸씩 밀렸다(20260826판에서는 #26/#27이었음) — #28 예비
+            // 정보 FIELD는 신규 필드가 차지한 4바이트만큼 길이가 220→216으로 줄어 총 길이 500은 그대로
+            // 유지된다. 새 필드는 SET 장소가 인터넷지로뿐이라(kiosk/원캡/VAN 전부 공란) 원캡이 채우지
+            // 않는 순수 relay 대상 — 카드리딩 로직은 손댈 필요 없음.
+            // (SPEC 20260930: #14 확장으로 #26~#28 POSITION이 다시 +11, #28 길이 216→205.)
+            new(26, "납부대행 수수료율", PosFieldType.N, 4, 285, I),
+            new(27, "API 세부 응답코드", PosFieldType.AN, 6, 289, I),
+            new(28, "예비 정보 FIELD", PosFieldType.AN, 205, 295, I), // SPEC 20260930 표(p.13)는 인터넷지로 열 체크(응답 전용)
+        };
+
+        return new PosTelegramSchema(TransactionTypeCode, header.Concat(business).ToList(), totalLength: 500);
+    }
+}

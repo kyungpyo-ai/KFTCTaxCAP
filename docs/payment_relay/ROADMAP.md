@@ -1,10 +1,10 @@
-# ROADMAP: KFTCTaxGiroCAP 결제 중계 기능 (2차 개발)
+# ROADMAP: KFTCTaxCAP 결제 중계 기능 (2차 개발)
 
 > 이 문서는 `PRD.md`(무엇을 만들지)를 기준으로, **어떤 순서로 얼마나 작은 단위로 구현할지**를 정의한다.
 > Task 단위 작업 지시와 완료 조건 체크리스트는 `development_plan.md`(실행계획서)에서 다룬다.
 >
 > **Phase 번호는 1차 범위(`docs/home_reader_setup/ROADMAP.md`, Phase 0~6)에서 이어진다** — 같은 앱
-> (`KFTCOneCAP.Wpf`)을 계속 확장하는 것이므로 번호를 새로 시작하지 않고 Phase 7부터 붙인다. 1차 범위의
+> (`KFTCTaxCAP`)을 계속 확장하는 것이므로 번호를 새로 시작하지 않고 Phase 7부터 붙인다. 1차 범위의
 > 진행 이력·결정 사항이 필요하면 그 문서를 참고한다.
 
 ## 작업 방식 (바이브코딩 규칙 — 1차 범위와 동일)
@@ -18,12 +18,12 @@
 
 ## 전제
 
-대상은 1차 범위와 동일하게 `KFTCOneCAP.Wpf` 하나다(별도 실행 파일로 분리하지 않음, 2026-08-18 확정).
+대상은 1차 범위와 동일하게 `KFTCTaxCAP` 하나다(별도 실행 파일로 분리하지 않음, 2026-08-18 확정).
 Reader DLL 연동 참조 자료(`docs/reader_dll/`, `vendor/ReaderSerial/`)와 전담 서브에이전트
 (`reader-pinpad-spec-expert`, `reader-dll-integration-developer`)는 이미 준비돼 있다 — Phase 9부터 활용한다(Phase 7/8은 구조·환경 정비 단계라 DLL을 호출하지 않는다).
 
 > **핵심 개발 원칙 (KFTCReaderDLL 프로젝트에서 검증된 전략을 그대로 재사용, PRD §10 근거)**: 실제 통신
-> 전문(POS↔KFTCTaxGiroCAP, KFTCTaxGiroCAP↔VAN)이 아직 미확정이므로, 매 Phase마다 **임시 테스트 전문으로
+> 전문(POS↔KFTCTaxCAP, KFTCTaxCAP↔VAN)이 아직 미확정이므로, 매 Phase마다 **임시 테스트 전문으로
 > 로직(Queue/동시성/상태 전이)을 먼저 검증**하고, 전문 생성/파싱은 별도 계층으로 분리해 나중에 실제 SPEC이
 > 확정되면 그 계층만 교체하면 되도록 구현한다. 전문 파싱 로직을 Reader 제어/결제 Flow 로직과 뒤섞지 않는다.
 
@@ -80,7 +80,7 @@ PRD §10이 "실제 통신 전문이 확정되면 전문 생성/파싱 부분만
 요구하므로, **전문(電文)을 아는 코드와 흐름을 아는 코드를 물리적으로 분리**한다. 새로 만들 폴더는 다음과 같다.
 
 ```
-src/KFTCOneCAP.Wpf/
+src/KFTCTaxCAP/
 ├─ Interop/          네이티브 경계 — P/Invoke 선언만. 업무 로직 금지
 │   ├─ ReaderSerialNative.cs   (vendor/ReaderSerial/CSharpSample 기반 포팅)
 │   └─ KftcGiroNative.cs       (FNAISCRDVAN, ANSI char* 마샬링)
@@ -158,7 +158,7 @@ src/KFTCOneCAP.Wpf/
 `WSOCK32.dll`에 의존(PRD §2.3)하는데 이 의존성 충족 여부는 **로드를 시도해봐야만** 알 수 있으므로, 이번
 Phase에서 로드 스모크까지 끝내 리스크를 일찍 드러낸다(실제 함수 호출은 Phase 20 — 재배치 전 번호로는 17).
 
-- [x] `KFTCOneCAP.Wpf.csproj`에 `<PlatformTarget>x86</PlatformTarget>` 명시, `dotnet build`/실행 확인
+- [x] `KFTCTaxCAP.csproj`에 `<PlatformTarget>x86</PlatformTarget>` 명시, `dotnet build`/실행 확인
 - [x] 빌드 산출물 옆에 두 DLL이 복사되도록 csproj 배선 — `KFTC_GIRO.dll`을 `docs/payment_relay/dll/`(=문서
       폴더)에서 **`vendor/KftcGiro/`로 옮겨 `vendor/ReaderSerial/`과 위치 규칙을 통일**했다(`docs/`는 문서,
       `vendor/`는 외부 바이너리). csproj의 `None Include` + `CopyToOutputDirectory` + `<Link>`로 출력 폴더
@@ -312,7 +312,7 @@ Phase에서 로드 스모크까지 끝내 리스크를 일찍 드러낸다(실�
 - [x] SQLite 도입 — `net48`/x86에서 동작하는 패키지 선정(네이티브 인터롭이 있으므로 **x86에서 실제 로드되는지**
       확인 필요. Phase 8의 x86 전환과 충돌하지 않을 것)
 - [x] 스키마: 체크 일시 / COM Port / 결과 / 응답코드 / 모듈 ID / 리더기 인증 식별번호 / POS 식별번호
-      (기본값 `KFTCTAXGIROCAP01`, PRD §2.1)
+      (기본값 `##KFTCTAXCAP1001`, PRD §2.1)
 - [x] 저장 API + 조회 API 2종:
       - 리스트 표시용(조회기간 필터 — 리더기 설정 화면 §4.6)
       - **금일·동일 COM Port 성공 이력 존재 여부** (결제 선행 판정용, PRD §4.2)
@@ -326,9 +326,9 @@ Phase에서 로드 스모크까지 끝내 리스크를 일찍 드러낸다(실�
 > **완료 결과(2026-08-20)**: `Microsoft.Data.Sqlite` 10.0.11을 1차 시도에서 채택했다(x86/net48에서
 > 네이티브 로드·연결·쿼리 성공 실측, `System.Data.SQLite.Core` 전환 불필요). `Services/Storage/
 > IntegrityCheckStore`(공개 클래스, `Save`/`GetHistory`/`HasSuccessToday` 3개 API)를 신설하고,
-> DB 파일은 `%LOCALAPPDATA%\KFTCTaxGiroCAP\integrity_check.db`(P8-3 `FileLogger`와 동일한 폴더
+> DB 파일은 `%LOCALAPPDATA%\KFTCTaxCAP\integrity_check.db`(P8-3 `FileLogger`와 동일한 폴더
 > 규칙)에 둔다. 프로덕션 코드를 그대로 참조하는 x86/net48 콘솔 하네스(`ProjectReference`로
-> `KFTCOneCAP.Wpf.csproj` 참조, 스크래치패드, 저장소 밖 — 클래스가 전부 `public`이라
+> `KFTCTaxCAP.csproj` 참조, 스크래치패드, 저장소 밖 — 클래스가 전부 `public`이라
 > `InternalsVisibleTo` 등 저장소 변경 불필요)로 저장→조회 왕복, 날짜/포트 경계값, DB 파일 손상 시
 > 오류 내성(예외 없이 값으로 실패 반환)까지 전부 실측 검증했다. 실제 배포 경로를 그대로 썼지만
 > 테스트 전후로 기존 파일을 백업/복원해 사용자 데이터를 건드리지 않았다. **"DB 파일 잠금"(다른
@@ -611,7 +611,7 @@ UI 레벨(Phase 13에서 이미 검증) + 게이트 레벨(가짜 하네스 시�
   응답의 카드번호 필드에서 **앞 8자리(BIN)만 파싱**해 채운다. FALLBACK(`07`)·`12` 재요청 흐름도 양쪽 모두
   기존과 동일하게 존재한다.
 - **`#43` 보안단말기 인증번호** = 리더기 식별자(16) + 프로그램 식별자(16). 리더기 식별자는 **카드리딩 응답의
-  "리더기 인증 식별 번호"**를 쓰고, 프로그램 식별자는 **`KFTCTAXGIROCAP01`(정확히 16자)**을 상수 1곳에
+  "리더기 인증 식별 번호"**를 쓰고, 프로그램 식별자는 **`##KFTCTAXCAP1001`(정확히 16자)**을 상수 1곳에
   선언해 쉽게 바꿀 수 있게 둔다.
 - **`#38` 카드소유주 주민(사업자)등록번호는 항상 공백**이며 kiosk가 채운다(SPEC 표에는 SET 장소 ○가 없고
   p.15 설명 절에는 포함돼 있어 문서가 어긋나 있었던 항목 — 이 결정으로 해소).
@@ -738,7 +738,7 @@ PIN 중 Timeout). 실장비 검증 중 사용자가 물리 키보드 입력도 �
 만든다. 이후 Phase 20(VAN)·21(통합 검증)의 주 검증 도구가 되며, **최종적으로 키오스크 업체에 샘플 테스트
 소스로 제공**된다(2026-08-26 확정) — 그래서 "우리만 쓰는 하네스"가 아니라 남이 읽을 코드로 만든다.
 
-- [x] `src/KFTCOneCAP.KioskSim/` 신설 — **WinForms**, `net48`/**AnyCPU**, 본 앱과 별도 프로세스·별도
+- [x] `src/KFTCTaxCAP.KioskSim/` 신설 — **WinForms**, `net48`/**AnyCPU**, 본 앱과 별도 프로세스·별도
       프로젝트. 외부 패키지 없이 단독 빌드·실행되게 하고 주석은 한글로 쓴다(업체 제공 전제).
       **x86 고정은 하지 않는다** — 본 앱이 x86인 이유는 32bit 네이티브 DLL 2개 때문이고 시뮬레이터는
       네이티브 의존이 전혀 없다(2026-08-28 확정, `development_plan.md` Phase 19 결정 6)
@@ -764,14 +764,14 @@ PIN 중 Timeout). 실장비 검증 중 사용자가 물리 키보드 입력도 �
 **실행계획서 작성 완료(2026-08-28)** — `development_plan.md` "Phase 19 실행계획서"(P19-1~P19-8).
 착수 전 확정한 사항:
 
-- **배포 형태**: 같은 리포 `src/KFTCOneCAP.KioskSim/` 안에 **그 폴더 전용 `.sln`을 동봉**한다.
+- **배포 형태**: 같은 리포 `src/KFTCTaxCAP.KioskSim/` 안에 **그 폴더 전용 `.sln`을 동봉**한다.
   내부에선 루트 솔루션에도 추가하고, 업체에는 그 폴더만 압축해 주면 바로 열리고 빌드된다
   (본 앱 소스는 딸려가지 않는다).
 - **오류 주입은 업체 제공본에도 포함**하되 별도 탭으로 격리한다. `#if`로 내부용/제공용을 가르지
   않는다 — 우리가 검증한 소스와 업체가 받는 소스가 완전히 같아야 재현이 가능하다.
 - **입력값은 프리셋 파일(`kiosksim.preset.json`)에서 불러온다**(파일 없으면 코드 기본값).
   마지막 입력값 자동 저장은 하지 않고, 명시적 "프리셋으로 저장" 버튼만 둔다.
-- **송수신 전문 로그 파일 기록은 범위 밖** — 추후 KFTCOneCAP 로그 파일 기능에서 대조한다.
+- **송수신 전문 로그 파일 기록은 범위 밖** — 추후 KFTCTaxCAP 로그 파일 기능에서 대조한다.
 - **응답 대기 타임아웃 180초 고정**(Phase 18 실측 최장 150.1초 근거), 조절 UI 없음.
 - **최대 위험 구간은 P19-2(전문 필드 테이블 독립 전사)** — 여기서 SPEC을 잘못 옮기면 이후 모든
   검증이 잘못된 기준으로 통과한다. P19-2·P19-3 직후에 체크포인트 1(Opus 검증 리뷰)을 둔다.
@@ -943,7 +943,7 @@ M-1은 서버 없이 검증 불가능한 대응이라 보류 확정). `--van-cal
 ### 확정 사항 (2026-09-18 사용자 확정, PRD §12)
 
 - 화면 성격은 **테스트용이 아니라 실사용 결제 화면**이다. 임의값은 이번 단계 한정.
-- 위치는 `KFTCOneCAP.Wpf` 신규 창, 홈 "결제" 카드에 연결, **상용에서도 상시 노출**.
+- 위치는 `KFTCTaxCAP` 신규 창, 홈 "결제" 카드에 연결, **상용에서도 상시 노출**.
 - 전송은 **소켓 `localhost:8002` 경유**(오케스트레이터 직통 호출 아님) — 실제 POS와 같은 경로.
 - **`SetupScreenGate`에 이 화면은 등록하지 않는다** — 등록하면 자기 창 때문에 자기 요청이 `E03`이 된다.
 - 카드리딩은 **실제 리더기**, VAN은 **Stub 유지**(실서버 여전히 접속 불가, 미확정 #4).

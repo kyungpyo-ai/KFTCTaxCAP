@@ -43,7 +43,7 @@
 - [x] **`app.manifest` `requireAdministrator` + 로그 경로 변경** — `C:\KFTC_PosAgent\KFTCTaxLog\`로
       전환. SQLite DB 경로는 그대로 둠 (PRD §1.1.1). **2026-09-01 완료**: 매니페스트 실측 확인
       (`requireAdministrator` 임베딩), UAC 프롬프트 발생 확인, 새 경로 로그 생성 확인, 기존
-      `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\`에 신규 파일 없음 확인, 기존 SQLite DB(`integrity_check.db`)
+      `%LOCALAPPDATA%\KFTCTaxCAP\logs\`에 신규 파일 없음 확인, 기존 SQLite DB(`integrity_check.db`)
       정상 동작 확인(무결성체크 실행 후 `IntegrityCheckHistory` 신규 행 기록됨) — 5개 완료 조건 전부 PASS
       (`development_plan.md` P22-0)
 - [x] `ILogSink` 추상화 도입 — `FileLogger`의 공개 정적 API는 유지하고 내부만 위임 구조로 전환

@@ -25,7 +25,7 @@
 
 - **공개 API는 C ABI + `__stdcall` 5개뿐.** `Reader_Initialize`/`Shutdown`/`GetLastError` 같은 건 없다 — 최초
   `Reader_OpenPort()` 호출이 초기화를 겸한다.
-- **DLL은 Win32(x86) 전용, x64 미제공.** 이 저장소(`KFTCOneCAP.Wpf.csproj`)가 이 DLL을 P/Invoke로 물려면
+- **DLL은 Win32(x86) 전용, x64 미제공.** 이 저장소(`KFTCTaxCAP.csproj`)가 이 DLL을 P/Invoke로 물려면
   프로젝트의 `PlatformTarget`을 **`x86`으로 명시**해야 한다 — 현재 `net48`만 지정돼 있고 `PlatformTarget`이
   없어 기본값(AnyCPU)이므로, 실제 연동 작업 시 반드시 이 설정을 먼저 바꿔야 한다(빠뜨리면 `BadImageFormatException`).
 - **CALLBACK 데이터 수명 규칙**: `READER_CALLBACK`/`PINPAD_CALLBACK`의 `data` 포인터는 콜백 실행 중에만

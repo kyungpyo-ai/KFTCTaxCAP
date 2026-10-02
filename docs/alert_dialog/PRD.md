@@ -22,7 +22,7 @@
 | 제목/본문 | 원본처럼 **문구의 첫 줄 = 굵은 제목, 나머지 = 본문**(사용자 확정) |
 | Topmost | **쓰지 않는다** — 알림창을 띄운 창(owner) 위에 모달로 뜬다. 결제 알림창보다 앞에 오지 않는다("결제가 먼저", 사용자 확정) |
 | 알림음 | **경고·오류에만** Windows 기본 알림음(사용자 확정). 정보·성공·질문은 무음 |
-| 적용 범위 | **WPF 앱(`KFTCOneCAP.Wpf`)만**. KioskSim(WinForms 시뮬레이터)은 제외(사용자 확정) |
+| 적용 범위 | **WPF 앱(`KFTCTaxCAP`)만**. KioskSim(WinForms 시뮬레이터)은 제외(사용자 확정) |
 | 근거 자료 | 원본 소스(`ModernMessageBox.cpp`, `ModernUI.cpp`) + **원본 실제 화면 캡처**(`screenshots/` 4장, 2026-10-01 사용자 제공 — 캡처가 소스보다 우선) |
 
 ---
@@ -39,7 +39,7 @@
 ### 1.2 범위 밖
 
 - 결제 알림창(`PaymentNoticeWindow`) — 별도 디자인·상태 체계가 이미 있다.
-- KioskSim(`src/KFTCOneCAP.KioskSim`, WinForms)의 `MessageBox` 3곳.
+- KioskSim(`src/KFTCTaxCAP.KioskSim`, WinForms)의 `MessageBox` 3곳.
 - 인라인 안내(Popup 팝오버 `MultipadInfoPopup`·`FieldInfoPopup`, 결제창 상태 문구, 입력칸 "입력 필요" 표시).
 - 토스트·트레이 풍선 알림 등 **비모달 알림 신설**.
 - 거래 중 설정 화면 진입 차단의 "조용히 무시" 동작(`HomeWindow.xaml.cs:123-128`) — 결제 알림창이 Topmost라
@@ -239,7 +239,7 @@ AlertResult AlertDialog.Show(Window? owner, string text, string caption,
 `System.Windows.MessageBox.Show` 7곳, 전부 View 코드비하인드. ViewModel은 `EventHandler<string>` 이벤트로 문구만
 넘기고 아이콘은 **이벤트 종류에 고정**돼 있다.
 
-> **Phase 39 완료(2026-10-02) — 교체 후 상태**: `src/KFTCOneCAP.Wpf`에 `MessageBox.Show`·`MessageBoxImage`·`MessageBoxResult`·
+> **Phase 39 완료(2026-10-02) — 교체 후 상태**: `src/KFTCTaxCAP`에 `MessageBox.Show`·`MessageBoxImage`·`MessageBoxResult`·
 > `MessageBoxButton` 0건. 세 ViewModel(`ShopSetupViewModel`·`ReaderSetupViewModel`·`PaymentScreenViewModel`)은
 > `AlertRequested`(`EventHandler<AlertMessage>`) 하나로 알리고, View 3곳(`ShopSetupWindow`·`ReaderSetupWindow`·`PaymentScreenWindow`)이
 > `AlertDialog.Show`로 띄운다. 고정 문구는 각 VM의 `internal const`(가맹점 설정: `TimeoutInvalidMessage`·`InvalidInputMessage`·
@@ -320,7 +320,7 @@ AlertResult AlertDialog.Show(Window? owner, string text, string caption,
 ### 5.1 계층 · 위치(제안)
 
 ```
-src/KFTCOneCAP.Wpf/
+src/KFTCTaxCAP/
 ├─ ViewModels/Alerts/   AlertKind, AlertButtons, AlertResult, AlertMessage, AlertDialogViewModel,
 │                       AlertTextSplitter(제목/본문 분리 — 순수 함수)        ← WPF 타입 없음
 ├─ Views/Dialogs/       AlertDialog.xaml(+.cs: DragMove·포커스·알림음·애니메이션), AlertDialog.Show 헬퍼,
@@ -331,7 +331,7 @@ src/KFTCOneCAP.Wpf/
 - 의존 방향 `Views → ViewModels → Services → Protocol` 유지. `ViewModels/Alerts/`는 WPF를 참조하지 않는다.
 - 리소스 사전 병합 순서(`App.xaml.cs:158-164`) 규칙을 따른다 — `Alert.xaml`은 Colors·Typography·Layout·Buttons
   뒤에 병합.
-- 공용 헬퍼 하나로만 띄운다. `MessageBox.Show`가 `src/KFTCOneCAP.Wpf`에 하나도 남지 않아야 한다(grep 0건).
+- 공용 헬퍼 하나로만 띄운다. `MessageBox.Show`가 `src/KFTCTaxCAP`에 하나도 남지 않아야 한다(grep 0건).
 
 ### 5.2 기타
 

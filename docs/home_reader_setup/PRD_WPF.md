@@ -1,4 +1,4 @@
-# PRD: KFTCOneCAP C# WPF 재구현 (홈 화면 + 리더기 설정 화면)
+# PRD: KFTCTaxCAP C# WPF 재구현 (홈 화면 + 리더기 설정 화면)
 
 ## 1. 개요
 
@@ -70,7 +70,7 @@
 
 | 화면 | 요소 | 크기(일반/컴팩트, pt) | Weight |
 |---|---|---|---|
-| 홈 | 타이틀 "KFTCOneCAP" | 19 / 16 | ExtraBold(800) |
+| 홈 | 타이틀 "KFTCTaxCAP" | 19 / 16 | ExtraBold(800) |
 | 홈 | 서브타이틀 | 13 / 10 | Regular |
 | 홈 | 카드 제목 | 15 / 12 | Bold |
 | 홈 | 카드 설명 | 11 / 8 | Regular |
@@ -115,7 +115,8 @@ WPF 대응: `ResizeMode="NoResize"`, `WindowStartupLocation="CenterOwner"`(서�
 앱 진입점. **3개 카드(리더기 설정/가맹점 설정/결제)** 로 하위 화면 진입(2026-09-28 Phase 31 — 원본의 4번째 "전표 설정" 카드는 삭제, 전표 항목은 가맹점 설정 화면으로 이동. `docs/operations/PRD.md` §2.8.9), 하단에 최소화/종료 버튼, 우상단에 로그 전송/업데이트 버튼. 시스템 트레이 상주.
 
 ### 3.2 창 타이틀 / 크롬
-- 타이틀바 텍스트: **"KFTCOneCAP Plus Ver 3.0.9 | 모듈 Ver 524"** (실행 스크린샷 기준 확인. 버전 번호는 빌드마다 동적으로 바뀜 — `앱버전 | 모듈버전` 형식)
+- 타이틀바 텍스트: **"KFTCTaxCAP Plus Ver 3.0.9 | 모듈 Ver 524"** (실행 스크린샷 기준 확인. 버전 번호는 빌드마다 동적으로 바뀜 — `앱버전 | 모듈버전` 형식)
+  - **2026-10-02 프로그램명 변경**: 원본의 `KFTCOneCAP` → `KFTCTaxCAP`(사용자 지시). 타이틀바·헤더 타이틀·트레이 툴팁/메뉴에 적용하며, 원본 캡처(`screenshots/`)와는 이 문구만 다르다.
 - 헤더 서브타이틀 텍스트(실측): **"금융결제원 결제 솔루션 프로그램 Plus Ver 3.0.9 | 모듈 Ver 524"** — 소스 코드상 리터럴("금융결제원 차세대 결제 솔루션 v1.0.0.1")과 실제 실행 화면이 달랐음. 버전 정보가 런타임에 조합되는 것으로 보이며, 정확한 조합 규칙은 버전 표시 관련 코드 위치 재확인 필요(PM/개발 확인 필요)
 - 흰색 타이틀바(Windows 11 DWM) 적용
 - 초기 크기: 작업 영역에 맞춰 클램프 후 중앙 정렬. 컴팩트 모드(화면 높이 ≤800px)는 840×420(96dpi 기준) 사용
@@ -126,7 +127,7 @@ WPF 대응: `ResizeMode="NoResize"`, `WindowStartupLocation="CenterOwner"`(서�
 
 ```
 margin(50/36)                                    [로그전송 버튼]
-┌ 로고 [KFTCOneCAP][Plus뱃지]                       [업데이트 버튼]
+┌ 로고 [KFTCTaxCAP][Plus뱃지]                       [업데이트 버튼]
 │  금융결제원 차세대 결제 솔루션 v1.0.0.1
 │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
@@ -201,10 +202,10 @@ margin(50/36)                                    [로그전송 버튼]
 
 ### 3.6 트레이 아이콘
 
-- 툴팁: "KFTCOneCAP"
+- 툴팁: "KFTCTaxCAP"
 - 좌클릭 더블클릭: 창 복원 + 포그라운드
 - 우클릭 메뉴(커스텀 스타일 컨텍스트 메뉴):
-  1. KFTCOneCAP 열기 → 복원
+  1. KFTCTaxCAP 열기 → 복원
   2. 리더기 설정 → 복원 + 리더기 설정 다이얼로그 오픈
   3. 가맹점 설정 → 복원 + 가맹점 설정 다이얼로그 오픈
   4. (구분선)
@@ -403,12 +404,12 @@ WPF 구현: `System.Windows.Forms.NotifyIcon` (WPF에 네이티브 트레이 API
 
 ## 5. 데이터/레지스트리 매핑
 
-> **전체 경로 (2026-08-14 확정, 사용자 지시)**: `HKEY_CURRENT_USER\Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT\<FIELD>`.
+> **전체 경로 (2026-08-14 확정, 사용자 지시)**: `HKEY_CURRENT_USER\Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT\<FIELD>`.
 > - 원본 MFC 앱(`MerchantSetupApp.cpp`)은 `m_pszAppName = "KFTCOneCAP"` + `SetRegistryKey(_T("KFTC_VAN"))`로 `HKCU\Software\KFTC_VAN\KFTCOneCAP\` 하위에 키를 생성한다(`RegistryUtil.cpp`의 `GetRegisterData()`도 동일 경로를 하드코딩해서 사용 — 두 경로 일치 확인됨).
-> - 이 WPF 프로젝트(`KFTCTaxGiroCAP`)는 원본과 **레지스트리를 공유하지 않고 별도 앱 이름(`KFTCTaxGiroCAP`)으로 저장**하기로 확정 — PRD 6장 미확정 사항 #1("레지스트리 공유 여부")이 이 결정으로 해소됨.
-> - 섹션명은 원본과 동일하게 `"SERIALPORT"`(`common.h`의 `SERIAL_PORT_SECTION` 매크로) 유지. 아래 표의 `root: KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT`는 이 전체 경로의 축약 표기.
+> - 이 WPF 프로젝트(`KFTCTaxCAP`)는 원본과 **레지스트리를 공유하지 않고 별도 앱 이름(`KFTCTaxCAP`)으로 저장**하기로 확정 — PRD 6장 미확정 사항 #1("레지스트리 공유 여부")이 이 결정으로 해소됨.
+> - 섹션명은 원본과 동일하게 `"SERIALPORT"`(`common.h`의 `SERIAL_PORT_SECTION` 매크로) 유지. 아래 표의 `root: KFTC_VAN\KFTCTaxCAP\SERIALPORT`는 이 전체 경로의 축약 표기.
 
-| 레지스트리 키 (root: `HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT`) | 의미 | 인코딩 |
+| 레지스트리 키 (root: `HKCU\Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT`) | 의미 | 인코딩 |
 |---|---|---|
 | `COMPORT1_FIELD` | 리더기1 COM 포트 | 문자열 그대로 ("COM 01", "미사용" 등) |
 | `COMPORT2_FIELD` | 리더기2 COM 포트 | 상동 |
@@ -423,7 +424,7 @@ WPF 구현: `System.Windows.Forms.NotifyIcon` (WPF에 네이티브 트레이 API
 
 ## 6. 미확정 사항 (PM/이해관계자 확인 필요)
 
-1. ~~**레지스트리 공유 여부**~~ — **확정 (2026-08-14, 사용자 지시)**: 원본과 공유하지 않고 별도 앱 이름(`HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP\...`)으로 저장한다. 상세: 5장 상단 안내.
+1. ~~**레지스트리 공유 여부**~~ — **확정 (2026-08-14, 사용자 지시)**: 원본과 공유하지 않고 별도 앱 이름(`HKCU\Software\KFTC_VAN\KFTCTaxCAP\...`)으로 저장한다. 상세: 5장 상단 안내.
 2. ~~**포트 열기 확인 문구**~~ — **보류 (2026-08-14, Phase 6 정리)**: 포트 열기 토글 자체(확인창 포함 전체 흐름, PRD 4.8)가 **외부 DLL 연동 + 별도 PRD** 범위로 이동됐으므로(1.3/7장), 정식 한글 문구 확정도 그 별도 PRD에서 함께 다룬다. 이 PRD/저장소 범위 밖.
 3. ~~**무결성 리스트 데이터 소스**~~ — **보류 (2026-08-14, Phase 6 정리)**: 실제 이력 조회 연동은 **외부 DLL 연동 + 별도 PRD** 범위로 이동됐다(1.3/7장). 이 PRD 범위에서는 Phase 5에서 구현한 더미 데이터(`BuildDummyRows`)를 최종 상태로 유지한다.
 4. ~~**리더기 버튼 실동작**~~ — **보류 (2026-08-14, Phase 6 정리)**: 초기화/상태체크/키다운로드/무결성체크/업데이트/포트열기의 실제 시리얼 통신 구현은 **외부 DLL 연동 + 별도 PRD** 범위로 이동됐다(1.3/7장). 이 PRD 범위에서는 Phase 5에서 구현한 스텁(로딩 표시 후 자동 완료)을 최종 상태로 유지한다.

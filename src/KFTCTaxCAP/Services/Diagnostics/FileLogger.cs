@@ -1,0 +1,238 @@
+using System;
+
+namespace KFTCTaxCAP.Services.Diagnostics;
+
+/// <summary>
+/// Phase 8(docs/payment_relay/development_plan.md P8-3) 최소 파일 로깅의 공개 진입점.
+///
+/// Phase 22(docs/operations/development_plan.md P22-3, PRD.md §1.3-a)에서 내부 구현을
+/// <see cref="ILogSink"/> 파이프라인 위임으로 바꿨다 — <b>공개 정적 메서드 시그니처(<see cref="Info"/>
+/// / <see cref="Warn"/> / <see cref="Error"/>)는 그대로다.</b> 151곳의 호출부를 고치지 않는 것이
+/// 이 리팩터링의 목적이라, DI 컨테이너는 도입하지 않는다.
+///
+/// 파이프라인 순서(Phase 27(P27-6, docs/operations/development_plan.md)에서 패턴 기반 마스킹
+/// 단계를 제거했다 — 진단 정보(전문구분·응답코드 등)까지 과도하게 가려 장애 분석을 방해했기
+/// 때문이다. 카드/PIN 보호는 위치 기반 마스킹인 <see cref="TelegramLogRedactor"/>가 호출부에서
+/// 전문 원문을 로그에 넘기기 전에 전담한다):
+/// 1) 원본 메시지 그대로 <see cref="LogRecord"/>를 만든다(카테고리/코드/거래ID는 기존 151곳의
+///    호출이 채우지 않으므로 <c>null</c> — P22-6에서 새 오버로드로 확장한다).
+/// 2) 등록된 각 <see cref="ILogSink"/>에 순서대로 전달한다. 싱크 하나(렌더링 포함, 예:
+///    <see cref="LogLineRenderer.Render"/>가 던지는 <see cref="ArgumentOutOfRangeException"/> 등)가
+///    예외를 던져도 다른 싱크와 호출자에게 전파되지 않는다 — 로깅 실패가 앱 동작에 영향을 주면 안
+///    된다는 기존 계약을 유지한다.
+///
+/// 싱크 목록은 앱 기동 시 한 번 <see cref="ConfigureSinks"/>로 구성한다(<c>App.xaml.cs</c>). 장래
+/// 원격 싱크는 그 호출에 인자를 추가하는 것만으로 붙는다. <see cref="ConfigureSinks"/>를 호출하지
+/// 않은 상태(콘솔 하네스 등 <c>OnStartup</c>을 거치지 않는 진입점)에서도 파일 로깅이 그대로 동작하도록
+/// 기본값은 <see cref="FileLogSink"/> 하나로 초기화돼 있다. 로그 조각 확보는 Phase 27(P27-5)부터
+/// 메모리 링버퍼(<c>LogRingBuffer</c>/<c>RingBufferSink</c>, 제거됨) 대신 <see cref="LogFileReader"/>가
+/// 파일을 직접 슬라이스하는 방식으로 대체됐다.
+/// </summary>
+public static class FileLogger
+{
+    // volatile: ConfigureSinks(기동 시 한 번, App.xaml.cs OnStartup)의 배열 참조 교체가 Dispatch를 호출하는
+    // 다른 스레드(리더기 CALLBACK/결제 오케스트레이터 등)에도 즉시 보이도록 한다. 배열 참조 교체 자체는
+    // 원래도 원자적이라 별도 lock으로 "교체 동작"을 보호할 필요는 없었다 — 이전 lock은 동시 ConfigureSinks
+    // 호출끼리의 직렬화만 보장했을 뿐(실제로는 그 호출이 기동 시 1회뿐이라 의미가 없었다) 가시성은 보장하지
+    // 않았으므로 volatile로 대체한다.
+    private static volatile ILogSink[] _sinks = { new FileLogSink() };
+
+    /// <summary>
+    /// 로그 싱크 목록을 (교체) 구성한다. 앱 기동 시 한 번만 호출한다(<c>App.xaml.cs</c>,
+    /// <c>OnStartup</c> 최상단). 이후 <see cref="Info"/>/<see cref="Warn"/>/<see cref="Error"/> 호출은
+    /// 이 목록으로 디스패치된다.
+    ///
+    /// <para>이 클래스에서 예외를 던지는 <b>유일한</b> 공개 메서드다 — 부트스트랩 구성 오류(빈 싱크 목록
+    /// 전달 등)를 즉시 드러내기 위한 의도적 fail-fast다. <see cref="Info"/>/<see cref="Warn"/>/
+    /// <see cref="Error"/>는 로깅 실패가 앱 동작에 영향을 주면 안 된다는 계약에 따라 절대 던지지 않는다.</para>
+    /// </summary>
+    public static void ConfigureSinks(params ILogSink[] sinks)
+    {
+        if (sinks is null || sinks.Length == 0)
+        {
+            throw new ArgumentException("최소 1개의 ILogSink가 필요합니다.", nameof(sinks));
+        }
+
+        // 방어적 복사: 호출자가 이후 자신이 들고 있는 배열을 변경해도 싱크 목록이 바뀌지 않도록 한다.
+        _sinks = (ILogSink[])sinks.Clone();
+    }
+
+    public static void Info(string message) => Write(LogLevel.Info, category: null, code: null, transactionId: null, message);
+
+    public static void Warn(string message) => Write(LogLevel.Warn, category: null, code: null, transactionId: null, message);
+
+    public static void Error(string message) => Write(LogLevel.Error, category: null, code: null, transactionId: null, message);
+
+    /// <summary>
+    /// Phase 22(docs/operations/development_plan.md P22-5) — 카테고리를 싣는 오버로드.
+    /// 기존 151곳의 호출부를 건드리지 않기 위해 위 3개(<see cref="Info(string)"/> 등)는 그대로 두고,
+    /// 카테고리만 필요한 호출이 이 3개(<see cref="Info(LogCategory, string)"/>/
+    /// <see cref="Warn(LogCategory, string)"/>/<see cref="Error(LogCategory, string)"/>)를 쓴다. 코드·
+    /// 거래ID까지 함께 싣는 4-인자 오버로드는 아래 P22-6에서 추가했다.
+    ///
+    /// <b>2/4-인자 오버로드로 나눈 이유(CS0121 회피)</b>: 코드·거래ID를 <c>string? code = null,
+    /// string? transactionId = null</c> 같은 선택적 인자로 4-인자 시그니처 하나에 합치면
+    /// <c>Info(LogCategory.App, "msg")</c> 호출이 이 오버로드와도, 2-인자 오버로드와도 똑같이
+    /// 일치해 모호성 컴파일 오류가 난다 — 그래서 인자 개수가 다른 두 오버로드로 명시적으로
+    /// 나눴다(P22-6 development_plan.md 경고 반영).
+    /// </summary>
+    public static void Info(LogCategory category, string message) => Write(LogLevel.Info, category, code: null, transactionId: null, message);
+
+    public static void Warn(LogCategory category, string message) => Write(LogLevel.Warn, category, code: null, transactionId: null, message);
+
+    public static void Error(LogCategory category, string message) => Write(LogLevel.Error, category, code: null, transactionId: null, message);
+
+    /// <summary>
+    /// Phase 22(docs/operations/development_plan.md P22-6, PRD.md §1.5 경계 표) — 카테고리·코드(SPEC
+    /// 3자리 결과 코드, <see cref="PosResultCodeMapper"/>가 만든 값)·거래ID(<see
+    /// cref="Services.Payment.PaymentOrchestrator"/>가 만드는 전문관리번호, <c>LogTxId</c>)까지 싣는
+    /// 오버로드. 결제 1건의 흐름을 따라가며 필요한 경계(POS/READER/VAN/PAYMENT)에서만 쓴다 — 기존
+    /// 151곳을 일괄 개조하지 않는다.
+    /// </summary>
+    public static void Info(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Info, category, code, transactionId, message);
+
+    public static void Warn(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Warn, category, code, transactionId, message);
+
+    public static void Error(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Error, category, code, transactionId, message);
+
+    /// <summary>
+    /// Phase 27(docs/operations/development_plan.md P27-9, fault_alert_catalog.md §1) — 장애 알림
+    /// 판정(<c>FaultAlertJudge</c>) 전용 <see cref="LogLevel.Alert"/> 오버로드 3종. 기존
+    /// <see cref="Info(string)"/>/<see cref="Warn(string)"/>/<see cref="Error(string)"/> 3-계층
+    /// 패턴을 그대로 따른다. <b>호출부(FaultAlertJudge)가 직접 <see cref="Write"/>를 부르지 않게 한다.</b>
+    /// </summary>
+    public static void Alert(string message) => Write(LogLevel.Alert, category: null, code: null, transactionId: null, message);
+
+    public static void Alert(LogCategory category, string message) => Write(LogLevel.Alert, category, code: null, transactionId: null, message);
+
+    public static void Alert(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Alert, category, code, transactionId, message);
+
+    /// <summary>
+    /// Phase 27(docs/operations/development_plan.md P27-9-(d)) — 로그 한 줄과 거래 종료 경계를 함께
+    /// 찍는 전용 진입점. <b>공개 API가 아니다</b> — <c>PosSocketServer.HandleConnection</c>의
+    /// <c>finally</c>(연결 1건의 모든 종료 경로를 예외 없이 커버하는 지점)에서 "연결 종료" 로그와
+    /// 함께 찍을 때만 호출한다(임의의 다른 호출부가 경계를 함부로 찍지 못하게 <c>internal</c>로 제한).
+    ///
+    /// 2026-09-17 사용자 지적으로 두 번 바뀌었다 — (1) 원래는 <c>SendResponse</c>가
+    /// <c>FaultAlertJudge</c> 판정과 함께 fire-and-forget <c>Task.Run</c> 안에서 찍었는데, 그 비동기
+    /// 작업이 연결 스레드의 나머지 종료 로그(정상 종료/연결 단절/연결 종료)보다 먼저 끝나 버려
+    /// 구분선이 실제 마지막 줄이 아닌 경우가 실측에서 확인돼 <c>HandleConnection</c>의 <c>finally</c>로
+    /// 옮겼다. (2) 옮긴 뒤에도, "연결 종료" 로그(<see cref="Write"/> 한 번)와 구분선(<see cref="ILogSink.WriteBoundary"/>
+    /// 한 번)이 **서로 다른 락 획득**이라 그 사이 틈에 다른 연결의 줄이 끼어드는 게 실측으로 또
+    /// 확인됐다 — 그래서 이 메서드가 <see cref="ILogSink.WriteThenBoundary"/> 하나로 합쳐 원자적으로
+    /// 기록한다. <see cref="Info(LogCategory, string)"/>와 같은 방식으로 <see cref="LogRecord"/>를
+    /// 만들되, 디스패치는 <see cref="ILogSink.Write"/> 대신 <see cref="ILogSink.WriteThenBoundary"/>로
+    /// 보낸다.
+    /// </summary>
+    internal static void WriteThenBoundary(LogCategory category, string message, string boundaryLabel)
+    {
+        try
+        {
+            var record = new LogRecord(DateTime.Now, LogLevel.Info, category, code: null, transactionId: null, message);
+            ILogSink[] sinks = _sinks;
+            foreach (ILogSink sink in sinks)
+            {
+                try
+                {
+                    sink.WriteThenBoundary(record, boundaryLabel);
+                }
+                catch
+                {
+                    // 싱크 실패를 조용히 무시한다(Dispatch와 동일한 방어).
+                }
+            }
+        }
+        catch
+        {
+            // 레코드 생성 단계의 실패까지 포함해, 로깅 실패가 앱 동작에 영향을 주면 안 된다(Write와 동일 계약).
+        }
+    }
+
+    /// <summary>
+    /// 2026-09-17 사용자 지적으로 <see cref="WriteThenBoundary"/>와 같은 이유로 신설(원래
+    /// <c>WriteTransactionStartBoundary</c> + <c>Info</c> 두 호출이었는데 그 사이 틈에 다른 연결의
+    /// 줄이 끼어드는 문제가 있어 하나로 합쳤다) — <see cref="WriteThenBoundary"/>(거래 종료)와
+    /// 대칭으로 거래 시작 지점에 구분선과 로그를 함께 찍는 전용 진입점. <b>공개 API가 아니다</b> —
+    /// <c>PosSocketServer</c>의 연결 수락 경로에서만 호출한다.
+    /// </summary>
+    internal static void WriteBoundaryThenWrite(LogCategory category, string message, string boundaryLabel)
+    {
+        try
+        {
+            var record = new LogRecord(DateTime.Now, LogLevel.Info, category, code: null, transactionId: null, message);
+            ILogSink[] sinks = _sinks;
+            foreach (ILogSink sink in sinks)
+            {
+                try
+                {
+                    sink.WriteBoundaryThenWrite(record, boundaryLabel);
+                }
+                catch
+                {
+                    // 싱크 실패를 조용히 무시한다(Dispatch와 동일한 방어).
+                }
+            }
+        }
+        catch
+        {
+            // 레코드 생성 단계의 실패까지 포함해, 로깅 실패가 앱 동작에 영향을 주면 안 된다(Write와 동일 계약).
+        }
+    }
+
+    /// <summary>
+    /// 2026-09-17 사용자 요청 — 앱 기동 맨 처음에 한 번, 눈에 띄는 구분선을 남긴다. <b>공개 API가
+    /// 아니다</b> — <c>App.xaml.cs</c>의 기동 경로에서만 호출한다.
+    /// </summary>
+    internal static void WriteStartupBanner()
+    {
+        ILogSink[] sinks = _sinks;
+        foreach (ILogSink sink in sinks)
+        {
+            try
+            {
+                sink.WriteStartupBanner();
+            }
+            catch
+            {
+                // 싱크 실패를 조용히 무시한다(Dispatch와 동일한 방어).
+            }
+        }
+    }
+
+    private static void Write(LogLevel level, LogCategory? category, string? code, string? transactionId, string message)
+    {
+        try
+        {
+            var record = new LogRecord(DateTime.Now, level, category, code, transactionId, message);
+            Dispatch(record);
+        }
+        catch
+        {
+            // 레코드 생성 단계의 실패까지 포함해, 로깅 실패가 앱 동작에 영향을 주면 안 된다
+            // (디스크 가득참·권한 문제 등은 조용히 무시한다는 기존 계약을 유지).
+        }
+    }
+
+    private static void Dispatch(LogRecord record)
+    {
+        // 스냅샷 참조 하나만 읽는다 — _sinks가 volatile이라 ConfigureSinks의 배열 참조 교체(swap)가 이
+        // 시점의 읽기에 즉시 보이며, 이 지역 변수로 스냅샷을 떠 두면 순회 도중 다른 스레드가 교체해도
+        // 이번 Dispatch 호출은 시작 시점의 목록으로 일관되게 순회한다.
+        ILogSink[] sinks = _sinks;
+        foreach (ILogSink sink in sinks)
+        {
+            try
+            {
+                // 렌더링(LogLineRenderer.Render)은 각 싱크 구현(FileLogSink) 내부에서 호출되므로 이
+                // try/catch가 렌더링 실패(ArgumentNullException/ArgumentOutOfRangeException 등)까지
+                // 함께 감싼다 — 싱크 하나의 실패가 다른 싱크나 호출자에게 전파되지 않는다(장래 원격
+                // 싱크 대비 특히 중요).
+                sink.Write(record);
+            }
+            catch
+            {
+                // 싱크 실패를 조용히 무시한다.
+            }
+        }
+    }
+}

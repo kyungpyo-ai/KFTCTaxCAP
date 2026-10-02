@@ -38,7 +38,7 @@
 ## 착수 전 전제 (2026-08-31 확인 완료)
 
 - 기존 `Services/Diagnostics/FileLogger.cs`는 `static` 클래스이며 `Info`/`Warn`/`Error(string)` 3개
-  메서드만 노출한다. 파일 위치 `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\yyyy-MM-dd.log`.
+  메서드만 노출한다. 파일 위치 `%LOCALAPPDATA%\KFTCTaxCAP\logs\yyyy-MM-dd.log`.
 - SQLite 인프라가 이미 있다 — `Services/Storage/IntegrityCheckStore`, 같은 폴더의 DB 파일,
   `Microsoft.Data.Sqlite`, "공개 메서드는 예외를 밖으로 던지지 않는다"(P11-4) 규칙까지 확립됨.
 - 리더기 인증 식별 번호는 **이미 파싱되고 있다** — `Protocol/Reader/StatusResponseParser.ReaderAuthId`,
@@ -62,11 +62,11 @@
 
 **다른 모든 Task보다 먼저 한다.** 뒤 Task들이 쓰는 로그 경로가 여기서 확정된다.
 
-- `src/KFTCOneCAP.Wpf/`에 `app.manifest`를 추가하고 `.csproj`에
+- `src/KFTCTaxCAP/`에 `app.manifest`를 추가하고 `.csproj`에
   `<ApplicationManifest>app.manifest</ApplicationManifest>`를 지정한다.
 - manifest의 `requestedExecutionLevel`을 `requireAdministrator`로 설정한다(`PRD.md` §1.1.1,
   2026-09-01 확정). 이 뒤로 앱은 **항상 관리자 권한 상승이 필요**하다.
-- `FileLogger`의 로그 경로 상수를 `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\`에서
+- `FileLogger`의 로그 경로 상수를 `%LOCALAPPDATA%\KFTCTaxCAP\logs\`에서
   **`C:\KFTC_PosAgent\KFTCTaxLog\`**로 바꾼다.
 - **SQLite DB 경로(`IntegrityCheckStore`, 장래 `observed_identity`)는 옮기지 않는다** — 관리자
   권한 상시 실행이면 `%LOCALAPPDATA%`도 문제없이 쓸 수 있으므로, 굳이 옮겨 두 경로 규칙을
@@ -87,12 +87,12 @@
       (`manifest.exe` 또는 속성 확인)
 - [x] 관리자 권한 없이 실행하면 UAC 프롬프트가 뜬다(수동 확인)
 - [x] 앱 기동 후 `C:\KFTC_PosAgent\KFTCTaxLog\yyyy-MM-dd.log`가 생성된다
-- [x] 기존 `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\`에는 **새 파일이 생기지 않는다**(경로가 완전히
+- [x] 기존 `%LOCALAPPDATA%\KFTCTaxCAP\logs\`에는 **새 파일이 생기지 않는다**(경로가 완전히
       전환됐는지 확인)
-- [x] `%LOCALAPPDATA%\KFTCTaxGiroCAP\`의 SQLite DB는 그대로 그 자리에서 정상 동작한다
+- [x] `%LOCALAPPDATA%\KFTCTaxCAP\`의 SQLite DB는 그대로 그 자리에서 정상 동작한다
       (무결성체크 저장/조회로 확인 — 경로가 실수로 같이 바뀌지 않았는지)
 - [x] 관리자 권한 승격 과정에서 앱이 중복 기동되지 않는다(단일 인스턴스 보장) — 2026-09-01 발견된
-      gap, 이번에 보강. `Global\KFTCOneCAP_Wpf_SingleInstance` Mutex로 실물 재현 확인: 정상 인스턴스가
+      gap, 이번에 보강. `Global\KFTCTaxCAP_SingleInstance` Mutex로 실물 재현 확인: 정상 인스턴스가
       떠 있는 상태에서 같은 exe를 재실행하면 새 프로세스는 로그 한 줄 남기지 않고 즉시 조용히
       종료되고(`애플리케이션 기동 시작` 로그가 늘지 않음, 프로세스 목록에도 남지 않음), 정상
       종료 → 재실행은 문제없이 새 인스턴스로 기동된다(Mutex 정상 해제 확인). 진단 하네스
@@ -276,7 +276,7 @@ PIN 블록은 이번 구현 범위에서 제외됐다
 ## P22-6부속. 전문 원문 로그(`TelegramLogRedactor`) — 위치 기반 마스킹 + `#51` 미마스킹 확정
 
 Phase 22 계획에는 없었으나 사용자 요청("실제 POS/VAN이 어떻게 전문을 주고받았는지 원문을 로그로
-확인하고 싶다")으로 추가된 기능. `src/KFTCOneCAP.Wpf/Services/Diagnostics/TelegramLogRedactor.cs`가
+확인하고 싶다")으로 추가된 기능. `src/KFTCTaxCAP/Services/Diagnostics/TelegramLogRedactor.cs`가
 POS 소켓 경계(`PosSocketServer`)와 VAN 경계(`StubVanRelayService`/`VanService`) 양쪽에서 전문
 원문(요청/응답)을 로그에 남기되, 902614 `#46`(암호화된 카드정보, POSITION 407/길이196)만 위치
 기반으로 부분 마스킹(앞 6바이트만 노출)한다.
@@ -459,7 +459,7 @@ observed_identity(scope TEXT, key TEXT, value TEXT, observed_at TEXT, PRIMARY KE
 ## ⚠️ 진행 중 임시 조치 — `app.manifest` 관리자 권한 해제 (2026-09-02, 반드시 원복)
 
 Phase 23 화면 작업 중 `mcp__windows__*` 클릭 자동화가 UIPI에 막혀 검증을 제대로 못 하는 문제가
-반복되어(P23-3 gap), **Phase 23 화면 작업이 끝날 때까지 한시적으로** `src/KFTCOneCAP.Wpf/app.manifest`의
+반복되어(P23-3 gap), **Phase 23 화면 작업이 끝날 때까지 한시적으로** `src/KFTCTaxCAP/app.manifest`의
 `requestedExecutionLevel`을 `requireAdministrator` → `asInvoker`로 낮췄다(사용자 지시).
 
 - **P23-8(최종 검증) 착수 전에 반드시 `requireAdministrator`로 되돌린다.** 되돌리지 않으면 P22-0이
@@ -535,13 +535,13 @@ Phase 23 화면 작업 중 `mcp__windows__*` 클릭 자동화가 UIPI에 막혀 
       결과 `ShopSettingsService.cs`/`ShopSettings.cs` 외 0건(아직 이 서비스를 쓰는 화면이 없어 당연히
       0건 — P23-3에서 다시 확인 필요)
 - [x] `0` 저장 → `Load()`가 `120`을 돌려준다. 값 삭제 → `120`. `45` → `45` — x86 PowerShell로 빌드된
-      `KFTCOneCAP.Wpf.exe`를 리플렉션 로드해 실측(스크립트로 레지스트리 조작 후 `Load()` 호출),
+      `KFTCTaxCAP.exe`를 리플렉션 로드해 실측(스크립트로 레지스트리 조작 후 `Load()` 호출),
       확인 후 원래 레지스트리 백업을 복원함
 - [x] 이상값 3종(`TIMEOUT="abc"`/`"15"`, `VAN_MODE="XX"`, 21자 `KIOSK_ID`)이 각각 폴백 + `WARN` —
       동일 스크립트로 실측(`abc`/`15`→120, `XX`→R, 21자→빈값). `WARN` 로그 자체(레벨 문자열)는 코드
       경로상 확실하나 이번 세션에서 로그 파일 라인까지 별도로 대조하지는 않았다
 - [x] `Services`가 WPF 타입을 참조하지 않는다(계층 규칙) — `using` 목록 확인(`System`,
-      `Microsoft.Win32`, `KFTCOneCAP.Wpf.Services.Diagnostics`뿐)
+      `Microsoft.Win32`, `KFTCTaxCAP.Services.Diagnostics`뿐)
 
 > **발견·수정한 문제(2026-09-02)**: 검증 착수 시점의 파일이 레지스트리 레이아웃을 잘못 담고 있었다
 > (`KIOSK_ID`/`AUTO_REBOOT`/`AUTO_UPDATE`가 `TCP`로 가 있는 등 PRD.md 표와 어긋남 — 이후 사용자가
@@ -712,7 +712,7 @@ Phase 23 화면 작업 중 `mcp__windows__*` 클릭 자동화가 UIPI에 막혀 
       `120`은 실클릭 세션에서 기본값 표시로 반복 확인됨(위 항목)
 - [x] `ShopSetupViewModel`이 WPF 타입을 참조하지 않는다(`using System.Windows` 없음) — `using` 목록
       확인(`System`, `System.Collections.ObjectModel`, `CommunityToolkit.Mvvm.ComponentModel`,
-      `KFTCOneCAP.Wpf.Services.Settings`뿐)
+      `KFTCTaxCAP.Services.Settings`뿐)
 - [x] `screenshots/shop_setup.png`와 문구/레이아웃 대조 — 헤더 아이콘(집 모양, 파란 사각형)·
       "가맹점 설정"·부제·"확인"/"취소" 버튼 문구·배치 일치, "금융결제원 서버"/"키오스크 고유번호"
       2열 배치도 원본의 "금융결제원 서버"/"포트번호" 2열 구조와 일치하도록 2026-09-02 레이아웃을
@@ -777,7 +777,7 @@ Phase 23 화면 작업 중 `mcp__windows__*` 클릭 자동화가 UIPI에 막혀 
   기본 `MinHeight="44"`를 로컬로 덮어쓰고 있어 잘림 없이 40px에 맞게 그려진다.
 
 **완료 조건(4차 라운드)** — 2026-09-02 실측 확인 완료(`asInvoker` 유지 상태, 실클릭 자동화)
-- [x] `dotnet build src/KFTCOneCAP.Wpf/KFTCOneCAP.Wpf.csproj` 경고 0 / 오류 0
+- [x] `dotnet build src/KFTCTaxCAP/KFTCTaxCAP.csproj` 경고 0 / 오류 0
 - [x] `ReaderSetupWindow` 실행(`--home` → "리더기 설정" 카드 실클릭) → "포트 설정"/"무결성 체크 정보"
       두 섹션 타이틀 아래 구분선이 원본과 같은 위치에 렌더링됨을 스크린샷으로 확인, 리더기1/2 카드·
       액션 버튼 5종 등 기존 요소에 회귀 없음(스냅샷으로 컨트롤 목록 재확인)
@@ -828,7 +828,7 @@ Phase 23 화면 작업 중 `mcp__windows__*` 클릭 자동화가 UIPI에 막혀 
 `ReaderWindowHeight`도 `691` → `713`으로 함께 올렸다(1024×768 workarea 제약 안에 여전히 들어감).
 
 **완료 조건(5차 라운드)** — 2026-09-02 실측 확인 완료(`asInvoker` 유지 상태, 실클릭 자동화)
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0(전체 솔루션)
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0(전체 솔루션)
 - [x] `ShopSetupWindow` — `KioskIdTextBox`에 `"abcdefghijklmnop가나다"`(소문자 디센더 + 한글 혼합),
       `CardReadTimeoutTextBox`에 `"120"` 입력 후 스크린샷 4~5배 확대(NearestNeighbor) 크롭으로
       디센더 아래 여백이 육안으로 남는 것을 확인(딱 맞아떨어지는 수준이 아님)
@@ -854,7 +854,7 @@ Phase 23 화면 작업 중 `mcp__windows__*` 클릭 자동화가 UIPI에 막혀 
 `App.xaml.cs`의 `isCompact` 판정식에 `|| Environment.GetEnvironmentVariable("KFTC_FORCE_COMPACT")
 == "1"` 한 줄을 **임시로만** 추가하고 `KFTC_FORCE_COMPACT=1` 환경변수를 설정한 프로세스로 앱을
 띄워 Compact 딕셔너리가 실제로 로드되게 한 뒤(리소스 스위칭 로직 자체는 건드리지 않음), 검증이
-끝난 직후 이 한 줄을 정확히 원상 복구했다(`git diff -- src/KFTCOneCAP.Wpf/App.xaml.cs`로 이 파일의
+끝난 직후 이 한 줄을 정확히 원상 복구했다(`git diff -- src/KFTCTaxCAP/App.xaml.cs`로 이 파일의
 diff가 검증 전/후 완전히 동일함을 확인, 커밋 없음).
 
 - `ShopSetupWindow`(Compact) — 홈 화면 카드를 거치지 않고 `--shop-setup` 인자로 직접 띄운 뒤
@@ -904,7 +904,7 @@ diff가 검증 전/후 완전히 동일함을 확인, 커밋 없음).
   - 일반 테마 — `744×844`(이전 고정값 `842`와 거의 동일, 콘텐츠가 자연스럽게 결정한 값이라 향후
     폰트/구분선이 또 바뀌어도 항상 정확히 맞는다).
   - Compact 테마(`KFTC_FORCE_COMPACT=1` 임시 스위치로 검증, 검증 후 `App.xaml.cs` 정확히 원복 —
-    `git diff -- src/KFTCOneCAP.Wpf/App.xaml.cs`로 무관한 P23-2 변경만 남았음을 재확인) —
+    `git diff -- src/KFTCTaxCAP/App.xaml.cs`로 무관한 P23-2 변경만 남았음을 재확인) —
     `722×715`(이전 고정값 `713`과 거의 동일).
   - 두 테마 모두 스크린샷으로 확인/취소 버튼이 완전히 보이고 아래 여백이 충분함을 확인.
 - **참고**: 이 개발 환경(원격 세션)은 실행 시점에 따라 `SystemParameters.PrimaryScreenHeight`가
@@ -1014,7 +1014,7 @@ P23-1~P23-4 체크포인트 CP1에 대한 Opus 코드 리뷰에서 치명적 2�
     `windows_fill` + 포커스 이동(다른 컨트롤 클릭으로 `LostFocus` 트리거, `TextBox.Text` 바인딩
     기본 `UpdateSourceTrigger=LostFocus` 때문)으로 재시도해 정확히 재현됨을 확인(자동화 도구 사용
     실수였지 앱 코드 결함이 아니었음).
-- 위 9건 반영 후 `dotnet build KFTCOneCAP.Wpf.sln` 경고 0/오류 0 확인.
+- 위 9건 반영 후 `dotnet build KFTCTaxCAP.sln` 경고 0/오류 0 확인.
 
 ---
 
@@ -1400,7 +1400,7 @@ P23-1~P23-4 체크포인트 CP1에 대한 Opus 코드 리뷰에서 치명적 2�
       (설정값과 다른 값 → `카드 리딩 없이` E06, 설정값 빈 값 → E06, 수신값
       빈 값 → E06). CP2에서 이미 실측된 사항의 최종 빌드 재확인이다
 - [x] `dotnet build` 경고 0 / 오류 0 — `asInvoker`(중간 검증용)와 최종 `requireAdministrator`
-      두 상태 모두에서 확인(2026-09-02, 최종 빌드 13:52:14 — `KFTCOneCAP.Wpf.exe` 파일 타임스탬프)
+      두 상태 모두에서 확인(2026-09-02, 최종 빌드 13:52:14 — `KFTCTaxCAP.exe` 파일 타임스탬프)
 - [x] 진단 하네스 3종 전부 통과 — `--payment-flow-test` 통과 71건/실패 0건(13:44:21),
       `--van-call-test` 통과 4건/실패 0건(13:51:04, `mode=OT` 로그 전 호출에서 확인),
       `--pos-client-test` 시나리오 1~7 전부 기대한 결과(전체 완료 로그 13:51:41) — 유일한
@@ -1419,7 +1419,7 @@ P23-1~P23-4 체크포인트 CP1에 대한 Opus 코드 리뷰에서 치명적 2�
    `asInvoker`).
 2. 가맹점 설정 화면에서 "테스트 서버" 선택 → 확인 → 레지스트리 `TCP\VAN_MODE=OT` 확인(로그
    `가맹점 설정 저장 — VAN_MODE=OT, ...`).
-3. `KFTCOneCAP.KioskSim.exe`(이 저장소의 POS 시뮬레이터, `src/KFTCOneCAP.KioskSim/`)로 902614를
+3. `KFTCTaxCAP.KioskSim.exe`(이 저장소의 POS 시뮬레이터, `src/KFTCTaxCAP.KioskSim/`)로 902614를
    `#42=abcdefg`(레지스트리 설정값과 일치)로 전송 → 실제 리더기(COM3, 오늘자 무결성 이력 "정상")가
    참여해 카드 리딩 대기(`카드입력 데드라인 110초` → "그림과 같이 카드를 넣어주세요" 알림창)까지
    실제로 도달 → 물리 카드가 없어 취소(사용자 취소 통지 → `E01` 확정, 정상 동작).
@@ -1436,7 +1436,7 @@ P23-1~P23-4 체크포인트 CP1에 대한 Opus 코드 리뷰에서 치명적 2�
 리딩 라운드까지 진입했다(하드웨어 왕복 자체가 실측됨).
 
 **잔여 프로세스(정직하게 남김)** — 위 UAC 재확인 과정에서 bash로 직접 실행을 시도했을 때, 프롬프트
-없이(또는 내가 인지하지 못한 사이에) 관리자 권한으로 보이는 `KFTCOneCAP.Wpf.exe` 프로세스가 하나
+없이(또는 내가 인지하지 못한 사이에) 관리자 권한으로 보이는 `KFTCTaxCAP.exe` 프로세스가 하나
 남았다(`taskkill`이 액세스 거부로 실패, `mcp__windows__` 자동화 창 목록에도 안 잡힘 — 더 높은
 무결성 수준으로 기동됐다는 뜻). **이 프로세스는 내가 종료하지 못했다** — 8002/COM3를 계속 점유하고
 있을 수 있으므로, 사용자가 관리자 권한 세션(작업 관리자 "관리자 권한으로 표시" 또는 관리자
@@ -2429,7 +2429,7 @@ CP1(1차 리뷰, 치명적 2건 수정) → 전체 1차 리뷰(치명적 0건, �
 
 **이 Task가 틀리면 뒤의 모든 Task가 무의미하다.** 지운다고 믿고 안 지우는 상태가 가장 나쁘다.
 
-- `src/KFTCOneCAP.Wpf/Security/SecureClear.cs` 신설. **아무것도 참조하지 않는 leaf 유틸리티**로 두어
+- `src/KFTCTaxCAP/Security/SecureClear.cs` 신설. **아무것도 참조하지 않는 leaf 유틸리티**로 두어
   어느 계층에서든 호출할 수 있게 한다(위험 #6). `ROADMAP.md`의 계층 규칙에 이 예외를 한 줄 적는다.
 - 덮어쓰기 **3회**, 패턴은 `0x00` → `0xFF` → `0x00`(마지막이 0으로 끝나야 개정 기준의 "0 등의 특정
   문자로 덮어쓰기" 문구까지 만족한다 — `PRD.md` §4.3.1).
@@ -2775,7 +2775,7 @@ P25-6 착수 전 계획에는 없었으나, 위 발견(요청 본문을 `RunCard
 
 1. P25-10의 실장비 902614 결제(실카드)를 돌리면서, **VAN 승인 응답을 받은 직후**(카드정보가 아직
    메모리에 남아 있어야 할 시점) 프로세스 전체 메모리를 덤프한다 —
-   `procdump.exe -ma KFTCOneCAP.Wpf.exe dump_before_clear.dmp`(Sysinternals, 무료 배포 도구).
+   `procdump.exe -ma KFTCTaxCAP.exe dump_before_clear.dmp`(Sysinternals, 무료 배포 도구).
 2. 같은 카드로 **거래가 완전히 끝나고 `finally`의 클리어까지 실행된 후**(P25-6이 지운 뒤) 다시
    덤프한다 — `dump_after_clear.dmp`.
 3. 두 덤프 파일에서 **그 카드의 실제 PAN(전체 자리)과 앞 8자리(BIN)를** ASCII/UTF-16LE 두 인코딩으로
@@ -2844,7 +2844,7 @@ P25-6 착수 전 계획에는 없었으나, 위 발견(요청 본문을 `RunCard
 
 **실제 진행(2026-09-03) — 계획과 달라진 지점**
 
-- 앱 실행은 `KFTCOneCAP.KioskSim`(POS 시뮬레이터, `src/KFTCOneCAP.KioskSim`)으로 902614/800000
+- 앱 실행은 `KFTCTaxCAP.KioskSim`(POS 시뮬레이터, `src/KFTCTaxCAP.KioskSim`)으로 902614/800000
   전문을 실제 소켓(`127.0.0.1:8002`)으로 보내는 방식으로 진행했다 — 실제 POS 대신 이 저장소에
   이미 있는 연동 샘플을 그대로 썼다.
 - 최초 시도는 `#42`(키오스크 고유번호) 값이 KioskSim 프리셋(`1234567890BF0001`)과 실제 레지스트리
@@ -2930,7 +2930,7 @@ P25-6 착수 전 계획에는 없었으나, 위 발견(요청 본문을 `RunCard
 | `FileLogSink` 열기 모드 = `FileMode.Append, FileAccess.Write, FileShare.Read` | `FileLogSink.cs:69-73` |
 | `LogPaths.LogDirectory` 참조는 **2곳** | `FileLogSink.cs:63,68`, `LogRetentionCleaner.cs:75`. 리더가 세 번째 소비자가 된다 |
 | `VanService`는 응답을 **우리 스키마 길이로** 자른다 | `VanService.cs:50`(`bodyLength = populatedRequest.Schema.TotalLength`), `:141` |
-| 단위 테스트 프로젝트 **없음** | 솔루션에 `KFTCOneCAP.Wpf` / `KFTCOneCAP.KioskSim` 2개뿐, xunit/nunit/MSTest 참조 0건 |
+| 단위 테스트 프로젝트 **없음** | 솔루션에 `KFTCTaxCAP` / `KFTCTaxCAP.KioskSim` 2개뿐, xunit/nunit/MSTest 참조 0건 |
 
 ## 이 Phase에서 손대지 않는 것 (범위 밖 확정)
 
@@ -3624,10 +3624,10 @@ PosClient/VanCall), `RepeatedTransactionResourceTest.cs`, `*SelfTest.cs`, `Nativ
 | `R28` | `R31` | catch-all(그 외 DLL 실패) |
 | `R29` | `R32` | 방어적 실패(승자 없음/카드데이터 없음/재시도 상한, 3건 공유) |
 
-- **변경 대상**: `src/KFTCOneCAP.Wpf/Services/Payment/PosResultCodeMapper.cs`의
+- **변경 대상**: `src/KFTCTaxCAP/Services/Payment/PosResultCodeMapper.cs`의
   `ToTelegramCode(CardReadCommandOutcome)`와 `ReaderBroadcastNoWinnerCode`/
   `ReaderNoCardDataDefensiveCode`/`ReaderRetryLimitExceededCode`, 그리고
-  `src/KFTCOneCAP.KioskSim/Protocol/ResponseCodeCatalog.cs`의 대응 항목.
+  `src/KFTCTaxCAP.KioskSim/Protocol/ResponseCodeCatalog.cs`의 대응 항목.
 - **POS로 나가는 응답 값 자체가 바뀐다** — E42/E43 신설(P27-8-f)보다 더 신경 써야 한다. 신설이
   아니라 **기존에 이미 나가고 있던 값이 바뀌는 것**이라 POS 쪽이 옛 값을 알고 있었다면 그 지식이
   깨진다. `PRD.md` §5 미확정 #17에 기록, POS 담당자 통보 필요.
@@ -4119,7 +4119,7 @@ Phase 전체에 걸리는 관문이기 때문이다.
 ## 착수 전 전제 (코드 실측, 2026-09-28)
 
 - **`ShopSettingsService`**(`Services/Settings/ShopSettingsService.cs`) — `SerialPortKeyPath`가 이미
-  `...\KFTCTaxGiroCAP\SERIALPORT`다. `Load()`는 예외를 던지지 않고 폴백(+ 같은 이상값의 반복 `WARN`
+  `...\KFTCTaxCAP\SERIALPORT`다. `Load()`는 예외를 던지지 않고 폴백(+ 같은 이상값의 반복 `WARN`
   억제 필드 `_lastWarned*Raw`), `Save()`는 던진다. **새 값 3개도 이 패턴 그대로 넣는다.**
 - **`ShopSetupViewModel`** — 필드별 `_snapshot*` 6개 + `IsDirty()`, `TryConfirm()`에서 검증→저장→
   `FileLogger.Info(LogCategory.Settings, ...)` 순. 검증·저장 실패는 `ResultMessageReady`(string)
@@ -4159,7 +4159,7 @@ Phase 전체에 걸리는 관문이기 때문이다.
 
 ## ⚠️ 진행 중 임시 조치 — `app.manifest` 관리자 권한 해제 (2026-09-28, 반드시 원복)
 
-사용자 지시로 Phase 31 화면 검증 동안 `src/KFTCOneCAP.Wpf/app.manifest`의 `requestedExecutionLevel`을
+사용자 지시로 Phase 31 화면 검증 동안 `src/KFTCTaxCAP/app.manifest`의 `requestedExecutionLevel`을
 `requireAdministrator` → `asInvoker`로 낮춘다(Phase 23과 같은 조치).
 
 - **P31-4 마지막 항목으로 반드시 `requireAdministrator`로 되돌리고**, 빌드한 exe에 매니페스트가

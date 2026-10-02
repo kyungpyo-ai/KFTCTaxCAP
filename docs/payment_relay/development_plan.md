@@ -42,7 +42,7 @@
 - 대상 값: `COMPORT1_FIELD`/`COMPORT2_FIELD`(문자열 그대로), `MULTIPAD1_FIELD`/`MULTIPAD2_FIELD`
   (**반전 인코딩** — ON→`"0"`, OFF→`"1"`. 이 인코딩 규칙이 화면 밖으로 새어 나가지 않도록 이 계층에서
   bool로 변환해 노출한다).
-- 키 경로: `HKCU\Software\KFTC_VAN\KFTCTaxGiroCAP\SERIALPORT`.
+- 키 경로: `HKCU\Software\KFTC_VAN\KFTCTaxCAP\SERIALPORT`.
 - **읽기 실패를 예외로 던지지 않는다** — 현재 코드처럼 기본값(미사용/꺼짐)으로 조용히 폴백한다(권한 문제 등).
 - WPF 타입에 의존하지 않는다(공통 규칙 5).
 
@@ -138,7 +138,7 @@ ViewModel로 밀어 넣지 않는다.
 `PlatformTarget`이 없어 AnyCPU(64비트 OS에서 64비트 프로세스)로 기동되며, 이 상태로 `DllImport`가 실행되면
 `BadImageFormatException`이 난다.
 
-- `src/KFTCOneCAP.Wpf/KFTCOneCAP.Wpf.csproj`에 추가:
+- `src/KFTCTaxCAP/KFTCTaxCAP.csproj`에 추가:
   ```xml
   <PlatformTarget>x86</PlatformTarget>
   ```
@@ -187,7 +187,7 @@ ViewModel로 밀어 넣지 않는다.
 **로깅 프레임워크(NLog/Serilog 등)를 도입하지 않는다** — 이 앱에 필요한 건 "언제 무슨 일이 있었는지" 한 줄씩
 남기는 것뿐이고, 의존성을 늘릴 만한 요구사항(구조화 로그, 원격 전송, 동적 레벨 변경)이 PRD에 없다.
 
-- 기록 위치: `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\`. **앱 설치 폴더에 쓰지 않는다** — `Program Files` 아래에
+- 기록 위치: `%LOCALAPPDATA%\KFTCTaxCAP\logs\`. **앱 설치 폴더에 쓰지 않는다** — `Program Files` 아래에
   설치되면 쓰기 권한이 없어 로깅 자체가 실패한다.
 - 형식: `[시각] [레벨] 메시지` 한 줄. 날짜별 파일 분리.
 - **스레드 안전해야 한다** — Reader CALLBACK이 리더기별 수신 스레드에서 호출되므로 UI 스레드와 동시에 로그를
@@ -195,7 +195,7 @@ ViewModel로 밀어 넣지 않는다.
 - 로깅 실패가 앱을 죽이지 않아야 한다(디스크 가득참/권한 문제 등은 조용히 무시).
 
 **완료 조건**
-- [x] 앱 기동 시 로그 파일이 생성되고 기동 로그가 남는다 — `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\yyyy-MM-dd.log`에
+- [x] 앱 기동 시 로그 파일이 생성되고 기동 로그가 남는다 — `%LOCALAPPDATA%\KFTCTaxCAP\logs\yyyy-MM-dd.log`에
       "애플리케이션 기동 시작" 라인 확인
 - [x] 여러 스레드에서 동시에 기록해도 줄이 깨지지 않는다 — 실제 `FileLogger`와 동일한 lock 전략으로 20개
       스레드 × 50줄(1000줄) 동시 기록 테스트, 전 줄이 정규식과 정확히 일치(줄 섞임/깨짐 없음)
@@ -271,8 +271,8 @@ x86 전환이 기존 화면에 영향을 주지 않았는지 확인한다.
 - [x] `dotnet build` 성공(경고 0/오류 0)
 - [x] `ReaderSerial.h`의 5개 함수·2개 CALLBACK·3개 enum과 선언이 일치함을 대조 확인(대조 결과를 Task 아래 기록)
 
-**완료 결과(2026-08-19)**: `src/KFTCOneCAP.Wpf/Interop/ReaderSerialNative.cs`로 포팅했다(네임스페이스만
-`KFTCOneCAP.Wpf.Interop`로 조정, 접근 제한자는 원본과 동일하게 `internal` 유지). `ReaderSerial.h`와의 1:1
+**완료 결과(2026-08-19)**: `src/KFTCTaxCAP/Interop/ReaderSerialNative.cs`로 포팅했다(네임스페이스만
+`KFTCTaxCAP.Interop`로 조정, 접근 제한자는 원본과 동일하게 `internal` 유지). `ReaderSerial.h`와의 1:1
 대조 결과(파일 상단 주석에도 기록):
 - `ReaderEventType`(0~5)·`PinpadEventType`(0~7)·`PinpadCommandCode`(0xA0~0xA4) 3개 enum 모두 헤더 선언
   순서·값과 정확히 일치.
@@ -305,7 +305,7 @@ x86 전환이 기존 화면에 영향을 주지 않았는지 확인한다.
 - [x] 콜백 진입 → `Marshal.Copy` → `Dispatcher` 전달 → 즉시 반환 흐름이 구현됨
 - [x] 콜백에서 UI 요소를 직접 참조하는 코드가 없음
 
-**완료 결과(2026-08-19)**: `src/KFTCOneCAP.Wpf/Services/Reader/ReaderService.cs`에 구현했다.
+**완료 결과(2026-08-19)**: `src/KFTCTaxCAP/Services/Reader/ReaderService.cs`에 구현했다.
 `_nativeReaderCallback` 필드로 델리게이트를 계속 참조한다(GC 방지 이유를 코드 주석에 명시).
 `OnReaderCallback`에서 `dataLength>0 && data != IntPtr.Zero`일 때만 `Marshal.Copy`로 즉시 `byte[]`에
 복사한 뒤 `ReaderEventArgs`를 만들어 `EventReceived` 이벤트로 그대로 raise한다 — **다만 계층 규칙 때문에
@@ -639,7 +639,7 @@ COM5를 성공적으로 열어 둔 상태를 유지하고, 그 직후 실시간�
 조율했다(이전 시도들은 메시지 왕복 시차 때문에 "포트가 이미 완전히 뽑힌 뒤" 확인하게 되어
 `PORT_NOT_FOUND`만 나왔던 것과 대비된다).
 
-- **`PORT_NOT_OPEN`(-1103) 실장비 재현 성공** — `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\`에 다음 순서로
+- **`PORT_NOT_OPEN`(-1103) 실장비 재현 성공** — `%LOCALAPPDATA%\KFTCTaxCAP\logs\`에 다음 순서로
   기록됨:
   1. `COM5 전송 중 포트 계열 에러 감지(result=-1103 (READER_ERR_PORT_NOT_OPEN)) -> Close 후 재연결 시도`
   2. 재연결(재오픈) 시도 → 이 시점엔 케이블이 이미 완전히 빠진 상태라 `READER_ERR_PORT_NOT_FOUND`로
@@ -810,7 +810,7 @@ COM5/COM3 리더기에 태그하겠다고 알려와, 이전까지 유일하게 �
   `"####SPD-800F1011"`을 실제로 확인했다 — **이 프로젝트에서 SPEC 파서가 실제 하드웨어의 정상
   카드 리딩 응답을 엔드투엔드로 성공 처리한 최초 확인 사례**다. 아직 응답 대기 중이던
   readerB(COM3)에는 코드가 실제로 `SendInvalidationInit()`(0x60)을 호출했고, 로그
-  (`%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\`)에 `[카드 리딩 페일오버 전송] 리더기[0] 채택 (이번
+  (`%LOCALAPPDATA%\KFTCTaxCAP\logs\`)에 `[카드 리딩 페일오버 전송] 리더기[0] 채택 (이번
   라운드 최초 응답), Kind=Success`와 `[카드 리딩 페일오버 전송] 리더기[1]: ... 초기화 요청(0x60)
   전송해 무효화 -> result=0`(READER_OK)이 남아, **정상 응답 채택 + 반대쪽 실제 무효화** 양쪽 모두
   실장비로 확인됐다.
@@ -848,7 +848,7 @@ PRD §4.6/§4.7, §6.6이 요구하는 구분을 **타입 수준에서** 만든�
 또는 `DllResult`/`DllResultName`/`Detail`(DLL 연동 실패)로 각각 꺼낼 수 있다.
 - Phase 9의 `InitOutcomeKind`를 `ReaderCommandOutcomeKind`로 일반화하면서(값은 동일, 이름만 공유
   가능하도록 변경) `ReaderSetupViewModel.cs`의 참조 지점도 함께 갱신했다 — 동작 변경 없음(리네임).
-- **계층 규칙 최종 점검**: `grep -rn "byte\[\]" src/KFTCOneCAP.Wpf/Services/Reader/`로
+- **계층 규칙 최종 점검**: `grep -rn "byte\[\]" src/KFTCTaxCAP/Services/Reader/`로
   확인한 결과, `ReaderService`/`CardReadBroadcaster`/각 `*CommandOutcome` 어디에도 응답 바이트를
   직접 오프셋으로 슬라이싱하는 코드가 없다 — 전부 `Protocol/Reader/*Parser`/`*Builder`가 만든
   결과 객체(`InitResponseResult`/`StatusResponseResult`/`IntegrityResponseResult`/
@@ -899,7 +899,7 @@ SQLite는 **네이티브 라이브러리를 동반**하므로 Phase 8의 x86 고
 
 PRD §7 저장 항목: 체크 일시 / COM Port / 결과 / 응답코드 / 모듈 ID / 리더기 인증 식별번호 / POS 식별번호.
 
-- DB 파일 위치: `%LOCALAPPDATA%\KFTCTaxGiroCAP\`(P8-3 로그와 동일한 이유 — 설치 폴더 쓰기 권한 문제 회피).
+- DB 파일 위치: `%LOCALAPPDATA%\KFTCTaxCAP\`(P8-3 로그와 동일한 이유 — 설치 폴더 쓰기 권한 문제 회피).
 - 최초 실행 시 파일·테이블 자동 생성.
 - POS 식별번호는 `KFTCTAXGIROCAP01` **하드코딩 상수**(PRD §2.1)를 그대로 기록한다.
 - **조회 성능 관점**: "금일·특정 COM Port·성공" 조회(P11-3)가 결제마다 실행되므로 그 조건에 인덱스를 둔다.
@@ -911,8 +911,8 @@ PRD §7 저장 항목: 체크 일시 / COM Port / 결과 / 응답코드 / 모듈
 - [x] DB 파일을 삭제한 뒤 재실행해도 정상 재생성됨
 
 **완료 결과(2026-08-20)**: `Services/Storage/IntegrityCheckStore.cs`에 구현했다. DB 파일 위치는
-`%LOCALAPPDATA%\KFTCTaxGiroCAP\integrity_check.db`(P8-3 `FileLogger`가 로그를 두는
-`%LOCALAPPDATA%\KFTCTaxGiroCAP\` 폴더와 같은 규칙, 하위에 `logs\`와 나란히 DB 파일을 둔다).
+`%LOCALAPPDATA%\KFTCTaxCAP\integrity_check.db`(P8-3 `FileLogger`가 로그를 두는
+`%LOCALAPPDATA%\KFTCTaxCAP\` 폴더와 같은 규칙, 하위에 `logs\`와 나란히 DB 파일을 둔다).
 `IntegrityCheckHistory` 테이블(`CheckedAtLocal`/`ComPort`/`IsSuccess`/`ResponseCode`/`ModuleId`/
 `ReaderAuthId`/`PosId` 7컬럼)과 인덱스 2개(`IX_IntegrityCheckHistory_Today`(ComPort, IsSuccess,
 CheckedAtLocal) — P11-3의 "금일·포트·성공" 조회용, `IX_IntegrityCheckHistory_CheckedAt` — 리스트
@@ -923,12 +923,12 @@ CheckedAtLocal) — P11-3의 "금일·포트·성공" 조회용, `IX_IntegrityCh
 비교와 일치하도록 했다(범위 조건에 별도 날짜 파싱 함수 없이 `>=`/`<` 문자열 비교로 정확한 결과를
 얻는다).
 - **검증**: 프로덕션 코드를 그대로 참조하는 x86/net48 콘솔 하네스(`ProjectReference`로
-  `KFTCOneCAP.Wpf.csproj`를 참조, 스크래치패드, 저장소 밖 — 이 클래스는 전부 `public`이라
+  `KFTCTaxCAP.csproj`를 참조, 스크래치패드, 저장소 밖 — 이 클래스는 전부 `public`이라
   `InternalsVisibleTo` 등 저장소 변경이 필요 없었다)로 확인했다. 기본(공개) 생성자를 그대로 써서
-  **실제 배포 경로**(`%LOCALAPPDATA%\KFTCTaxGiroCAP\integrity_check.db`)에 대해 검증했다 — 하네스
+  **실제 배포 경로**(`%LOCALAPPDATA%\KFTCTaxCAP\integrity_check.db`)에 대해 검증했다 — 하네스
   실행 전 그 경로에 기존 파일이 있으면 백업 후 진행하고, 종료 시(성공/실패 무관, `finally`) 항상
   원상 복구하도록 만들어 실제 사용자 데이터를 건드리지 않았다(테스트 종료 후
-  `%LOCALAPPDATA%\KFTCTaxGiroCAP\`에 `logs\`만 남고 DB 파일 잔여물 없음을 확인).
+  `%LOCALAPPDATA%\KFTCTaxCAP\`에 `logs\`만 남고 DB 파일 잔여물 없음을 확인).
   - DB 디렉터리·파일이 최초 `Save()` 호출 시 자동 생성됨을 확인(`Directory.Exists`/`File.Exists`).
   - 7개 항목(체크일시/포트/결과/응답코드/모듈ID/리더기인증식별번호/POS식별번호)을 저장한 뒤
     `GetHistory()`로 다시 읽어 각 프로퍼티(`CheckedAt`/`ComPort`/`IsSuccess`/`ResponseCode`/
@@ -977,7 +977,7 @@ toInclusive)`(리스트 표시용, 최신순, `List<IntegrityCheckHistoryEntry>`
 새로 만들고 `GetHistory`가 이걸 반환하도록 변경, 시각 서식/표시 코드값 매핑 로직은 전부 제거했다.
 `IntegrityCheckHistoryEntry → IntegrityCheckRow` 변환은 Phase 12에서 ViewModel이 담당한다. 이
 변경 후 `dotnet build` 경고 0/오류 0, `Services/` 전체에 `System.Windows` `using`이 없음을
-재확인했다. **재검증**: 새 DTO 타입으로 실제 배포 경로(`%LOCALAPPDATA%\KFTCTaxGiroCAP\`)에 대해
+재확인했다. **재검증**: 새 DTO 타입으로 실제 배포 경로(`%LOCALAPPDATA%\KFTCTaxCAP\`)에 대해
 Save→GetHistory→HasSuccessToday 왕복 하네스를 다시 실행(기존 파일 백업 후 실행, `finally`로 원상
 복구) — 성공/실패 각 1건 저장 후 `GetHistory`가 `IntegrityCheckHistoryEntry` 2건을 최신순으로
 정확히 반환하고 각 필드(`CheckedAt`/`ComPort`/`IsSuccess`/`ResponseCode`/`ModuleId`/`ReaderAuthId`/
@@ -1360,7 +1360,7 @@ PRD §6.4의 무결성체크는 **단일 명령이 아니라 2단계 시퀀스**
   `ComPort="COM 05"`/`"COM 03"`(P12-2 표시 문자열 그대로) 2건이 저장됨을 조회 화면(P12-5)에서
   재확인.
 - **DB 저장 실패 시 성공 문구 유지 — 실측**: 물리적 개입 없이 파일시스템 잠금만으로 재현했다.
-  `%LOCALAPPDATA%\KFTCTaxGiroCAP\integrity_check.db`를 별도 프로세스(`Start-Process powershell`로
+  `%LOCALAPPDATA%\KFTCTaxCAP\integrity_check.db`를 별도 프로세스(`Start-Process powershell`로
   분리 프로세스에서 `FileShare.None`으로 오픈)로 배타 잠금 → 그 상태에서 무결성체크 버튼 클릭 →
   모달은 여전히 `"리더기 무결성 체크 성공..."`으로 표시됨을 스크린샷으로 확인, 동시에 로그에
   `[ERROR] 무결성 체크 이력 저장 실패: SqliteException - SQLite Error 14: 'unable to open
@@ -2871,7 +2871,7 @@ Flow가 쓰는 부품(`SendCardReadCommandAsync`, `IntegrityCheckService.RunAsyn
       `GetAwaiter().GetResult()`가 저장소 전체에서 `TransactionQueue.cs`의 실호출 1건(`WorkerLoop`)과
       클래스 주석 설명문 2건뿐, 다른 파일에는 0건
 - [x] `Services/Pos/PosSocketServer.cs`에 변경 없음 — `git diff --stat -- .../PosSocketServer.cs` 결과 빈 diff
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0/오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0/오류 0
 - [x] Phase 14의 `--pos-client-test` 7개 시나리오 전부 회귀 통과(2026-08-25 재실행 로그) — 특히 시나리오5
       (예외 유발)는 스택 트레이스 형태가 `TaskAwaiter.ThrowForNonSuccess` 경유로 바뀌었을 뿐 결과는
       동일(`PAYRES|99|THROW-1|INTERNAL_ERROR`, 워커 생존, 다음 요청 `AFTER-THROW` 정상 처리), 시나리오7
@@ -2906,7 +2906,7 @@ Orchestrator가 `ReaderService`(sealed 구체 클래스)를 직접 잡으면 **�
       Orchestrator가 없어 grep 매치 자체가 0건(P15-6에서 실제로 생성될 때 재확인)
 - [x] `CardReadBroadcaster`의 알고리즘 본문에 의미 변경 없음 — `git diff` 확인 결과 `ReaderService` →
       `IReaderEndpoint` 타입 치환 4곳뿐, 동시 전송/`Task.WhenAny`/무효화 로직 줄 수 변경 없음
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 ## P15-3. POS 결과 구분 — 열거형 확정 + 매핑은 `Protocol/Pos/`에만
 
@@ -2948,7 +2948,7 @@ Orchestrator가 `ReaderService`(sealed 구체 클래스)를 직접 잡으면 **�
 - [x] 비ASCII 원인 문자열을 넣으면 예외로 즉시 드러남 — 32비트 PowerShell 리플렉션으로
       `PosPaymentResponse.Create(InternalError, "TX1", "한글사유").ToFrame()` 호출 시
       `PosProtocolException`이 그대로(감싸이지 않고) 던져짐을 확인
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 ## P15-4. 설정 화면 게이트 (확정 사항 1)
 
@@ -3012,7 +3012,7 @@ Orchestrator가 `ReaderService`(sealed 구체 클래스)를 직접 잡으면 **�
       재확인)
 - [ ] VAN 구간 진입 시 알림창이 `VanProcessing`으로 바뀌고 취소 버튼이 비활성임 — **Orchestrator가 아직
       없어 체크포인트 2(P15-8) 완료 후 실기 확인**
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 ## Phase 15 체크포인트 1 — Opus 검증 리뷰 및 후속 수정 (2026-08-25)
 
@@ -3079,7 +3079,7 @@ PRD §4.3 "0x3B 응답 데이터를 파싱해 VAN 요청 데이터를 생성"이
 
 ### 재검증 후 전체 회귀
 
-- `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 - Phase 14 `--pos-client-test` 7개 시나리오 전부 재실행해 통과(H-1 수정이 응답 조립 경로 전체에
   영향을 주므로 특히 중요) — 예외 유발(THROW-1) 응답이 여전히 `PAYRES|99|THROW-1|INTERNAL_ERROR`로
   정확히 조립됨을 재확인
@@ -3135,7 +3135,7 @@ PRD §4.3 "0x3B 응답 데이터를 파싱해 VAN 요청 데이터를 생성"이
       포트로 재확인(로그에 `[PaymentOrchestrator] ... 무결성 체크 실패` 등 실제 0x61/0x62 시도 확인됨)
 - [x] 한쪽만 무결성 성공 시 그 한쪽만 참여자가 되고 거래가 계속됨(N=1) — 시나리오6으로 확인
 - [x] 양쪽 실패 시 `IntegrityCheckFailure` + 알림창을 띄우지 않음 — 시나리오7로 확인
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 ## P15-7. 카드 리딩 라운드 — 정상/FALLBACK/`12`/기타/DLL ★ (PRD §4.3~§4.7)
 
@@ -3190,7 +3190,7 @@ ReaderCommandOutcomeKind.BusinessFailure when outcome.IsFallback: ... }` C# 패�
       `InvalidationCount >= 1` 확인(P10-5 알고리즘 자체는 P15-2에서 무변경 확인된 것 재확인)
 - [x] `Services/Payment/`에 `"07"`/`"12"`/`"00"`류 2자리 전문 코드 리터럴 없음 — grep
       `"[0-9][0-9]"` 매치 0건(`PaymentOrchestrator.cs` 대상 재확인)
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 ## P15-8. VAN 단계 + POS 응답 확정 (PRD §4.10)
 
@@ -3213,7 +3213,7 @@ ReaderCommandOutcomeKind.BusinessFailure when outcome.IsFallback: ... }` C# 패�
       끊으므로 구조적으로 성립(런타임 재현은 "카드 리딩 도중" 취소만 시나리오10으로 확인했고, "VAN
       진입 후" 취소는 구독이 이미 끊겨 있어 애초에 이벤트를 받을 방법이 없다 — 별도 시나리오로
       재현할 대상이 없음을 코드 리뷰로 확인)
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 ## P15-9. 거래 종료 정리 + 취소/Timeout 단순 배선 (PRD §4.8/§4.9/§8.4/§9)
 
@@ -3264,7 +3264,7 @@ bool) + `_pendingParticipantsForCancel`(volatile `IReadOnlyList<IReaderEndpoint>
 - [x] 카드 데이터가 로그 파일 어디에도 남지 않음 — 전체 로그 파일에서 `FakeCardData`가 심어둔
       카드번호("1234567890123456")·암호화데이터("DEADBEEF")·리더기인증식별번호("AUTHID0000000001")
       리터럴을 grep, 3종 모두 매치 0건
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 
 **알려진 범위**: "예외로 끝나는 경로"는 Phase 14의 `StubPaymentProcessor`(THROW 트리거)가 P15-6에서
 제거되면서 별도 재현 수단이 없어졌다 — `PaymentOrchestrator.ProcessAsync` 자체가 던질 수 있는 예외는
@@ -3339,7 +3339,7 @@ P15-1에서 별도로 재검증됐으므로 이 Task에서 다시 재현하지 �
 | 15 | 큐 직렬성 | 3건 동시 접수 → 접수 순서(A,B,C)대로 순차 완료, 카드리딩 정확히 3회 — 전부 OK |
 
 **완료 조건**
-- [x] 시나리오 15종 전부 통과 — 위 표, 원본 로그는 `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\2026-08-25.log`의
+- [x] 시나리오 15종 전부 통과 — 위 표, 원본 로그는 `%LOCALAPPDATA%\KFTCTaxCAP\logs\2026-08-25.log`의
       `[payment-flow-test]` 태그(최종 실행분: `[ERROR]` 매치 0건으로 전수 확인)
 - [x] 실장비로 재확인 — **완결됨(2026-08-25 추가 검증)**. 체크포인트 2 리뷰 직후 사용자가 실제 리더기
       (COM5)를 연결·전원 투입한 상태를 알려와, `App.xaml.cs`가 조립한 실제 `PaymentOrchestrator`
@@ -3361,9 +3361,9 @@ P15-1에서 별도로 재검증됐으므로 이 Task에서 다시 재현하지 �
       기다리는 것을 스크린샷으로 확인(`Views.PaymentNoticePresenter`가 실제 WPF Dispatcher 위에서
       정상 동작)
 - [x] 계층 규칙 점검 — `Services/Payment/`에 `System.Windows` 매치 0건, `Protocol/`에
-      `using KFTCOneCAP.Wpf.Services` 매치 0건, `PaymentOrchestrator.cs`에 2자리 전문 코드 리터럴
+      `using KFTCTaxCAP.Services` 매치 0건, `PaymentOrchestrator.cs`에 2자리 전문 코드 리터럴
       매치 0건, `ReaderService` 직접 참조는 XML 문서 주석 1건뿐(실제 타입 사용 아님)
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 - [x] 회귀: Phase 14 `--pos-client-test`(전체 7개 흐름, 실제 Orchestrator로 재실행 — 큐 직렬화/malformed
       frame/abrupt disconnect/unresponsive client/idle-close 전부 정상). Phase 12/13은 이 체크포인트에서
       코드 변경이 없어(`ReaderSetupWindow`의 P15-4 배선 제외) 재검증 대상 아님 — P15-4에서 이미
@@ -3448,7 +3448,7 @@ P15-9 문서가 명시적 삭제처럼 서술했지만 코드는 스코프 이�
 
 ### 재검증 후 전체 회귀
 
-- `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 - `--payment-flow-test` 16개 시나리오(기존 15 + H-1 회귀 방지용 시나리오16) 전부 재실행 통과, 56개
   개별 확인 전부 OK, `[ERROR]` 0건
 - `--pos-client-test`(Phase 14, 실제 Orchestrator 경로) 재실행 — 전부 정상, M-2 경고 로그 기동 시점에
@@ -3797,7 +3797,7 @@ Phase 15에서 확인된 것: **가짜만으로는 못 잡는 결함이 있다**
 
 **완료 조건**
 - [ ] 위 5개 실장비 시나리오 통과 + 타임스탬프 근거 기록
-- [ ] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [ ] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 - [ ] **`ReaderService.cs` / `PendingReaderCommand.cs` / `CardReadBroadcaster.cs` 변경 0줄**
       (`git diff --stat`으로 확인 — 바뀌었다면 계층 판단이 틀린 것이므로 이유를 기록한다)
 - [ ] 회귀 3종 통과
@@ -3910,7 +3910,7 @@ P16-1(단일 결과 확정 게이트) ~ P16-6(경합 시나리오 하네스)까�
 - [x] 취소와 Timeout이 같은 메서드(`FireInterruptCleanup`)로 정리됨
 - [x] `TransactionQueue` 외 새 잠금 장치 없음(`IsProcessing`은 읽기 전용 노출)
 - [x] `ReaderService.cs`/`PendingReaderCommand.cs`/`CardReadBroadcaster.cs` 변경 0줄(`git diff --stat` 확인)
-- [x] `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0
+- [x] `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0
 - [ ] P16-7(실장비 검증) — 사용자 확인 필요, 별도 진행
 
 ### 이후 필요한 것
@@ -4008,7 +4008,7 @@ H-1은 타이밍 의존이라 옛 코드에서 100% 재현되는 테스트를 �
 ### 재검증 결과 (2026-08-25)
 
 - **`--payment-flow-test` 시나리오 1~26 전부 통과** — 검증 80건, `FAIL` 0건.
-  로그: `%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\2026-08-25.log`의 17:13~17:14 실행분.
+  로그: `%LOCALAPPDATA%\KFTCTaxCAP\logs\2026-08-25.log`의 17:13~17:14 실행분.
 - **Phase 14 회귀(`--pos-client-test`) 7개 흐름 전부 정상.**
   - 첫 실행에서 흐름 1·2의 응답이 전부 "(타임아웃)"으로 나왔으나 **회귀가 아니라 환경 문제**였다:
     레지스트리에 COM 05가 설정돼 있고 그 포트에 금일 무결성 성공 이력이 있어, 무결성 체크를 건너뛰고
@@ -4016,9 +4016,9 @@ H-1은 타이밍 의존이라 옛 코드에서 100% 재현되는 테스트를 �
     10초). 양쪽 포트를 임시로 `"미사용"`으로 두고 재실행해 소켓 계층만 분리 검증한 결과 7개 흐름 전부
     정상(`PAYRES|13|...|NO_READER` 즉시 응답, malformed frame·강제 종료·먹통 클라이언트·유휴 연결
     자동 종료 포함). 확인 후 레지스트리는 원래 값(COM 05 / COM 03)으로 복원했다.
-- **계층 경계 유지**: `git diff --stat -- src/KFTCOneCAP.Wpf/Services/Reader/` 변경 0건 — 리더기 계층
+- **계층 경계 유지**: `git diff --stat -- src/KFTCTaxCAP/Services/Reader/` 변경 0건 — 리더기 계층
   (`ReaderService`/`PendingReaderCommand`/`CardReadBroadcaster`)에 한 줄도 손대지 않았다.
-- `dotnet build KFTCOneCAP.Wpf.sln` 경고 0 / 오류 0.
+- `dotnet build KFTCTaxCAP.sln` 경고 0 / 오류 0.
 
 ### 이 리뷰에서 확인된 설계 판단
 
@@ -4301,7 +4301,7 @@ H-1은 타이밍 의존이라 옛 코드에서 100% 재현되는 테스트를 �
 **구현 완료(2026-08-26)**: `Protocol/Pos/PosFieldType`, `PosFieldOwner`(SET 장소 플래그, P17-2 선행 반영),
 `PosField`(패딩/트림), `PosTelegramSchema`(자체 검증), `PosTelegram`(원본 보존 + `FromBytes`/`Clone`/
 `CreateEmpty` 3경로)로 구현했다. `PosMessageEncoding`을 CP949로 교체했다. 검증은 `ProjectReference` 기반
-스크래치패드 콘솔 하네스(저장소 밖, `KFTCOneCAP.Wpf.csproj` 참조 — 모든 신규 클래스가 `public`이라
+스크래치패드 콘솔 하네스(저장소 밖, `KFTCTaxCAP.csproj` 참조 — 모든 신규 클래스가 `public`이라
 `InternalsVisibleTo` 불필요)로 위 15개 조건 전부 실측했다: 미니 스키마(N15+AN13+AHN40)로 패딩·트림·한글
 왕복·초과 예외·원본 보존(Clone 후 한 필드만 재작성해도 나머지 필드 바이트 불변)·relay 경로(`FromBytes`가
 바이트를 전혀 안 건드림)·스키마 자체 검증 실패(POSITION 어긋남, 총 길이 불일치) 2종까지 확인.
@@ -5291,7 +5291,7 @@ Phase 16 체크포인트 리뷰 M-1("Cancel만 하고 Dispose를 빠뜨리면 �
 않는다"를 테스트 하네스 자신의 로그에도 그대로 적용) `presenter.PinToFireSynchronously` 변수를 참조하는
 식으로 작성했다 — 처음엔 `"PIN(1234)"`처럼 리터럴을 이름에 박아 실패 로그에 PIN이 그대로 노출되는 실수를
 했다가(1차 실행에서 발견) 수정했다. `dotnet build` 경고 0/오류 0, `--payment-flow-test` 46건 전부 통과
-(기존 40건 + 이번에 추가한 6건 단언, 실패 0건). 로그 파일 전문(`%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\
+(기존 40건 + 이번에 추가한 6건 단언, 실패 0건). 로그 파일 전문(`%LOCALAPPDATA%\KFTCTaxCAP\logs\
 2026-08-27.log`)에서 이번 최종 실행 구간(라인 440~576)에 테스트 PIN 문자열("1234"/"5678")이 전혀
 등장하지 않는 것을 grep으로 확인했다.
 
@@ -5620,8 +5620,8 @@ H-2 스텁 수정이 키보드 입력 경로에서도 유효함을 함께 확인
 
 ## 확정된 설계 결정 (2026-08-28 사용자 확정)
 
-1. **배포 형태: 같은 리포 안 + 자체 `.sln` 동봉.** `src/KFTCOneCAP.KioskSim/` 아래에 프로젝트와
-   **그 폴더 전용 `KFTCOneCAP.KioskSim.sln`**을 함께 둔다. 내부에서는 루트 솔루션에도 추가해 본 앱과
+1. **배포 형태: 같은 리포 안 + 자체 `.sln` 동봉.** `src/KFTCTaxCAP.KioskSim/` 아래에 프로젝트와
+   **그 폴더 전용 `KFTCTaxCAP.KioskSim.sln`**을 함께 둔다. 내부에서는 루트 솔루션에도 추가해 본 앱과
    같이 열고, 업체에는 **그 폴더만 통째로 압축해 전달**하면 바로 열리고 빌드된다. 본 앱 소스는
    한 줄도 딸려가지 않는다.
 2. **오류 주입은 만들되 별도 탭으로 격리한다.** 정상 전송 화면과 오류 주입 화면을 탭으로 나눠,
@@ -5660,13 +5660,13 @@ H-2 스텁 수정이 키보드 입력 경로에서도 유효함을 함께 확인
 
 ### 구현할 것
 
-- `src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.csproj` — SDK 스타일, `net48`,
+- `src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.csproj` — SDK 스타일, `net48`,
   `OutputType=WinExe`, `UseWindowsForms=true`, `LangVersion=latest`, `Nullable=enable`,
   **`PlatformTarget` 미지정(AnyCPU)**, PackageReference 0개.
-- `src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` — **이 프로젝트 하나만** 참조하는 솔루션.
+- `src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` — **이 프로젝트 하나만** 참조하는 솔루션.
   경로는 반드시 같은 폴더 기준 상대경로여야 한다(폴더를 떼어내도 열려야 하므로).
-- 루트 `KFTCOneCAP.Wpf.sln`에도 프로젝트를 추가한다(내부 편의). **루트 솔루션 쪽 참조는
-  `src\KFTCOneCAP.KioskSim\...`이고, 이 참조가 업체 배포본에는 존재하지 않는다** — 두 솔루션이
+- 루트 `KFTCTaxCAP.sln`에도 프로젝트를 추가한다(내부 편의). **루트 솔루션 쪽 참조는
+  `src\KFTCTaxCAP.KioskSim\...`이고, 이 참조가 업체 배포본에는 존재하지 않는다** — 두 솔루션이
   서로를 모르는 상태여야 한다.
 - `README.md`(업체 제공용, 한글) — 무엇을 하는 프로그램인지, 빌드 방법, KFTCOneCAP을 먼저 띄워야
   한다는 전제, 포트 8002, 프레임 형식 한 문단, **"이 소스의 전문 필드 테이블은 SPEC을 옮겨 적은
@@ -5678,20 +5678,20 @@ H-2 스텁 수정이 키보드 입력 경로에서도 유효함을 함께 확인
 
 ### 완료 조건
 
-- [x] `dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 성공(경고 0).
+- [x] `dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 성공(경고 0).
 - [x] 루트 솔루션 `dotnet build`도 성공하고 **본 앱 빌드 산출물이 달라지지 않는다**.
-- [x] `src/KFTCOneCAP.KioskSim/` 폴더를 임시 위치로 **복사**한 뒤 그 자리에서 빌드가 성공한다
+- [x] `src/KFTCTaxCAP.KioskSim/` 폴더를 임시 위치로 **복사**한 뒤 그 자리에서 빌드가 성공한다
       (배포 시뮬레이션 — 이걸 실제로 해 보지 않으면 상대경로 실수를 못 잡는다).
 
 **완료 조건 검증 결과(2026-08-28)**:
-1. `dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` — "빌드했습니다. 경고 0개
-   오류 0개" (`KFTCOneCAP.KioskSim.exe` 생성 확인).
-2. `dotnet build KFTCOneCAP.Wpf.sln`(루트) — 두 프로젝트(KFTCOneCAP.KioskSim, KFTCOneCAP.Wpf)
-   모두 "경고 0개 오류 0개"로 빌드. 본 앱 exe(`src/KFTCOneCAP.Wpf/bin/Debug/net48/
-   KFTCOneCAP.Wpf.exe`)의 SHA256 해시를 KioskSim 추가 전/후로 비교(`bf648001...0237b55`)해
+1. `dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` — "빌드했습니다. 경고 0개
+   오류 0개" (`KFTCTaxCAP.KioskSim.exe` 생성 확인).
+2. `dotnet build KFTCTaxCAP.sln`(루트) — 두 프로젝트(KFTCTaxCAP.KioskSim, KFTCTaxCAP)
+   모두 "경고 0개 오류 0개"로 빌드. 본 앱 exe(`src/KFTCTaxCAP/bin/Debug/net48/
+   KFTCTaxCAP.exe`)의 SHA256 해시를 KioskSim 추가 전/후로 비교(`bf648001...0237b55`)해
    **완전히 동일함을 확인** — 새 프로젝트 추가가 본 앱 빌드에 영향 없음.
-3. `src/KFTCOneCAP.KioskSim/`을 `bin`/`obj` 제외하고 세션 스크래치패드 임시 폴더로 복사한 뒤
-   그 자리에서 `dotnet build KFTCOneCAP.KioskSim.sln` 실행 — "빌드했습니다. 경고 0개 오류 0개"로
+3. `src/KFTCTaxCAP.KioskSim/`을 `bin`/`obj` 제외하고 세션 스크래치패드 임시 폴더로 복사한 뒤
+   그 자리에서 `dotnet build KFTCTaxCAP.KioskSim.sln` 실행 — "빌드했습니다. 경고 0개 오류 0개"로
    성공(상대경로 문제 없음 확인). 검증 후 임시 폴더는 삭제했다.
 
 ---
@@ -5726,7 +5726,7 @@ H-2 스텁 수정이 키보드 입력 경로에서도 유효함을 함께 확인
 
 ### 완료 조건 검증 결과 (2026-08-28)
 
-**자기 검증**: `KFTCOneCAP.KioskSim.exe`를 빌드한 뒤 리플렉션으로
+**자기 검증**: `KFTCTaxCAP.KioskSim.exe`를 빌드한 뒤 리플렉션으로
 `TelegramSchemas.Notice501008`/`CardInfo800000`/`CardApproval902614`를 강제로 초기화해 생성자
 예외가 나지 않는지 직접 실행 확인했다(정적 필드는 최초 접근 시점에만 초기화되므로 "빌드 성공"만으로는
 검증되지 않는다 — P17-2/`PosSchemaRegistry.ValidateAtStartup`과 같은 이유). 결과: 3개 모두 예외 없이
@@ -5805,7 +5805,7 @@ SPEC 표를 다시 읽어 보니 실제로는 6종이었다 — `902614 #37 납�
 
 **본 앱 쪽 결함 후보(범위 밖, 별도 보고 — 이 Task에서는 코드를 고치지 않았다, 위 5건과는 성격이 다른
 진짜 불일치 1건)**:
-`src/KFTCOneCAP.Wpf/Protocol/Pos/Schemas/CardInfoInquirySchema.cs`의 `800000 #27 예비 정보 FIELD`가
+`src/KFTCTaxCAP/Protocol/Pos/Schemas/CardInfoInquirySchema.cs`의 `800000 #27 예비 정보 FIELD`가
 `PosFieldOwner.None`으로 등록되어 있으나, SPEC PDF(p.12) 표는 이 필드의 "인터넷지로" 열을 체크해
 두었다(같은 열에 체크된 `#17~26`과 정렬이 같다). `None`이 실제 코드 동작에 영향을 주는지(단순 문서화
 태그인지, 아니면 어떤 검증/UI 로직이 `None`을 특별 취급하는지)는 확인하지 않았다 — 그 확인과 수정
@@ -5837,7 +5837,7 @@ SPEC 표를 다시 읽어 보니 실제로는 6종이었다 — `902614 #37 납�
 
 ### 완료 조건 검증 결과 (2026-08-28)
 
-빌드된 `KFTCOneCAP.KioskSim.exe`를 PowerShell로 `Assembly.LoadFrom` 후 리플렉션으로
+빌드된 `KFTCTaxCAP.KioskSim.exe`를 PowerShell로 `Assembly.LoadFrom` 후 리플렉션으로
 `TelegramBuffer`/`TelegramCodec`를 직접 호출해 확인했다(P19-2와 같은 방식).
 
 1. **한글 필드 바이트 정확성 + 인접 필드 비침범**: `902614` 버퍼에 `#20="국세청"`,
@@ -5878,7 +5878,7 @@ P19-2·P19-3 완료 직후 계획대로 진행한 체크포인트. 발견 4건, 
    직접 검사하도록 고쳤다. 재검증: `"0706"`/`"9999"`는 통과, `" 706"`/`"+706"`/`"07 6"`/`"abcd"`는
    전부 예외로 거부됨을 실제로 확인.
 
-수정 후 `dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 경고 0/오류 0 재확인.
+수정 후 `dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 경고 0/오류 0 재확인.
 
 ---
 
@@ -5910,14 +5910,14 @@ Action<TimeSpan>? onElapsed)`로 비동기 API 제공). 화면(P19-5/6)이 아�
 "화면에 표시된다"는 리플렉션/전용 테스트 콘솔로 `OneCapClient`를 직접 호출해 결과 값을 콘솔에 찍는
 방식으로 확인했다(development_plan.md 지시대로).
 
-1. **501008 왕복(본 앱 구동 상태)**: `dotnet build`로 본 앱(`KFTCOneCAP.Wpf.exe`)을 실행한 뒤, 빌드된
-   `KFTCOneCAP.KioskSim.exe`를 PowerShell에서 `Assembly.LoadFrom`으로 로드해 `TelegramSchemas.
+1. **501008 왕복(본 앱 구동 상태)**: `dotnet build`로 본 앱(`KFTCTaxCAP.exe`)을 실행한 뒤, 빌드된
+   `KFTCTaxCAP.KioskSim.exe`를 PowerShell에서 `Assembly.LoadFrom`으로 로드해 `TelegramSchemas.
    Notice501008` → `TelegramBuffer` → `TelegramCodec.Encode`로 710바이트 요청 프레임을 만들고
    `OneCapClient.SendAsync`로 전송했다. 결과: `Kind=Success`, 응답 본문 70바이트 수신(빈 필드로만
    채운 요청이라 본 앱이 오류 응답을 돌려준 것으로 보이나, 길이 헤더 파싱→본문 누적 수신까지 프로토콜
    왕복 자체가 정상 동작함을 확인하는 것이 이 Task의 범위다 — 필드 값 자체의 정합성은 P19-5/6·
    Phase 21의 범위). `SendAsync` 호출 자체는 3.7ms 만에 제어를 반환(논블로킹 확인).
-2. **본 앱 미구동 시 연결 거부**: `KFTCOneCAP.Wpf.exe` 프로세스를 종료한 상태에서 같은 방식으로
+2. **본 앱 미구동 시 연결 거부**: `KFTCTaxCAP.exe` 프로세스를 종료한 상태에서 같은 방식으로
    501008을 전송 — `Kind=ConnectionRefused`, 2.0초 만에 반환(타임아웃 180초와 무관하게 즉시 실패,
    `SendAsync` 호출 자체는 2.9ms 만에 제어 반환).
 3. **비동기/논블로킹 + 경과시간 진행 콜백**: PowerShell 스크립트 블록을 델리게이트로 넘겼을 때
@@ -5940,7 +5940,7 @@ Action<TimeSpan>? onElapsed)`로 비동기 API 제공). 화면(P19-5/6)이 아�
      실행했다(2026-08-28)** — 아래 4번 참고.
 
 4. **실제 902614 카드/PIN 하드웨어 왕복(2026-08-28, 사용자가 리더기 연결 후 요청)**: 본 앱
-   (`KFTCOneCAP.Wpf.exe`)을 실행한 상태에서 `TelegramSchemas.CardApproval902614` 스키마로
+   (`KFTCTaxCAP.exe`)을 실행한 상태에서 `TelegramSchemas.CardApproval902614` 스키마로
    `spec_client.ps1`과 동일한 필드 값(주민등록번호/전자납부번호/징수 정보 등)을 채운 1500바이트
    요청을 만들어 `OneCapClient.SendAsync`로 전송, 사용자가 실제로 카드를 태그하고 PIN 4자리를
    입력했다. 결과: `Kind=Success`, **8.4초**, `#7=[000]`(승인), `#3=0210`, `#6=C`. 하드웨어가 채운
@@ -5950,10 +5950,10 @@ Action<TimeSpan>? onElapsed)`로 비동기 API 제공). 화면(P19-5/6)이 아�
    `OneCapClient`가 순수 네트워킹 계층으로서 실제 하드웨어 연동 흐름 전체(연결→전송→PIN 대기
    150초 상한 이내→부분 수신 누적→응답 파싱)를 문제 없이 통과한다는 최종 증거다.
 
-**빌드**: `dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 및 루트
-`dotnet build KFTCOneCAP.Wpf.sln` 모두 경고 0개/오류 0개.
+**빌드**: `dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 및 루트
+`dotnet build KFTCTaxCAP.sln` 모두 경고 0개/오류 0개.
 
-**테스트에 사용한 임시 프로세스 정리**: 검증을 위해 직접 띄운 `KFTCOneCAP.Wpf.exe`는 mid-close 시나리오
+**테스트에 사용한 임시 프로세스 정리**: 검증을 위해 직접 띄운 `KFTCTaxCAP.exe`는 mid-close 시나리오
 재현 과정에서 이미 종료됐고, 세션 종료 시점에 `KFTCOneCAP*`/`OneCapClientTest` 이름의 프로세스가
 남아 있지 않음을 재확인했다(사용자가 미리 띄워둔 프로세스는 없었다).
 
@@ -5985,8 +5985,8 @@ Action<TimeSpan>? onElapsed)`로 비동기 API 제공). 화면(P19-5/6)이 아�
 "오류 주입 (P19-7 예정)"은 빈 placeholder 라벨만). `Program.cs`는 `MainForm` 생성자 시그니처가
 바뀌지 않아 수정 불필요.
 
-`dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 경고 0개/오류 0개. `mcp__windows__*`
-도구로 빌드된 `KFTCOneCAP.KioskSim.exe`를 실제 실행해 검증했다(사전에 떠 있던 `KFTCOneCAP.Wpf.exe`,
+`dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 경고 0개/오류 0개. `mcp__windows__*`
+도구로 빌드된 `KFTCTaxCAP.KioskSim.exe`를 실제 실행해 검증했다(사전에 떠 있던 `KFTCTaxCAP.exe`,
 PID 42868는 이 세션이 띄운 것이 아니라 건드리지 않고 그대로 응답 서버로 사용했다).
 
 1. **3전문 필드 목록 + kiosk 필드만 편집 (완료조건 1)**: 세 버튼을 각각 눌러 그리드가 SPEC
@@ -6000,7 +6000,7 @@ PID 42868는 이 세션이 띄운 것이 아니라 건드리지 않고 그대로
 2. **프리셋 파일 없이 즉시 전송 가능 (완료조건 2)**: `kiosksim.preset.json`이 없는 상태로 실행 →
    501008 선택 → 그리드가 코드 기본값(`#1=IGN, #4=501008, #6=G, #8=현재시각, #9=0EC0+8자리
    난수, #11=01, #12=1234567, #14=19자리 전자납부번호` 등)으로 즉시 채워진 것을 확인 → "전송"
-   클릭 → 본 앱(KFTCOneCAP.Wpf.exe, 8002 포트)에 실제로 연결되어 1.1초 만에 `Kind=Success`,
+   클릭 → 본 앱(KFTCTaxCAP.exe, 8002 포트)에 실제로 연결되어 1.1초 만에 `Kind=Success`,
    응답 본문 706바이트 수신. 응답 원문에서 `#7 응답 코드`=`000`(공통부 오프셋 20~22)로 **정상
    승인 상당의 응답**을 실제로 받았다(빈 필드로 인한 오류 응답이 아니라 코드 기본값만으로 실제
    유효한 요청이 만들어졌음을 실증). 전송 중 버튼이 비활성화되고 "대기 중… (n초)"가 갱신되는
@@ -6015,9 +6015,9 @@ PID 42868는 이 세션이 띄운 것이 아니라 건드리지 않고 그대로
    `#20`이 다시 코드 기본값 "강남세무서"로, `#9`/`#8`은 새로운 난수/현재 시각으로 돌아간 것을
    확인 — "프리셋 &gt; 코드 기본값" 우선순위와 파일 삭제 시 완전한 폴백이 실제로 동작한다.
 
-**테스트에 사용한 임시 프로세스 정리**: 검증을 위해 직접 띄운 `KFTCOneCAP.KioskSim.exe` 인스턴스는
-매 검증 뒤 `windows_close`로 닫았고, 세션 종료 시점에 `KFTCOneCAP.KioskSim` 프로세스가 남아있지
-않음을 재확인했다(`Get-Process`로 확인, `KFTCOneCAP.Wpf.exe` PID 42868만 남아 있고 이는 이 세션이
+**테스트에 사용한 임시 프로세스 정리**: 검증을 위해 직접 띄운 `KFTCTaxCAP.KioskSim.exe` 인스턴스는
+매 검증 뒤 `windows_close`로 닫았고, 세션 종료 시점에 `KFTCTaxCAP.KioskSim` 프로세스가 남아있지
+않음을 재확인했다(`Get-Process`로 확인, `KFTCTaxCAP.exe` PID 42868만 남아 있고 이는 이 세션이
 시작하지 않은 기존 프로세스라 건드리지 않았다).
 
 **이번 Task 범위 밖으로 남긴 것**: 응답 필드 분해/응답코드 해설(P19-6), 오류 주입 8종 버튼(P19-7).
@@ -6049,7 +6049,7 @@ Kiosk`이면서 `AlwaysBlank == true`인 필드는 그리드에서 `SetLocation`
 **재검증**: 리플렉션으로 3전문의 `AlwaysBlank` 필드를 전수 조회 — `501008: 5,13`,
 `800000: 10,13`, `902614: 5,17,47,54`로 의도한 8개와 정확히 일치. `PresetStore` 코드 기본값에도
 이 8개 필드 번호가 전혀 없음을 재확인(애초에 기본값을 주지 않던 필드라 편집만 막으면 됨).
-`dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 경고 0/오류 0.
+`dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 경고 0/오류 0.
 
 ## P19-5 후속 수정 2 — 800000 `#6`/`#8` SET 장소 오분류 정정 (2026-08-28, 사용자 발견)
 
@@ -6069,8 +6069,8 @@ Kiosk`이면서 `AlwaysBlank == true`인 필드는 그리드에서 `SetLocation`
 
 **재검증**: 리플렉션으로 800000 스키마의 `#5~#8` `SetLocation`을 조회 — `#5=InternetGiro`,
 `#6=Kiosk`, `#7=InternetGiro`, `#8=Kiosk`로 의도대로 확인. `dotnet build
-src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 경고 0/오류 0(빌드 중 세션이 이전에 띄워둔
-`KFTCOneCAP.KioskSim.exe` 잔여 프로세스가 파일을 잠가 최초 빌드가 실패했다 — `taskkill`로 정리 후
+src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 경고 0/오류 0(빌드 중 세션이 이전에 띄워둔
+`KFTCTaxCAP.KioskSim.exe` 잔여 프로세스가 파일을 잠가 최초 빌드가 실패했다 — `taskkill`로 정리 후
 재빌드해 통과).
 
 **교훈**: SPEC 서브에이전트의 재확인도 틀릴 수 있다 — 이번 건은 `#48`(과거 kiosk 오분류), `#38`
@@ -6132,7 +6132,7 @@ src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 경고 0/오류 0(빌드 중 �
 §9(리더기 업무 응답코드 00~23 표)와 본 앱 `Services/Payment/PosResultCodeMapper.cs`를 **참고용으로 읽고
 값만 옮겨 적었다**(P19-2 원칙대로 코드 참조/공유 없음, 본 앱 소스는 수정하지 않았다).
 
-**체크 1 — 취소(E01)·Timeout(E02) 코드 해설**: 실제 `KFTCOneCAP.Wpf.exe` + `KFTCOneCAP.KioskSim.exe`를
+**체크 1 — 취소(E01)·Timeout(E02) 코드 해설**: 실제 `KFTCTaxCAP.exe` + `KFTCTaxCAP.KioskSim.exe`를
 띄우고 `800000`·`902614`를 각각 전송해 카드 대기 알림창에서 "취소" 버튼을 눌러 **실제 왕복으로 `E01`을
 재현**했다 — 화면에 `#7 응답 코드: "E01" — 사용자 취소`가 정확히 떴다(초록/빨강 색상 분기도 함께 확인).
 `E02`(Timeout)는 실제로 120초 이상 기다리는 대신, `ResponseCodeCatalog.Describe`(UI가 쓰는 것과 완전히
@@ -6215,9 +6215,9 @@ PIN 없이는 재현할 수 없어, `TelegramBuffer(schema, body).Read(51)`(`Sho
 
 ### 완료 조건 검증 결과 (2026-08-28)
 
-사전 확인: `KFTCOneCAP.Wpf.exe`(PID 42868)가 이미 실행 중이었다(사용자가 미리 띄워 둔 프로세스 —
-건드리지 않고 그대로 사용). `dotnet build src/KFTCOneCAP.KioskSim/KFTCOneCAP.KioskSim.sln` 및 루트
-`dotnet build KFTCOneCAP.Wpf.sln` 모두 경고 0개/오류 0개로 빌드된 `KFTCOneCAP.KioskSim.exe`를 실행해
+사전 확인: `KFTCTaxCAP.exe`(PID 42868)가 이미 실행 중이었다(사용자가 미리 띄워 둔 프로세스 —
+건드리지 않고 그대로 사용). `dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln` 및 루트
+`dotnet build KFTCTaxCAP.sln` 모두 경고 0개/오류 0개로 빌드된 `KFTCTaxCAP.KioskSim.exe`를 실행해
 "오류 주입" 탭의 8개 버튼을 실제로 하나씩 클릭해 화면에 뜬 결과 텍스트를 그대로 옮긴다(추측 없음).
 
 | # | 시나리오 | 기대 | 실제 결과 | 판정 |
@@ -6231,7 +6231,7 @@ PIN 없이는 재현할 수 없어, `TelegramBuffer(schema, body).Read(51)`(`Sho
 | 7 | 연속 2건 즉시 전송 | 워커 큐 직렬화, 둘 다 정상 | 연결A `Success, 2.11초, #7="000"` / 연결B `Success, 1.06초, #7="000"` | 일치 |
 | 8 | 버퍼 상한 초과(64KB+) | 서버가 연결을 닫음 | `0.01초. 81924바이트를 보낸 시점에 연결이 끊김(IOException)` — 연결 종료라는 관찰 결과는 일치. **트리거 원인은 다름**(아래 상세) | 관찰 결과는 일치, 근거는 다름 |
 
-**8개를 모두 실행한 뒤 앱 생존 확인**: 실행 내내 `KFTCOneCAP.Wpf.exe`의 PID가 시작 시점과 동일하게
+**8개를 모두 실행한 뒤 앱 생존 확인**: 실행 내내 `KFTCTaxCAP.exe`의 PID가 시작 시점과 동일하게
 `42868`로 유지됨을 `tasklist`로 재확인했다(재시작/크래시 없음). 8개 시나리오를 전부 실행한 **뒤에**
 "전문 전송" 탭에서 카드 리딩이 필요 없는 정상 `501008`을 UI로 직접 보내 `#7 응답 코드: "000" — 정상`을
 확인했다 — 서버가 죽지 않았고 다음 정상 요청도 처리함을 재확인했다. `902614` 실카드 승인 확인은
@@ -6254,7 +6254,7 @@ POS가 받을 수 있었을 것이다 — 지금은 그 프레임까지 통째�
 이 동작(예외 발생 시 이미 추출된 프레임까지 버려짐)을 고칠지 판단 필요.
 
 **발견 사항 2(시나리오 6, 서버 송신 타임아웃 5초 경로 미검증)**: 앱 로그
-(`%LOCALAPPDATA%\KFTCTaxGiroCAP\logs\2026-08-28.log`)를 대조한 결과, 시나리오 6 실행 시 서버는
+(`%LOCALAPPDATA%\KFTCTaxCAP\logs\2026-08-28.log`)를 대조한 결과, 시나리오 6 실행 시 서버는
 `PosSocketServer.SendResponse`의 5초 쓰기 타임아웃에 걸린 것이 아니라, 응답을 정상적으로(빠르게)
 써 보낸 뒤 **유휴 타임아웃(10초) 대기 중** 우리 클라이언트가 강제로 연결을 닫아 그로 인한
 `IOException`("연결이 원격 호스트에 의해 강제로 끊겼습니다")으로 연결이 종료됐다. 즉 응답 본문이
@@ -6297,14 +6297,14 @@ P19-7 시나리오 6 문구가 전제한 "5초 타임아웃 경로 자체"는 �
 뒀으나, 사용자가 리더기에 실카드를 꽂아 둔 상태에서 Claude가 직접 재검증했다. 과정에서 예상 밖의
 환경 문제를 하나 발견·해결했다:
 
-- 첫 시도에서 `KFTCOneCAP.Wpf.exe`를 재기동했을 때 응답이 `"응답 본문 없음 — 전송/수신 자체가
+- 첫 시도에서 `KFTCTaxCAP.exe`를 재기동했을 때 응답이 `"응답 본문 없음 — 전송/수신 자체가
   실패했다"`로 실패. 앱 로그 확인 결과 `[ERROR] [PosSocketServer] 8002 포트 리스닝 실패
   (AccessDenied)` — **원본 MFC 앱(`KFTCOneCAP.exe`)이 이미 8002 포트를 점유**하고 있었다(이 세션
   코드 변경과 무관한 환경 문제). CLAUDE.md에 이미 기록된 대로 원본 MFC 앱은 창을 닫아도 트레이로
   최소화될 뿐 종료되지 않는 특성이 있어, 사용자가 트레이에서 실제로 종료한 뒤에야 포트가 풀렸다.
   Claude 쪽에서 시도한 `taskkill`/`Stop-Process`는 권한 부족(Access is denied)으로 실패해, 사용자가
   직접 종료했다.
-- 포트 확보 후 `KFTCOneCAP.Wpf.exe`를 재기동해 `8002 포트 리스닝 시작` 로그를 확인하고, 시뮬레이터로
+- 포트 확보 후 `KFTCTaxCAP.exe`를 재기동해 `8002 포트 리스닝 시작` 로그를 확인하고, 시뮬레이터로
   `902614`를 재전송 — 사용자가 실제로 카드를 태그하고 PIN 4자리를 입력해 **`#7 응답 코드: "000" —
   정상`**, **`#51: 정상(공백)`** 수신을 확인했다. 오류 주입 8개 시나리오를 모두 실행한 뒤에도 본 앱이
   정상적으로 902614 승인까지 처리한다는 완료 조건 2를 최종 충족했다.
@@ -6318,7 +6318,7 @@ P19-7 시나리오 6 문구가 전제한 "5초 타임아웃 경로 자체"는 �
 쪽이 자체 타임아웃까지 무작정 기다려야 했다. 사용자에게 원인을 설명하자 "지금 고쳐줘. 이건
 크리티컬하네"라고 즉시 수정을 요청했다.
 
-**수정**: `src/KFTCOneCAP.Wpf/Protocol/Pos/PosMessageFramer.cs`의 `Append`에서, 추출 루프를
+**수정**: `src/KFTCTaxCAP/Protocol/Pos/PosMessageFramer.cs`의 `Append`에서, 추출 루프를
 `try`로 감싸고 `catch (PosProtocolException) when (frames.Count > 0)`로 **이미 완성된 프레임이
 하나라도 있으면 예외를 던지지 않고 그 프레임들만 정상 반환**하도록 고쳤다. 손상된 나머지 바이트는
 `_buffer`에 그대로 남는다(`TryExtractFrame`이 예외를 던지기 전에는 버퍼를 건드리지 않으므로 안전) —
@@ -6344,7 +6344,7 @@ P19-7 시나리오 6 문구가 전제한 "5초 타임아웃 경로 자체"는 �
 전용(로컬 신뢰 프로세스만 접속 가능)이라 보안상 치명적이지 않고, 연결이 결국 닫혀 리소스 누수도
 없다는 근거. 추가 코드 변경 없이 이대로 확정한다.
 
-`dotnet build src/KFTCOneCAP.Wpf/KFTCOneCAP.Wpf.csproj` 경고 0/오류 0.
+`dotnet build src/KFTCTaxCAP/KFTCTaxCAP.csproj` 경고 0/오류 0.
 
 ---
 
@@ -6369,8 +6369,8 @@ P19-7 시나리오 6 문구가 전제한 "5초 타임아웃 경로 자체"는 �
 
 ### 실행 결과(2026-08-31)
 
-리더기1(COM03, 멀티패드)이 오늘 무결성 체크·상태체크 모두 정상인 상태에서 본 앱(`KFTCOneCAP.Wpf`,
-8002 포트 리스닝 확인)과 시뮬레이터(`KFTCOneCAP.KioskSim`)를 각각 별도 프로세스로 띄우고, 시뮬레이터
+리더기1(COM03, 멀티패드)이 오늘 무결성 체크·상태체크 모두 정상인 상태에서 본 앱(`KFTCTaxCAP`,
+8002 포트 리스닝 확인)과 시뮬레이터(`KFTCTaxCAP.KioskSim`)를 각각 별도 프로세스로 띄우고, 시뮬레이터
 화면에서만 조작해 3전문을 순서대로 보냈다(PowerShell/`spec_client.ps1`은 이번 검증에 전혀 쓰지 않음).
 
 | 전문 | 결과 | 소요 시간 | 응답 본문 길이 | `#7` 응답 코드 | 비고 |
@@ -6857,7 +6857,7 @@ Phase 21 착수 직전, 사용자가 POS↔원캡 SPEC 개정판(`국세 베리�
 - **불변**: 총 길이 500, #14~#25는 번호/POSITION/SET장소 전부 동일, 501008·902614 두 전문은 변경 없음
   (에이전트가 0831판 p.7~11/p.13~17 전체 원문으로 재확인)
 
-**수정 파일**: `Protocol/Pos/Schemas/CardInfoInquirySchema.cs`(본 앱), `KFTCOneCAP.KioskSim/Protocol/
+**수정 파일**: `Protocol/Pos/Schemas/CardInfoInquirySchema.cs`(본 앱), `KFTCTaxCAP.KioskSim/Protocol/
 TelegramSchemas.cs`(독립 전사본, P19-2 원칙대로 본 앱 스키마를 참조하지 않고 SPEC을 다시 옮겨 적음) 둘 다
 동일하게 갱신. 카드리딩/`PaymentOrchestrator` 등 업무 로직은 이 필드에 손대지 않으므로(relay 대상) 변경
 없음 — grep으로 `Write(26`/`Write(27`/`Write(28` 코드가 어디에도 없음을 확인.
@@ -7371,7 +7371,7 @@ Phase 20 "남은 미검증" 7개 항목에 다음을 더한다.
 5. **저장소 패턴이 이미 있다.** `Services/Storage/ObservedIdentityStore`가 같은 SQLite 파일
    (`IntegrityCheckStore.DefaultDatabasePath()`)에 `CREATE TABLE IF NOT EXISTS` + `ON CONFLICT ... DO
    UPDATE`(UPSERT)로 최신값 1행을 유지한다 — P26-2는 이 구조를 그대로 따른다(새 DB 파일을 만들지 않는다).
-6. **시뮬레이터가 있다.** `src/KFTCOneCAP.KioskSim`(Phase 19) — 실장비 없이 POS 역할을 수행한다.
+6. **시뮬레이터가 있다.** `src/KFTCTaxCAP.KioskSim`(Phase 19) — 실장비 없이 POS 역할을 수행한다.
 7. **VAN 서버는 여전히 없다.** `FNAISCRDVAN`은 `nRet=-1`로 즉시 응답한다(Phase 20/21과 동일). `nRet==0`
    경로는 `StubVanRelayService`/진단 하네스로만 검증할 수 있다 — 이 Phase도 그 제약을 그대로 안고 간다.
 
@@ -7534,7 +7534,7 @@ EMV DATA(`#53`, 604바이트)가 실패 응답에 실려 POS로 나간다. 해�
 
 ---
 
-## P26-5. 시뮬레이터 대응 (`KFTCOneCAP.KioskSim`)
+## P26-5. 시뮬레이터 대응 (`KFTCTaxCAP.KioskSim`)
 
 ### 구현할 것
 
@@ -7594,7 +7594,7 @@ Phase 22 이후의 표준 흐름(설계 Opus → 구현 → **Opus 검증 리뷰
 
 **P26-5/P26-6 이후 추가 독립 검증(2026-09-04, 커밋 `1c13834` 이후)**: 두 코드베이스(본체
 `TransactionStatusInquirySchema`/시뮬레이터 `TelegramSchemas`)의 조회 전문 필드 정의를 `#1`~`#15`
-전부 대조해 완전 일치 확인, 실제 `KFTCOneCAP.Wpf.exe`+`KFTCOneCAP.KioskSim.exe` 소켓 통신으로
+전부 대조해 완전 일치 확인, 실제 `KFTCTaxCAP.exe`+`KFTCTaxCAP.KioskSim.exe` 소켓 통신으로
 ①~④ 통합 검증을 검증자가 직접 재현(재시작 후 조회 성공 포함 — "1행 UPSERT라 재시작이 아니라 새
 거래가 덮어쓴 것"이라는 설명이 코드로 사실임을 확인). 결함 1건(경미) — KioskSim
 `ResponseCodeCatalog`에 `E07`이 없어 "정의되지 않은 코드"로 표시되던 것. 즉시 수정(커밋 `40bc1b2`).
@@ -7604,8 +7604,8 @@ Phase 22 이후의 표준 흐름(설계 Opus → 구현 → **Opus 검증 리뷰
 5개 완료 기준 전부 충족. 핵심 성과:
 
 1. **응답 유실 → 재연결 → 조회 복구를 실제 소켓 통신으로 재현** — 키오스크 시뮬레이터의
-   `Scenario9_InquiryResponseLossRecovery`와 그 위에 얹은 통합 검증(실제 `KFTCOneCAP.Wpf.exe`+
-   `KFTCOneCAP.KioskSim.exe`)이 이 Phase 전체의 존재 이유를 코드가 아니라 왕복 소켓 통신으로
+   `Scenario9_InquiryResponseLossRecovery`와 그 위에 얹은 통합 검증(실제 `KFTCTaxCAP.exe`+
+   `KFTCTaxCAP.KioskSim.exe`)이 이 Phase 전체의 존재 이유를 코드가 아니라 왕복 소켓 통신으로
    증명했다.
 2. **착수 전 조사에서 현재 코드의 실제 결함 1건을 발견·수정** — `PosResponseTelegram.BuildFailure`가
    카드 채움 후 실패하는 경로에서 `#45`/`#46`/`#53`을 지우지 않고 있던 유출(§ ★ 참고, P26-1). Phase
@@ -7865,9 +7865,9 @@ Task 범위 밖이라 여기 기록만 남긴다): SPEC은 `E40`~`E43`(원캡 �
 ### 구현 결과 (2026-09-18)
 
 `LogCodeCatalog.cs`의 `Descriptions`에 `["031"] = "전문 전송 일자 오류(서버 판정, 원캡은 relay만 함)"`
-한 줄만 추가했다. `dotnet build`로 `KFTCOneCAP.Wpf` 대상 컴파일 성공 확인(같은 빌드에서 `KioskSim.exe`
+한 줄만 추가했다. `dotnet build`로 `KFTCTaxCAP` 대상 컴파일 성공 확인(같은 빌드에서 `KioskSim.exe`
 복사 단계가 실행 중인 프로세스에 의해 잠겨 실패했으나, 이는 이번 변경과 무관한 별도 실행 중인 프로세스
-문제라 여기서 손대지 않는다 — `KFTCOneCAP.Wpf` 자체는 오류 없이 빌드됨).
+문제라 여기서 손대지 않는다 — `KFTCTaxCAP` 자체는 오류 없이 빌드됨).
 
 `FaultAlertJudge.Classify`를 직접 추적: `"031"`은 명시적 `case`가 없어 `_ => ClassifyRBusinessFailure(code)`로
 떨어지는데, 이 메서드는 `code[0] == 'R'`인 3자리 코드만 임계값 판정하고 나머지는 전부 `AlertDecision.None()`을
@@ -9015,7 +9015,7 @@ Task 보고 전에 반드시 원복하고 `git diff`로 확인한다(Phase 30 �
 
 - 루트의 새 `KFTC_GIRO.dll`(SHA256 `8c7a8f1777d2455abd301dd08793a02f84b809e077fe858bd3ba1b29ff7c4a0b`)로
   `vendor/KftcGiro/KFTC_GIRO.dll`을 덮어쓴다. 구 DLL(`9e1eacbf…5f4c`)은 git 이력에 남는다.
-- csproj 복사 규칙(`KFTCOneCAP.Wpf.csproj`의 `vendor\KftcGiro\KFTC_GIRO.dll` → `KFTC_GIRO.dll` 링크)은 그대로.
+- csproj 복사 규칙(`KFTCTaxCAP.csproj`의 `vendor\KftcGiro\KFTC_GIRO.dll` → `KFTC_GIRO.dll` 링크)은 그대로.
 - 루트의 `KFTC_GIRO.dll`·`KFTC_GIRO hostcode 값.txt`(미추적 파일)는 **사용자 확인 후** 삭제한다.
 
 ### Task 테스트
