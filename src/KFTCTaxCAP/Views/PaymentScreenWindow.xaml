@@ -205,6 +205,22 @@
                 <Border Style="{StaticResource RequestFieldBoxStyle}">
                     <Grid>
                         <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource RequestFieldTextBoxStyle}"/>
+                        <!-- Phase 40 후속(2026-10-06, PRD §14.2) — 빈 연쇄 칸의 출처 안내("← 501008 응답"). 값이 채워지면
+                             사라지고, 비워지면(실패 비움 포함) 다시 보인다. 클릭은 아래 TextBox로 통과(IsHitTestVisible=False). -->
+                        <TextBlock Text="{Binding ChainSourceHint}" IsHitTestVisible="False" Margin="3,0,0,0"
+                                   VerticalAlignment="Center" FontSize="13" Opacity="0.8"
+                                   Foreground="{StaticResource SubTextBrush}" TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowChainHint}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                         <!-- Phase 40 P40-4 — 선택 목록이 있는 행(HasOptions)에서만 보이는 편집 가능 콤보. 항목 표시는
                              Display("03 (3개월)"), 칸에 들어가는 값은 Code("03")(TextSearch.TextPath) — 직접 입력도 허용. -->
                         <ComboBox ItemsSource="{Binding Options}" TextSearch.TextPath="Code"

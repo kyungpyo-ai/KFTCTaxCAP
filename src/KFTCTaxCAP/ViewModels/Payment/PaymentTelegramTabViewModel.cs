@@ -387,6 +387,7 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         try
         {
             RequestRows.Clear();
+            Dictionary<int, string> chainHints = BuildChainSourceHints();
             foreach (PosField field in _schema.Fields)
             {
                 if (!_kioskFieldNumbers.Contains(field.Number))
@@ -397,13 +398,34 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                     _requestTelegram.Read(field.Number),
                     isReadOnly: false,
                     isCardReadingField: false,
-                    onValueChanged: OnRequestRowValueChanged));
+                    onValueChanged: OnRequestRowValueChanged)
+                {
+                    ChainSourceHint = chainHints.TryGetValue(field.Number, out string? hint) ? hint : null,
+                });
             }
         }
         finally
         {
             _suppressRowChangeHandling = false;
         }
+    }
+
+    /// <summary>Phase 40 후속(2026-10-06, PRD §14.2) — 이 탭이 대상인 연쇄 항목마다 빈 칸에 보일 출처 안내 문구를
+    /// 만든다. 다른 전문에서 오면 "← 501008 응답", 같은 전문 안에서 계산하면 "← #27 + #28". 필드번호는 연쇄 표에서
+    /// 얻는다(하드코딩 없음). 화면 문구라 Protocol 계층(<see cref="TelegramFieldChainMap"/>)이 아니라 여기 둔다.</summary>
+    private Dictionary<int, string> BuildChainSourceHints()
+    {
+        var hints = new Dictionary<int, string>();
+        foreach (TelegramFieldChainMap.ChainEntry entry in TelegramFieldChainMap.Entries)
+        {
+            if (entry.TargetTelegram != _schema.TransactionTypeCode || entry.SourceTelegram is null)
+                continue;
+
+            hints[entry.TargetFieldNumber] = entry.SourceTelegram == entry.TargetTelegram
+                ? "← " + string.Join(" + ", entry.SourceFieldNumbers.Select(n => $"#{n}"))
+                : $"← {entry.SourceTelegram} 응답";
+        }
+        return hints;
     }
 
     /// <summary>요청 카드 편집(PRD §12.5 "값은 편집 가능")이 있을 때마다 전송용 <see cref="_requestTelegram"/>

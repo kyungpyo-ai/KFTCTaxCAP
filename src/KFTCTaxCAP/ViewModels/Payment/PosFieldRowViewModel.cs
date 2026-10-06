@@ -62,7 +62,16 @@ public sealed partial class PosFieldRowViewModel : ObservableObject
     public bool IsCardReadingField { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowChainHint))]
     private string value = string.Empty;
+
+    /// <summary>Phase 40 후속(2026-10-06, PRD §14.2) — 연쇄 대상 필드의 출처 안내 문구(예: "← 501008 응답",
+    /// "← #27 + #28"). 연쇄 대상이 아니면 <see langword="null"/>. 빈 칸일 때 칸 안에 흐리게 보여, 채워지기 전에도
+    /// "어디서 채워질 칸인지"가 드러나게 한다(연쇄 색은 채워진 뒤에만 칠한다).</summary>
+    public string? ChainSourceHint { get; set; }
+
+    /// <summary>안내 문구를 보여 줄지 — 연쇄 대상이고 값이 비어 있을 때만.</summary>
+    public bool ShowChainHint => ChainSourceHint is not null && string.IsNullOrEmpty(Value);
 
     /// <summary>Phase 30 P30-4(PRD §13.3) — 앞 전문 응답값으로 자동 채워진 필드인지. 생성자로만 정해지는
     /// <see cref="IsCardReadingField"/>와 달리 이 값은 전송 이후 런타임에 바뀔 수 있어 관찰 가능한

@@ -195,6 +195,20 @@ internal static class PaymentChainBehaviorSelfTest
 
         // 902614 #34 같은 목록 필드도 빈 박스 — 목록 유무로만 화면이 갈린다(HasOptions=false).
         ok &= Check("① 창 직후 902614 #34는 빈 칸·목록 없음", Row(t902, 34).Value.Length == 0 && !Row(t902, 34).HasOptions);
+
+        // Phase 40 후속(2026-10-06) — 빈 연쇄 칸 출처 안내 문구.
+        string wrongHint = string.Join(",", TelegramFieldChainMap.Entries.Where(e =>
+        {
+            PosFieldRowViewModel row = Row(h.Tab(e.TargetTelegram), e.TargetFieldNumber);
+            string expected = e.SourceTelegram == e.TargetTelegram
+                ? "← " + string.Join(" + ", e.SourceFieldNumbers.Select(n => $"#{n}"))
+                : $"← {e.SourceTelegram} 응답";
+            return row.ChainSourceHint != expected || !row.ShowChainHint;
+        }).Select(Tx));
+        ok &= Check("① 연쇄 대상 25칸 모두 출처 안내 문구 표시(예: \"← 501008 응답\", 902614 #29 \"← #27 + #28\")", wrongHint.Length == 0, wrongHint);
+        int hintedNonChain = h.ViewModel.Tabs.Sum(t => t.RequestRows.Count(r =>
+            !chainRowNumbers.Contains($"{t.TransactionTypeCode}#{r.Number}") && (r.ChainSourceHint is not null || r.ShowChainHint)));
+        ok &= Check("① 비연쇄 칸에는 안내 문구 없음", hintedNonChain == 0, $"{hintedNonChain}칸");
         return ok;
     }
 
@@ -222,7 +236,7 @@ internal static class PaymentChainBehaviorSelfTest
                 wrong.Add($"{Tx(e)}(기대=\"{expected}\", 실제=\"{row.Value}\", 연쇄={row.IsChainedField})");
         }
 
-        ok &= Check($"② 501008 출처 항목 {FedBy(Notice).Count()}건이 응답값으로 채워지고 연쇄 표시(보라색)가 켜짐", wrong.Count == 0, string.Join("; ", wrong));
+        ok &= Check($"② 501008 출처 항목 {FedBy(Notice).Count()}건이 응답값으로 채워지고 연쇄 표시(연쇄 색)가 켜짐", wrong.Count == 0, string.Join("; ", wrong));
 
         PaymentTelegramTabViewModel t902 = h.Tab(Approval);
         string untouched = NotBlankUnchained(h, FedBy(CardInfo).Concat(TargetsOf(Approval).Where(e => e.SourceTelegram == Approval)));
@@ -257,6 +271,10 @@ internal static class PaymentChainBehaviorSelfTest
         string stillFilled = NotBlankUnchained(h, FedBy(Notice));
         ok &= Check("③ 501008 출처 항목(902614 #14~#27·#30·#31·#36·#37·공통부 #11/#12, 800000 #15/#16)은 빈 칸·연쇄 표시 해제", stillFilled.Length == 0, stillFilled);
         ok &= Check("③ #27이 비어 902614 #29도 빈 칸·연쇄 표시 해제", Row(t902, 29).Value.Length == 0 && !Row(t902, 29).IsChainedField);
+        string noHint = string.Join(",", FedBy(Notice).Where(e => !Row(h.Tab(e.TargetTelegram), e.TargetFieldNumber).ShowChainHint).Select(Tx));
+        ok &= Check("③ 비워진 501008 출처 칸과 #29에 출처 안내 문구가 다시 보임", noHint.Length == 0 && Row(t902, 29).ShowChainHint, noHint);
+        string hintOnFilled = string.Join(",", FedBy(CardInfo).Where(e => Row(h.Tab(e.TargetTelegram), e.TargetFieldNumber).ShowChainHint).Select(Tx));
+        ok &= Check("③ 값이 남아 있는 800000 출처 칸에는 안내 문구 없음", hintOnFilled.Length == 0, hintOnFilled);
         string after800 = string.Join("|", FedBy(CardInfo).Select(e => Row(h.Tab(e.TargetTelegram), e.TargetFieldNumber).Value));
         bool kept800 = after800 == snapshot800 && FedBy(CardInfo).All(e => Row(h.Tab(e.TargetTelegram), e.TargetFieldNumber).IsChainedField)
             && Row(t902, 34).HasOptions;
