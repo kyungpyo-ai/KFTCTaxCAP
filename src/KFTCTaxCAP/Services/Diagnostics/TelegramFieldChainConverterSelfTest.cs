@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using KFTCTaxCAP.Protocol.Pos;
 using KFTCTaxCAP.Protocol.Pos.Schemas;
 using KFTCTaxCAP.Services.Van;
@@ -24,12 +26,14 @@ internal static class TelegramFieldChainConverterSelfTest
             bool sumOk = RunSumCases();
             bool sumOverflowOk = RunSumOverflowThrowsOnPad();
             bool sumNonNumericOk = RunSumNonNumericThrowsPosProtocolException();
+            bool installmentOk = RunInstallmentListCases();
             bool stubAmountRangeOk = RunStubAmountFieldRangeRegression();
 
-            bool allPassed = truncateOk && sumOk && sumOverflowOk && sumNonNumericOk && stubAmountRangeOk;
+            bool allPassed = truncateOk && sumOk && sumOverflowOk && sumNonNumericOk && installmentOk && stubAmountRangeOk;
             FileLogger.Info(
                 $"[field-chain-converter-test] 완료 — 절삭 경계={(truncateOk ? "통과" : "실패")}, " +
                 $"합산={(sumOk ? "통과" : "실패")}, 합산 오버플로={(sumOverflowOk ? "통과" : "실패")}, " +
+                $"할부 LIST={(installmentOk ? "통과" : "실패")}, " +
                 $"합산 비숫자={(sumNonNumericOk ? "통과" : "실패")}, " +
                 $"스텁 금액 범위 회귀={(stubAmountRangeOk ? "통과" : "실패")}, " +
                 $"종합={(allPassed ? "통과" : "실패")}");
@@ -120,7 +124,7 @@ internal static class TelegramFieldChainConverterSelfTest
         return ok;
     }
 
-    /// <summary>합산(Sum) — 정상 합산과 빈 문자열 소스가 0으로 처리되는지 확인한다.</summary>
+    /// <summary>합산 — 정상 합산, Sum(공백=0)/SumAllRequired(공백→빈 칸) 규칙 차이, 표 구성을 확인한다.</summary>
     private static bool RunSumCases()
     {
         bool allOk = true;
@@ -134,29 +138,159 @@ internal static class TelegramFieldChainConverterSelfTest
             allOk = false;
         }
 
-        // 빈 문자열(공백만 있던 필드)은 0으로 취급 — 실 VAN이 해당 업무부를 공백으로 돌려줄 수 있어도
-        // 예외로 죽지 않아야 한다(P30 체크포인트 지적 L-5, 2026-09-23 정정 — TelegramFieldChainConverter
-        // XML 문서 주석 참고).
-        string sum2 = TelegramFieldChainConverter.Convert(
-            FieldChainConversion.Sum, new[] { "100", string.Empty, "50" }, targetLengthBytes: 15);
-        if (sum2 != "150")
+        // 규칙별 케이스 표(변환 종류, 이름, 입력, 기대값). 기대값 null = 예외(PosProtocolException)는 별도 테스트가 본다.
+        //  - Sum(응답 필드 합산, 902614 #27/800000 #15): 공백 = 0, 전부 공백이면 "0"(Phase 30 L-5 동작 복원).
+        //  - SumAllRequired(같은 전문 요청 필드 합산, 902614 #29): 하나라도 공백이면 빈 문자열(PRD §14.3).
+        var cases = new (FieldChainConversion Kind, string Name, string[] Input, string Expected)[]
         {
-            FileLogger.Error(LogCategory.App,
-                $"[field-chain-converter-test] ★ [합산, 빈 소스 포함] 기대=\"150\", 실제=\"{sum2}\"");
-            allOk = false;
+            (FieldChainConversion.Sum, "Sum 빈 소스 = 0", new[] { "100", string.Empty, "50" }, "150"),
+            (FieldChainConversion.Sum, "Sum 전부 빈 소스 = \"0\"", new[] { string.Empty, string.Empty }, "0"),
+            (FieldChainConversion.Sum, "Sum 공백 문자 소스 = 0(예외 아님)", new[] { "100", "   " }, "100"),
+            (FieldChainConversion.Sum, "Sum 501008 #31/#32 공백(실 VAN) → #27 유지", new[] { "123450", "   ", string.Empty }, "123450"),
+            (FieldChainConversion.Sum, "Sum \"0\" 입력", new[] { "123450", "0", "0" }, "123450"),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired 정상", new[] { "100", "50" }, "150"),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired 하나 비면 빈 칸", new[] { "100", string.Empty }, string.Empty),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired 첫째 비면 빈 칸", new[] { string.Empty, "50" }, string.Empty),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired 전부 비면 빈 칸", new[] { string.Empty, string.Empty }, string.Empty),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired 공백 문자 소스 → 빈 칸", new[] { "100", "   " }, string.Empty),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired 빈+비숫자 → 예외 없이 빈 칸", new[] { string.Empty, "abc" }, string.Empty),
+            (FieldChainConversion.SumAllRequired, "SumAllRequired \"0\"은 값", new[] { "0", "0" }, "0"),
+        };
+
+        foreach (var c in cases)
+        {
+            string actual = TelegramFieldChainConverter.Convert(c.Kind, c.Input, targetLengthBytes: 15);
+            if (actual != c.Expected)
+            {
+                FileLogger.Error(LogCategory.App,
+                    $"[field-chain-converter-test] ★ [{c.Name}] 기대=\"{c.Expected}\", 실제=\"{actual}\"");
+                allOk = false;
+            }
         }
 
-        string sum3 = TelegramFieldChainConverter.Convert(
-            FieldChainConversion.Sum, new[] { string.Empty, string.Empty }, targetLengthBytes: 15);
-        if (sum3 != "0")
+        // 표 구성: #29만 SumAllRequired(같은 전문 요청 필드 합산), 응답 필드 합산(#27/800000 #15)은 Sum.
+        foreach (TelegramFieldChainMap.ChainEntry e in TelegramFieldChainMap.Entries)
+        {
+            bool isSelfSum = e.SourceTelegram == e.TargetTelegram
+                && (e.Conversion == FieldChainConversion.Sum || e.Conversion == FieldChainConversion.SumAllRequired);
+            bool isResponseSum = e.SourceTelegram != e.TargetTelegram && e.Conversion == FieldChainConversion.SumAllRequired;
+            if (isResponseSum || (isSelfSum && e.Conversion != FieldChainConversion.SumAllRequired))
+            {
+                FileLogger.Error(LogCategory.App,
+                    $"[field-chain-converter-test] ★ [표 구성] {e.TargetTelegram} #{e.TargetFieldNumber}의 합산 종류가 규칙과 다름({e.Conversion})");
+                allOk = false;
+            }
+        }
+
+        var allRequired = TelegramFieldChainMap.Entries.Where(e => e.Conversion == FieldChainConversion.SumAllRequired).ToList();
+        var plainSums = TelegramFieldChainMap.Entries.Where(e => e.Conversion == FieldChainConversion.Sum)
+            .Select(e => $"{e.TargetTelegram}#{e.TargetFieldNumber}").OrderBy(s => s).ToList();
+        if (allRequired.Count != 1 || allRequired[0].TargetTelegram != TelegramFieldChainMap.CardApproval902614
+            || allRequired[0].TargetFieldNumber != 29
+            || string.Join(",", plainSums) != "800000#15,902614#27")
         {
             FileLogger.Error(LogCategory.App,
-                $"[field-chain-converter-test] ★ [합산, 전부 빈 소스] 기대=\"0\", 실제=\"{sum3}\"");
+                $"[field-chain-converter-test] ★ [표 구성] SumAllRequired={allRequired.Count}건, Sum=[{string.Join(",", plainSums)}] — " +
+                "기대: SumAllRequired는 902614 #29 하나, Sum은 800000#15/902614#27");
             allOk = false;
         }
 
         if (allOk)
-            FileLogger.Info("[field-chain-converter-test] 합산 케이스(정상/빈 소스 혼합/전부 빈 소스) 전부 통과");
+        {
+            FileLogger.Info(
+                $"[field-chain-converter-test] 합산 케이스 {cases.Length}건(Sum 공백=0 / SumAllRequired 공백→빈 칸) + " +
+                "표 구성(902614 #29만 SumAllRequired, 902614 #27·800000 #15는 Sum) 전부 통과");
+        }
+
+        return allOk;
+    }
+
+    /// <summary>
+    /// P40-1 — 할부개월 LIST 분할(<see cref="TelegramFieldChainConverter.SplitInstallmentList"/>)과
+    /// <see cref="FieldChainConversion.SelectFromList"/>(첫 항목/빈 목록), 표의 902614 #34 항목 구성을 확인한다.
+    /// </summary>
+    private static bool RunInstallmentListCases()
+    {
+        bool allOk = true;
+
+        // (입력 AN60 형태 — 뒤쪽 space 포함, 기대 목록)
+        var splitCases = new (string Name, string Input, string[] Expected)[]
+        {
+            ("3개 + space padding", "000203".PadRight(60), new[] { "00", "02", "03" }),
+            ("체크카드 \"00\" + space padding", "00".PadRight(60), new[] { "00" }),
+            ("전부 space", new string(' ', 60), Array.Empty<string>()),
+            ("빈 문자열", string.Empty, Array.Empty<string>()),
+            ("신용카드 실제 형식(13개)", "00020304050607080910111224".PadRight(60),
+                new[] { "00", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "24" }),
+            ("padding 없이 정확히 60바이트(30개)", string.Concat(Enumerable.Range(0, 30).Select(i => i.ToString("D2"))),
+                Enumerable.Range(0, 30).Select(i => i.ToString("D2")).ToArray()),
+            // 홀수 길이: 2바이트로 나누어떨어지지 않는 끝의 1글자는 불완전한 코드라 버린다.
+            ("홀수 길이(5자) — 끝 반쪽 코드 버림", "00203", new[] { "00", "20" }),
+            ("홀수 길이(1자)", "0", Array.Empty<string>()),
+        };
+
+        foreach (var c in splitCases)
+        {
+            IReadOnlyList<string> actual = TelegramFieldChainConverter.SplitInstallmentList(c.Input);
+            if (!actual.SequenceEqual(c.Expected))
+            {
+                FileLogger.Error(LogCategory.App,
+                    $"[field-chain-converter-test] ★ [LIST 분할 — {c.Name}] 기대=[{string.Join(",", c.Expected)}], " +
+                    $"실제=[{string.Join(",", actual)}]");
+                allOk = false;
+            }
+        }
+
+        // SelectFromList: 첫 항목 / 빈 목록(전부 space·빈 문자열)
+        var selectCases = new (string Name, string Input, string Expected)[]
+        {
+            ("신용카드 → 첫 항목 00", "00020304050607080910111224".PadRight(60), "00"),
+            ("3개 → 첫 항목", "000203".PadRight(60), "00"),
+            ("체크카드 → 00", "00".PadRight(60), "00"),
+            ("첫 항목이 00이 아닌 LIST도 첫 항목 그대로(화면이 00을 끼워 넣지 않음)", "0203".PadRight(60), "02"),
+            ("전부 space → 빈 문자열", new string(' ', 60), string.Empty),
+            ("빈 문자열 → 빈 문자열", string.Empty, string.Empty),
+        };
+
+        foreach (var c in selectCases)
+        {
+            string actual = TelegramFieldChainConverter.Convert(
+                FieldChainConversion.SelectFromList, new[] { c.Input }, targetLengthBytes: 2);
+            if (actual != c.Expected)
+            {
+                FileLogger.Error(LogCategory.App,
+                    $"[field-chain-converter-test] ★ [SelectFromList — {c.Name}] 기대=\"{c.Expected}\", 실제=\"{actual}\"");
+                allOk = false;
+            }
+        }
+
+        // 표 구성: 902614 #34 = 800000 #22 SelectFromList, Fixed 사용처 0건.
+        TelegramFieldChainMap.ChainEntry? e34 = TelegramFieldChainMap.Entries.FirstOrDefault(
+            e => e.TargetTelegram == TelegramFieldChainMap.CardApproval902614 && e.TargetFieldNumber == 34);
+        if (e34 is null
+            || e34.Conversion != FieldChainConversion.SelectFromList
+            || e34.SourceTelegram != TelegramFieldChainMap.CardInfo800000
+            || e34.SourceFieldNumbers.Count != 1 || e34.SourceFieldNumbers[0] != 22)
+        {
+            FileLogger.Error(LogCategory.App,
+                "[field-chain-converter-test] ★ [표 구성] 902614 #34가 800000 #22 SelectFromList가 아님");
+            allOk = false;
+        }
+
+        int fixedCount = TelegramFieldChainMap.Entries.Count(e => e.Conversion == FieldChainConversion.Fixed);
+        if (fixedCount != 0)
+        {
+            FileLogger.Error(LogCategory.App,
+                $"[field-chain-converter-test] ★ [표 구성] Fixed 항목이 {fixedCount}건 남아 있음(0건이어야 함)");
+            allOk = false;
+        }
+
+        if (allOk)
+        {
+            FileLogger.Info(
+                $"[field-chain-converter-test] 할부 LIST 케이스(분할 {splitCases.Length}건/첫 항목 선택 {selectCases.Length}건/" +
+                "표 구성: #34=800000 #22 SelectFromList, Fixed 0건) 전부 통과");
+        }
 
         return allOk;
     }
@@ -332,7 +466,7 @@ internal static class TelegramFieldChainConverterSelfTest
                 string sum27 = TelegramFieldChainConverter.Convert(
                     FieldChainConversion.Sum, new[] { field30, field31, field32 }, targetLengthBytes: 15);
                 string sum29 = TelegramFieldChainConverter.Convert(
-                    FieldChainConversion.Sum, new[] { sum27, field24 }, targetLengthBytes: 15);
+                    FieldChainConversion.SumAllRequired, new[] { sum27, field24 }, targetLengthBytes: 15);
 
                 // 800000 #15 = 501008 #30+#31+#32(902614 #27과 동일한 합산 규칙).
                 string sum15 = TelegramFieldChainConverter.Convert(

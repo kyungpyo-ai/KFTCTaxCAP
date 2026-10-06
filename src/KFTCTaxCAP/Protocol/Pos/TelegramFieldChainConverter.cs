@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace KFTCTaxCAP.Protocol.Pos;
 
@@ -22,7 +23,7 @@ public static class TelegramFieldChainConverter
     /// 원시 문자열을 반환한다.
     /// </summary>
     /// <param name="conversion">변환 종류.</param>
-    /// <param name="sourceValues">출처 값(들). <see cref="FieldChainConversion.Sum"/>이면 2개 이상,
+    /// <param name="sourceValues">출처 값(들). <see cref="FieldChainConversion.Sum"/>/<see cref="FieldChainConversion.SumAllRequired"/>이면 2개 이상,
     /// <see cref="FieldChainConversion.Fixed"/>면 무시된다(빈 목록이어도 된다), 그 외에는 정확히 1개를
     /// 기대한다.</param>
     /// <param name="targetLengthBytes">대상 필드의 CP949 바이트 길이 한도(<see cref="PosField.Length"/>).
@@ -47,14 +48,44 @@ public static class TelegramFieldChainConverter
                 return TruncateAvoidingSplitHangul(sourceValues[0], targetLengthBytes);
 
             case FieldChainConversion.Sum:
-                return SumAsInteger(sourceValues);
+                return SumAsInteger(sourceValues, allRequired: false);
+
+            case FieldChainConversion.SumAllRequired:
+                return SumAsInteger(sourceValues, allRequired: true);
+
+            case FieldChainConversion.SelectFromList:
+            {
+                // 변환 결과 = 목록의 첫 항목(PRD §14.4 기본 선택). 목록이 비면 빈 문자열.
+                IReadOnlyList<string> items = SplitInstallmentList(sourceValues[0]);
+                return items.Count > 0 ? items[0] : string.Empty;
+            }
 
             case FieldChainConversion.Fixed:
+                // 현재 TelegramFieldChainMap에 이 변환을 쓰는 항목은 없다(SPEC이 고정값을 다시 요구할 때를 위해 남김).
                 return fixedValue ?? string.Empty;
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(conversion), conversion, "알 수 없는 변환 종류");
         }
+    }
+
+    /// <summary>
+    /// 할부개월 LIST(800000 <c>#22</c> AN60 — "2바이트 단위 코드를 연속하여 구성, space padding", SPEC p.13~14)를
+    /// 2바이트씩 잘라 목록으로 만든다(PRD §14.4). 구분자는 없고 뒤쪽 space는 버린다. 전부 space/빈 값이면 빈 목록.
+    /// 길이가 홀수인(2바이트로 나누어떨어지지 않는) 경우 끝의 반쪽 코드 1글자는 불완전한 코드라 버린다.
+    /// 화면(콤보 항목 구성)도 이 함수를 써서 분할 규칙을 한 곳에만 둔다. 모든 코드는 ASCII 숫자라 문자 수 = 바이트 수다.
+    /// </summary>
+    public static IReadOnlyList<string> SplitInstallmentList(string list)
+    {
+        var items = new List<string>();
+        if (string.IsNullOrEmpty(list))
+            return items;
+
+        string trimmed = list.TrimEnd(' ');
+        for (int i = 0; i + 2 <= trimmed.Length; i += 2)
+            items.Add(trimmed.Substring(i, 2));
+
+        return items;
     }
 
     /// <summary>
@@ -89,23 +120,33 @@ public static class TelegramFieldChainConverter
     }
 
     /// <summary>
-    /// <paramref name="sourceValues"/>를 정수로 파싱해 합산한다. 빈 문자열(공백만 있던 필드)은 0으로
-    /// 취급한다 — <b>실 VAN이 해당 업무부를 공백으로 돌려줄 수 있어서</b>다(P30 체크포인트 지적 L-5,
-    /// 2026-09-23 정정 — 예전엔 "연쇄 전 임의값 단계 등에서 아직 채워지지 않은 소스 필드"를 근거로
-    /// 들었으나, P30-1 스텁 확장 이후 스텁 경로에서는 소스가 항상 채워지므로 그 근거는 더는 유효하지
-    /// 않다). 합산 결과 자체의 자리수 초과는 여기서 검사하지 않는다 — 그건 나중에
+    /// <paramref name="sourceValues"/>를 정수로 파싱해 합산한다. 빈 입력(Trim 후 빈 문자열, 공백 문자만 있는 값
+    /// 포함)의 처리는 <paramref name="allRequired"/>로 갈린다.
+    /// <list type="bullet">
+    /// <item><c>false</c>(<see cref="FieldChainConversion.Sum"/>, 응답 필드 합산): <b>빈 입력 = 0</b>. 실 VAN이 해당
+    /// 업무부(예: 501008 #31/#32)를 공백으로 돌려줄 수 있어서다(P30 체크포인트 지적 L-5, Phase 30 동작).
+    /// 전부 비어도 결과는 <c>"0"</c>이다.</item>
+    /// <item><c>true</c>(<see cref="FieldChainConversion.SumAllRequired"/>, 같은 전문 요청 필드 합산 — 902614 #29):
+    /// <b>입력 하나라도 비면 결과도 빈 문자열</b>(PRD §14.3 — 실패로 비워진 #28로 #29가 #27만 계산되면 안 된다).</item>
+    /// </list>
+    /// 합산 결과 자체의 자리수 초과는 여기서 검사하지 않는다 — 그건 나중에
     /// <see cref="PosField.Pad"/>가 예외로 드러낸다(PRD §13.7 — 조용히 잘리지 않게 하는 게 의도적 설계).
     /// 반면 소스 값이 숫자로 파싱조차 안 되는 경우(사용자가 연쇄로 채워진 필드를 직접 문자로 편집한 뒤
     /// 재계산되는 경로, PRD §13.3)는 <see cref="FormatException"/>을 그대로 흘리지 않고 이 프로젝트의
     /// 형식 오류 관례(<see cref="PosProtocolException"/>)로 감싸 던진다(P30 체크포인트 지적 M-3).
     /// </summary>
-    private static string SumAsInteger(IReadOnlyList<string> sourceValues)
+    private static string SumAsInteger(IReadOnlyList<string> sourceValues, bool allRequired)
     {
+        // allRequired면 입력 하나라도 비었을 때 합산하지 않는다 — 비숫자 검사보다 먼저 판정해, 빈 입력이 있으면
+        // 다른 입력이 비숫자여도 예외 없이 빈 값이다.
+        if (allRequired && sourceValues.Any(string.IsNullOrWhiteSpace))
+            return string.Empty;
+
         long total = 0;
         foreach (string source in sourceValues)
         {
-            if (source.Length == 0)
-                continue; // 빈 문자열은 0으로 취급(위 요약 참고).
+            if (string.IsNullOrWhiteSpace(source))
+                continue; // 공백 = 0(allRequired가 아닌 경우만 여기까지 온다).
 
             // N 필드 값은 앞자리 0을 포함할 수 있으나 long.Parse는 앞자리 0을 그대로 숫자로 해석하므로
             // 문제없다. CultureInfo.InvariantCulture 명시는 이 저장소 관례(PosMessageFramer.cs 참고).

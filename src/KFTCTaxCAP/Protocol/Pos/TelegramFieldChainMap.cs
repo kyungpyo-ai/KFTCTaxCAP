@@ -22,10 +22,26 @@ public enum FieldChainConversion
     /// <summary>자릿수는 같고 표현(<see cref="PosFieldType"/>)만 다르다 — 값을 그대로 옮긴다(§13.7).</summary>
     RepresentationChange,
 
-    /// <summary><see cref="TelegramFieldChainMap.ChainEntry.SourceFieldNumbers"/> 여러 필드의 정수합.</summary>
+    /// <summary><see cref="TelegramFieldChainMap.ChainEntry.SourceFieldNumbers"/> 여러 <b>응답</b> 필드의 정수합.
+    /// <b>공백 입력 = 0</b>(전부 공백이면 <c>"0"</c>) — 실 VAN이 일부 업무부(501008 #31/#32 등)를 공백으로 돌려줄 수
+    /// 있어서다(Phase 30 P30 체크포인트 L-5). 902614 #27, 800000 #15가 쓴다.</summary>
     Sum,
 
-    /// <summary>출처 전문과 무관한 고정값(<see cref="TelegramFieldChainMap.ChainEntry.FixedValue"/>).</summary>
+    /// <summary>같은 전문 <b>요청</b> 필드끼리의 정수합(자기참조 — 902614 #29 = #27+#28). <b>입력 하나라도 공백이면
+    /// 결과도 공백</b>(PRD §14.3 — 실패로 비워진 #28로 #29가 #27만 계산되면 안 된다, Phase 40). 응답 필드 합산용
+    /// <see cref="Sum"/>과 규칙이 다르다.</summary>
+    SumAllRequired,
+
+    /// <summary>
+    /// 출처 값(2바이트 단위 코드를 연속한 LIST, 예: 800000 <c>#22</c> AN60)을 2바이트씩 잘라 목록으로 만들고
+    /// <b>첫 항목</b>을 대상 값으로 쓴다(목록이 비면 빈 문자열). 목록 자체는
+    /// <see cref="TelegramFieldChainConverter.SplitInstallmentList"/>가 만든다(PRD §14.4).
+    /// </summary>
+    SelectFromList,
+
+    /// <summary>출처 전문과 무관한 고정값(<see cref="TelegramFieldChainMap.ChainEntry.FixedValue"/>).
+    /// <b>현재 사용처 없음</b>(902614 <c>#34</c>가 Phase 40에서 <see cref="SelectFromList"/>로 바뀜) — SPEC이 다시
+    /// 고정값을 요구할 수 있어 열거값·변환 분기는 남겨 둔다.</summary>
     Fixed,
 }
 
@@ -58,7 +74,7 @@ public static class TelegramFieldChainMap
     /// <summary>
     /// 연쇄 매핑 한 항목. <see cref="SourceTelegram"/>이 <see langword="null"/>이면
     /// <see cref="Conversion"/>은 반드시 <see cref="FieldChainConversion.Fixed"/>이고 <see cref="FixedValue"/>를
-    /// 쓴다. <see cref="SourceTelegram"/>이 <see cref="TargetTelegram"/>과 같으면(현재 <c>902614 #29</c> 1건)
+    /// 쓴다(현재 이런 항목은 없다). <see cref="SourceTelegram"/>이 <see cref="TargetTelegram"/>과 같으면(현재 <c>902614 #29</c> 1건)
     /// 같은 전문 안의 다른 연쇄 필드(<c>#27</c>/<c>#28</c>)가 먼저 채워진 뒤에 계산해야 하는 2단계
     /// 항목이라는 뜻이다(§13.7, P30-4가 적용 순서를 지킨다).
     /// </summary>
@@ -90,8 +106,8 @@ public static class TelegramFieldChainMap
         /// <summary>값이 오는 응답 전문. <see cref="FieldChainConversion.Fixed"/>면 <see langword="null"/>.</summary>
         public string? SourceTelegram { get; }
 
-        /// <summary>출처 필드 번호(들). <see cref="FieldChainConversion.Sum"/>이면 2개 이상, 그 외에는
-        /// 정확히 1개, <see cref="FieldChainConversion.Fixed"/>면 빈 목록.</summary>
+        /// <summary>출처 필드 번호(들). <see cref="FieldChainConversion.Sum"/>/<see cref="FieldChainConversion.SumAllRequired"/>이면
+        /// 2개 이상, 그 외에는 정확히 1개, <see cref="FieldChainConversion.Fixed"/>면 빈 목록.</summary>
         public IReadOnlyList<int> SourceFieldNumbers { get; }
 
         public FieldChainConversion Conversion { get; }
@@ -106,8 +122,8 @@ public static class TelegramFieldChainMap
 
     /// <summary>
     /// 연쇄 매핑 전체 목록(25건 — 501008→902614 공통부 #11/#12 2건(2026-10-01 추가, SPEC p.7 명문) + 501008→902614 16건 +
-    /// 800000→902614 2건 + 902614 내부 합산 1건(#29) +
-    /// 501008→902614 합산 1건(#27) + 501008→800000 2건 + 902614 고정값 1건(#34) = PRD.md §3.3.2 표의
+    /// 800000→902614 3건(#28/#33 + LIST 선택 #34, Phase 40) + 902614 내부 합산 1건(#29, <c>SumAllRequired</c> — 공백 있으면 빈 칸) +
+    /// 501008→902614 응답 합산 1건(#27, <c>Sum</c> — 공백=0) + 501008→800000 2건 = PRD.md §3.3.2 표의
     /// 모든 필드를 빠짐없이 옮긴 것, §38/§42/800000 #11·#12는 의도적 제외(클래스 주석 참고)).
     /// </summary>
     public static readonly IReadOnlyList<ChainEntry> Entries = new[]
@@ -164,14 +180,16 @@ public static class TelegramFieldChainMap
             "spec_open_questions.md Q1 — 800000 #17(카드사 코드) AN2 → 902614 #33 N2"),
 
         // ── 902614 내부 파생(2단계 — #27/#28이 먼저 채워진 뒤 계산) ──
-        new ChainEntry(CardApproval902614, 29, CardApproval902614, new[] { 27, 28 }, FieldChainConversion.Sum,
+        new ChainEntry(CardApproval902614, 29, CardApproval902614, new[] { 27, 28 }, FieldChainConversion.SumAllRequired,
             "spec_open_questions.md Q4 — SPEC 명문 있음: p.16 자기참조 오탈자 '(#27)+(#29)'가 2026-09-22 재배포본에서 " +
-            "'(#27)+(#28)'로 정정돼 #29=#27+#28과 일치한다"),
+            "'(#27)+(#28)'로 정정돼 #29=#27+#28과 일치한다. 같은 전문 요청 필드 합산이라 입력 하나라도 비면 결과도 " +
+            "빈 칸(PRD §14.3 — 실패로 비워진 #28로 #29가 계산되지 않게, Phase 40)"),
 
-        // ── 902614 고정값 ──
-        new ChainEntry(CardApproval902614, 34, null, System.Array.Empty<int>(), FieldChainConversion.Fixed,
-            "spec_open_questions.md Q2 — 이번 범위는 일시불 고정(할부 선택 UI는 범위 밖, PRD §13.9)",
-            fixedValue: "00"),
+        // ── 800000 응답 LIST → 902614 #34 (Phase 40, 2026-10-06) ──
+        new ChainEntry(CardApproval902614, 34, CardInfo800000, new[] { 22 }, FieldChainConversion.SelectFromList,
+            "PRD §14.4(2026-10-06 사용자 확정) — 800000 #22 카드 할부개월 LIST(AN60)를 2바이트씩 잘라 목록으로 만들고 " +
+            "첫 항목을 기본 선택(사용자가 목록에서 고르거나 직접 입력). SPEC 20260930 p.13~14 LIST 형식 원문 근거. " +
+            "이전(Phase 30~39)에는 spec_open_questions.md Q2의 일시불 \"00\" 고정이었다"),
 
         // ── 501008 응답 → 800000 요청 ──
         new ChainEntry(CardInfo800000, 15, Notice501008, new[] { 30, 31, 32 }, FieldChainConversion.Sum,

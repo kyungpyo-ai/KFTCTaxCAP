@@ -54,8 +54,15 @@ public static class RealisticTestValueGenerator
     public const int CreditFeeRateHundredths = 80;
     public const int CheckFeeRateHundredths = 50;
 
-    /// <summary>신용카드 할부개월 LIST(800000 <c>#22</c>, 2바이트 단위 연속 — SPEC p.14).</summary>
-    public const string CreditInstallmentList = "020304050607080910111224";
+    /// <summary>
+    /// 신용카드 할부개월 LIST(800000 <c>#22</c>, 2바이트 단위 연속 — SPEC p.14). <b>실제 형식(2026-10-06 사용자 확인,
+    /// PRD §14.4)</b>: LIST는 <c>00</c>(일시불)으로 시작하고 <c>01</c>은 없다 — SPEC 예시 <c>01020304</c>와 다르다.
+    /// 체크카드는 <c>00</c> 하나만 온다(<see cref="CheckInstallmentList"/>).
+    /// </summary>
+    public const string CreditInstallmentList = "00020304050607080910111224";
+
+    /// <summary>체크카드 할부개월 LIST — 일시불 <c>00</c> 하나(2026-10-06 사용자 확인, PRD §14.4).</summary>
+    public const string CheckInstallmentList = "00";
 
     /// <summary>SPEC 20260930 p.14 카드사 코드표 12개(코드·이름 쌍 그대로).</summary>
     public static readonly IReadOnlyList<KeyValuePair<string, string>> CardCompanies = new[]
@@ -290,7 +297,7 @@ public static class RealisticTestValueGenerator
                 values[19] = isCheckCard ? "Y" : "N";
                 values[20] = "Y";
                 values[21] = "N";
-                values[22] = isCheckCard ? string.Empty : CreditInstallmentList;
+                values[22] = isCheckCard ? CheckInstallmentList : CreditInstallmentList;
                 values[23] = string.Empty;
 
                 // #24/#25는 요청 #15(납부세액)에서 계산한다. 요청 #15가 공백이면 0원으로 본다. 숫자가 아니거나

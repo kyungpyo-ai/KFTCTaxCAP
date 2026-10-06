@@ -377,7 +377,8 @@ internal static class RealisticTestValueGeneratorSelfTest
         if (check == "Y")
         {
             t.CheckCardCount++;
-            t.Check(5, r800.Read(26) == "0050" && r800.Read(22).Length == 0, () => $"{ctx} 체크카드인데 #26={r800.Read(26)}, #22=\"{r800.Read(22)}\"");
+            t.Check(5, r800.Read(26) == "0050" && r800.Read(22) == RealisticTestValueGenerator.CheckInstallmentList
+                && r800.Read(22) == "00", () => $"{ctx} 체크카드인데 #26={r800.Read(26)}, #22=\"{r800.Read(22)}\"");
         }
         else
         {
@@ -483,6 +484,12 @@ internal static class RealisticTestValueGeneratorSelfTest
                 Num(q902, 27) == Num(r501, 30) + Num(r501, 31) + Num(r501, 32)
                 && Num(q902, 28) == Num(r800, 24) && Num(q902, 29) == Num(q902, 27) + Num(q902, 28)
                 && q902.Read(33) == r800.Read(17));
+            IReadOnlyList<string> installments = TelegramFieldChainConverter.SplitInstallmentList(r800.Read(22));
+            ok &= LogCheck($"{c} 연쇄 #34 = 800000 #22 LIST 첫 항목(신용 \"00\"으로 시작·체크 \"00\" 하나, 01 없음)",
+                installments.Count > 0 && installments[0] == "00" && q902.Read(34) == installments[0]
+                && !installments.Contains("01")
+                && (r800.Read(19) == "Y" ? installments.Count == 1 : installments.Count == 13),
+                $"#22=\"{r800.Read(22)}\", #34=\"{q902.Read(34)}\"");
             ok &= LogCheck($"{c} 연쇄 후 의미 유지 — #37 김테스트(10바이트 절삭 무손실), #20 테스트세무서 징수관(20바이트 절삭 무손실), #38=#36",
                 q902.Read(37) == "김테스트" && q902.Read(20) == "테스트세무서 징수관" && r902.Read(38) == q902.Read(36));
 
@@ -538,14 +545,11 @@ internal static class RealisticTestValueGeneratorSelfTest
         }
     }
 
-    /// <summary>고정값 연쇄(#34) → 자기참조 합산(#29) — <c>PaymentTelegramTabViewModel</c>의 적용 순서와 같다.</summary>
+    /// <summary>자기참조 합산(#29) — 다른 전문 연쇄(<see cref="ApplyCrossChain"/>, #34 LIST 선택 포함)가 끝난 뒤에 돈다.
+    /// 고정값(<c>Fixed</c>) 항목은 표에 더는 없어 따로 돌지 않는다(Phase 40).</summary>
     private static void ApplyInternalChain(PosTelegram request)
     {
         string code = request.Schema.TransactionTypeCode;
-        foreach (TelegramFieldChainMap.ChainEntry e in TelegramFieldChainMap.Entries
-                     .Where(e => e.TargetTelegram == code && e.Conversion == FieldChainConversion.Fixed))
-            request.Write(e.TargetFieldNumber, TelegramFieldChainConverter.Convert(e.Conversion, Array.Empty<string>(), request.Schema[e.TargetFieldNumber].Length, e.FixedValue));
-
         foreach (TelegramFieldChainMap.ChainEntry e in TelegramFieldChainMap.Entries
                      .Where(e => e.TargetTelegram == code && e.SourceTelegram == code))
         {
