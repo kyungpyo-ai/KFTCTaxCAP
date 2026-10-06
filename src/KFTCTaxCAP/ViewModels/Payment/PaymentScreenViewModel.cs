@@ -57,9 +57,13 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         Tabs = new ObservableCollection<PaymentTelegramTabViewModel>
         {
             new("국고 상세 고지내역 조회", NoticeInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider, transportOverride),
-            new("카드 정보 조회", CardInfoInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider, transportOverride),
+            // 2026-10-06 Phase 40 P40-9 실기 검증 — 800000도 원캡이 카드 리딩(#14 마스킹 카드번호)을 끝낸 뒤 응답하므로
+            // 902614와 같이 가맹점 설정 카드 대기 시간 + 여유만큼 기다린다(예전 10초 고정이라 카드를 10초 넘게 늦게
+            // 대면 원캡은 정상 응답했는데 화면은 타임아웃으로 끝났다).
+            new("카드 정보 조회", CardInfoInquirySchema.Create(),
+                () => PosClient.ComputeCardReadResponseTimeout(shopSettingsService.Load()), kioskIdProvider, transportOverride),
             new("국고 신용카드 승인요청", CardApprovalSchema.Create(),
-                () => PosClient.ComputeCardApprovalResponseTimeout(shopSettingsService.Load()), kioskIdProvider, transportOverride),
+                () => PosClient.ComputeCardReadResponseTimeout(shopSettingsService.Load()), kioskIdProvider, transportOverride),
         };
 
         // 체크포인트 2 M-2 수정(2026-09-21, 사용자 확정 "통신중일때는 다른 걸 못하게 하는게 맞아") —

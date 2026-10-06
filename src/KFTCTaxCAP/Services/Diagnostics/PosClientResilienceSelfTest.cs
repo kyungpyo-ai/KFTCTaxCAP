@@ -41,7 +41,7 @@ internal static class PosClientResilienceSelfTest
     /// <summary>
     /// "902614 전송 시 카드리딩·PIN을 기다리는 동안 클라이언트가 타임아웃으로 먼저 끊지 않는다"(완료
     /// 조건)를 실제로 120초+ 기다려 재현하는 대신, <b>구조적으로</b> 확인한다 —
-    /// <see cref="PosClient.ComputeCardApprovalResponseTimeout"/>이 항상
+    /// <see cref="PosClient.ComputeCardReadResponseTimeout"/>이 항상
     /// <see cref="ShopSettings.CardReadTimeoutSeconds"/>보다 크다는 것을 여러 설정값으로 확인하면,
     /// 클라이언트가 서버(리더기 데드라인)보다 먼저 포기할 수 없다는 것이 그 자체로 증명된다.
     /// </summary>
@@ -53,7 +53,7 @@ internal static class PosClientResilienceSelfTest
         foreach (int seconds in candidateTimeouts)
         {
             var settings = new ShopSettings { CardReadTimeoutSeconds = seconds };
-            TimeSpan computed = PosClient.ComputeCardApprovalResponseTimeout(settings);
+            TimeSpan computed = PosClient.ComputeCardReadResponseTimeout(settings);
 
             if (computed.TotalSeconds <= seconds)
             {

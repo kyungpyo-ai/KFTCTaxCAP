@@ -32,11 +32,12 @@ public sealed class PosClient : IDisposable
     /// 막히는 경우도 같은 기준으로 포기한다.</summary>
     private const int WriteTimeoutMilliseconds = 5000;
 
-    /// <summary>카드리딩이 필요한 요청(902614)의 응답 대기 타임아웃 = <c>CardReadTimeoutSeconds</c> +
-    /// 이 여유(네트워크 왕복·VAN 처리 시간 대비, PRD §12.4). 기본 120초 설정이면 150초가 된다.</summary>
-    private const int CardApprovalResponseTimeoutMarginSeconds = 30;
+    /// <summary>카드리딩이 필요한 요청(800000/902614)의 응답 대기 타임아웃 = <c>CardReadTimeoutSeconds</c> +
+    /// 이 여유(네트워크 왕복·VAN 처리 시간 대비, PRD §12.4). 기본 120초 설정이면 150초가 된다. 여유가 양수라
+    /// 화면은 항상 가맹점 설정 카드 대기 시간보다 오래 기다린다.</summary>
+    private const int CardReadResponseTimeoutMarginSeconds = 30;
 
-    /// <summary>카드리딩이 필요 없는 요청(501008/800000)의 기본 응답 대기 — 서버의 유휴 타임아웃
+    /// <summary>카드리딩이 필요 없는 요청(501008)의 기본 응답 대기 — 서버의 유휴 타임아웃
     /// (<c>PosSocketServer.IdleAfterResponseTimeoutMilliseconds</c>=10초)과 대칭으로 잡는다.</summary>
     public static readonly TimeSpan DefaultResponseTimeout = TimeSpan.FromSeconds(10);
 
@@ -55,10 +56,10 @@ public sealed class PosClient : IDisposable
 
     public bool IsConnected => !_disposed && _tcpClient.Connected;
 
-    /// <summary>902614(카드 승인)에 쓸 응답 타임아웃을 가맹점 설정의 카드입력 타임아웃 기반으로 계산한다
+    /// <summary>카드리딩이 필요한 800000(카드 정보 조회)·902614(카드 승인)에 쓸 응답 타임아웃을 가맹점 설정의 카드입력 타임아웃 기반으로 계산한다
     /// (임의로 정하지 않는다 — PRD §12.4).</summary>
-    public static TimeSpan ComputeCardApprovalResponseTimeout(ShopSettings shopSettings) =>
-        TimeSpan.FromSeconds(shopSettings.CardReadTimeoutSeconds + CardApprovalResponseTimeoutMarginSeconds);
+    public static TimeSpan ComputeCardReadResponseTimeout(ShopSettings shopSettings) =>
+        TimeSpan.FromSeconds(shopSettings.CardReadTimeoutSeconds + CardReadResponseTimeoutMarginSeconds);
 
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
@@ -80,7 +81,7 @@ public sealed class PosClient : IDisposable
     /// <summary>
     /// 완성된 본문(이미 스키마 총 길이로 패딩된 706/500/1500바이트)을 프레임으로 감싸 보내고, 응답
     /// 프레임(본문만, 길이 헤더 제외)을 돌려받는다. <paramref name="responseTimeout"/>은 호출자가 전문
-    /// 종류에 맞게 넉넉히 잡아야 한다 — 902614는 <see cref="ComputeCardApprovalResponseTimeout"/>을 쓰고,
+    /// 종류에 맞게 넉넉히 잡아야 한다 — 902614는 <see cref="ComputeCardReadResponseTimeout"/>을 쓰고,
     /// 나머지는 <see cref="DefaultResponseTimeout"/>을 쓴다.
     /// </summary>
     public async Task<byte[]> SendAsync(byte[] bodyBytes, TimeSpan responseTimeout, CancellationToken cancellationToken = default)
