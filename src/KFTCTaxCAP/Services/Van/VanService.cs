@@ -14,10 +14,11 @@ namespace KFTCTaxCAP.Services.Van;
 /// <summary>
 /// <see cref="IVanRelayService"/>의 실제 구현체 — <c>KFTC_GIRO.dll</c>의 <c>FNAISCRDVAN</c>을 호출한다
 /// (docs/payment_relay/development_plan.md Phase 20, P20-2). <see cref="StubVanRelayService"/>와 같은
-/// 자리에 꽂히며, <c>App.xaml.cs</c>는 이 Phase에서 아직 이 클래스를 쓰지 않는다(스텁 유지, 결정 1).
+/// 자리에 꽂힌다(<c>App.xaml.cs</c>에서 둘 중 하나를 고른다).
 ///
-/// <b>VAN 서버가 아직 개발 중이라 접속 자체가 되지 않는다</b>(2026-08-26/2026-08-31 확인) — 이 클래스가
-/// 검증하는 것은 "실거래가 성공하는가"가 아니라 "네이티브 호출 경계가 안전한가"(마샬링, 버퍼, 예외 내성)다.
+/// <b>inData/outData 형식</b>(2026-10-06): SPEC 공통부대로 <c>#0</c> 전문 길이(N4)부터 — 요청은 길이를
+/// 붙여 보내고, 응답은 길이 4바이트를 검증한 뒤 떼어 본문만 중계한다. 키다운로드(ISO 전문, "ISO"부터)는
+/// 형식이 달라 <see cref="FnaisCrdVanInvoker"/>는 손대지 않고 이 클래스에서만 처리한다. 실서버 검증 전.
 ///
 /// <b>스레드 안전성 전제</b>: <c>FNAISCRDVAN</c>은 <c>TransactionQueue</c>(Phase 14)가 보장하는 단일
 /// 워커 큐 안에서만 호출된다 — 동시에 두 번 호출되지 않는다. <c>KFTC_GIRO.dll</c> 자체의 스레드 안전성은
@@ -69,6 +70,10 @@ internal sealed class VanService : IVanRelayService
         try
         {
             byte[] body = populatedRequest.Telegram.ToBody();
+            // 2026-10-06 — SPEC 공통부는 #0 전문 길이(N4)부터 시작하고 원캡↔VAN 구간도 같은 전문 형식이다
+            // (PRD §3.3). 이전에는 소켓 프레이머가 뗀 #0을 다시 붙이지 않고 본문만 넘겼다(스텁이라 드러나지
+            // 않음). 요청은 #0+본문, 응답도 #0부터 온다고 보고 아래에서 4바이트를 검증 후 떼어 낸다.
+            byte[] framedRequest = BuildLengthPrefixed(body);
             try
             {
                 // 사용자 요청(2026-09-01) — 전문 원문(위치기반 마스킹, TelegramLogRedactor 클래스 요약
@@ -95,13 +100,13 @@ internal sealed class VanService : IVanRelayService
                 // 실제로 나가는 mode(R/OT/IT)를 한 토큰 남긴다. 민감정보가 아니므로 마스킹하지 않는다.
                 // P23-8 "OT/R이 FNAISCRDVAN 첫 인자로 실제로 나가는 것을 로그로 확인"의 선행 조건.
                 // P32-4 — hostCode 토큰을 mode 옆에 추가(민감정보 아님, 마스킹 대상 아님).
-                FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} mode={vanMode} hostCode={hostCode} FNAISCRDVAN 호출 원문={redactedRequestBody}", code: null, txId);
+                FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} mode={vanMode} hostCode={hostCode} FNAISCRDVAN 호출 원문={bodyLength:D4}{redactedRequestBody}", code: null, txId);
 
                 // P24-3(docs/operations/development_plan.md) — P/Invoke 호출·NUL 종단·버퍼 할당·예외
                 // 차단은 FnaisCrdVanInvoker로 옮겨졌다. 이 메서드는 그 결과를 해석만 한다(응답 절단,
                 // H-1/L-1 방어, 마스킹 로깅은 여기 그대로 남는다 — invoker마다 규칙이 다르기 때문).
                 FnaisCrdVanInvokeResult invokeResult = await FnaisCrdVanInvoker.InvokeAsync(
-                    vanMode, hostCode, body, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
+                    vanMode, hostCode, framedRequest, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
 
                 if (invokeResult.IsArgumentRejected)
                 {
@@ -143,7 +148,7 @@ internal sealed class VanService : IVanRelayService
 
                     if (nRet == 0)
                     {
-                        if (bodyLength > outData.Length)
+                        if (LengthFieldSize + bodyLength > outData.Length)
                         {
                             // L-1: bodyLength(스키마 총 길이, 최대 1500)는 항상 OutDataBufferSize(4096)보다
                             // 작아야 하지만, 어긋나면 Buffer.BlockCopy가 던지는 예외가 아래 generic catch에
@@ -172,8 +177,23 @@ internal sealed class VanService : IVanRelayService
                         // 실제 송신을 끝낸 뒤 response.Telegram.ClearBody()로 지운다**(Services/Pos/
                         // PosSocketServer.cs 참고). 여기 다시 손대지 말 것 — 다음 사람이 이 주석만 보고
                         // RunCardTransactionAsync에 클리어를 넣으면 승인 응답이 0으로 덮인 채 나간다.
+                        // 2026-10-06 — 응답 #0(전문 길이 N4) 검증: 숫자 4자리이고 요청 본문 길이와 같아야 한다
+                        // (3전문 모두 요청/응답 본문 길이가 같다). 어긋나면 형식 불일치로 보고 중계하지 않는다.
+                        string responseLengthField = PosMessageEncoding.Value.GetString(outData, 0, LengthFieldSize);
+                        if (!int.TryParse(responseLengthField, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int responseLength)
+                            || responseLength != bodyLength)
+                        {
+                            FileLogger.Error(
+                                LogCategory.Van,
+                                $"[VanService] 거래구분={transactionTypeCode} 응답 #0 전문 길이 불일치 — 응답앞4바이트='{responseLengthField}' 기대={bodyLength:D4}",
+                                code: null, txId);
+                            return VanRelayOutcome.CommunicationFailure(
+                                VanFailureKind.CommunicationFailure,
+                                $"응답 전문 길이 불일치(응답앞4바이트='{responseLengthField}', 기대={bodyLength:D4})");
+                        }
+
                         byte[] responseBody = new byte[bodyLength];
-                        Buffer.BlockCopy(outData, 0, responseBody, 0, bodyLength);
+                        Buffer.BlockCopy(outData, LengthFieldSize, responseBody, 0, bodyLength);
 
                         if (ContainsNulByte(responseBody))
                         {
@@ -200,7 +220,7 @@ internal sealed class VanService : IVanRelayService
                         // 사용자 요청(2026-09-01) — 응답 전문 원문(위치기반 마스킹, TelegramLogRedactor 클래스
                         // 요약 참고).
                         string redactedResponseBody = TelegramLogRedactor.Redact(transactionTypeCode, responseBody);
-                        FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} 응답 원문={redactedResponseBody}", code: null, txId);
+                        FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} 응답 원문={responseLengthField}{redactedResponseBody}", code: null, txId);
 
                         return VanRelayOutcome.Success(responseBody);
                     }
@@ -236,6 +256,7 @@ internal sealed class VanService : IVanRelayService
                 // NUL 종단하므로(그 복사본은 FnaisCrdVanInvoker가 자체적으로 지운다), 이 로컬 변수
                 // 자체는 이 메서드 밖으로 나가지 않는다.
                 SecureClear.Clear(body);
+                SecureClear.Clear(framedRequest);
             }
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
@@ -249,6 +270,19 @@ internal sealed class VanService : IVanRelayService
             FileLogger.Error(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} 예상치 못한 예외: {ex.GetType().Name}: {ex.Message}", code: null, txId);
             return VanRelayOutcome.CommunicationFailure(VanFailureKind.CommunicationFailure, $"{ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    /// <summary>SPEC #0 전문 길이 필드(N4, 본문 길이) 크기.</summary>
+    private const int LengthFieldSize = 4;
+
+    /// <summary>#0 전문 길이(본문 길이, ASCII 숫자 4자리) + 본문. 소켓 프레이밍(PosMessageFramer)과 같은 형식.</summary>
+    private static byte[] BuildLengthPrefixed(byte[] body)
+    {
+        byte[] lengthField = PosMessageEncoding.Value.GetBytes(body.Length.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
+        byte[] result = new byte[LengthFieldSize + body.Length];
+        Buffer.BlockCopy(lengthField, 0, result, 0, LengthFieldSize);
+        Buffer.BlockCopy(body, 0, result, LengthFieldSize, body.Length);
+        return result;
     }
 
     private static bool ContainsNulByte(byte[] buffer)
