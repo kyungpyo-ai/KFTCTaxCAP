@@ -126,7 +126,22 @@ namespace KFTCTaxCAP.KioskSim.Preset
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
 
-            string json = MiniJson.WriteObjectOfObjectsOfStrings(values);
+            // 연쇄 필드(앞 전문 응답에서 오는 값, Protocol/TelegramChainMap.cs)는 저장하지 않는다 —
+            // 저장하면 다음 실행 때 "앞 응답 없이 미리 들어 있는 더미 값"이 되어, 이 값이 앞 전문
+            // 응답에서 와야 한다는 사실이 가려진다(PRD §14.2·§14.5).
+            var toSave = new Dictionary<string, Dictionary<int, string>>();
+            foreach (var txEntry in values)
+            {
+                var byNumber = new Dictionary<int, string>();
+                foreach (var fieldEntry in txEntry.Value)
+                {
+                    if (!TelegramChainMap.IsChainTarget(txEntry.Key, fieldEntry.Key))
+                        byNumber[fieldEntry.Key] = fieldEntry.Value;
+                }
+                toSave[txEntry.Key] = byNumber;
+            }
+
+            string json = MiniJson.WriteObjectOfObjectsOfStrings(toSave);
             File.WriteAllText(PresetFilePath, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
 
@@ -182,8 +197,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
                         case 6: return "G";
                         case 11: return "01";
                         case 12: return "1234567";
-                        case 15: return "1000";
-                        case 16: return "10";
+                        // #15/#16은 연쇄 필드(501008 응답에서 옴) — 기본값 없음(빈 칸으로 시작).
                         default: return string.Empty;
                     }
 
@@ -195,27 +209,9 @@ namespace KFTCTaxCAP.KioskSim.Preset
                         case 3: return "0200";
                         case 4: return "902614";
                         case 6: return "G";
-                        case 11: return "01";
-                        case 12: return "1234567";
-                        case 14: return "8001011234567";
-                        case 15: return "1234567890123456789";
-                        case 16: return "001";
-                        case 18: return "2601510";
-                        case 19: return "123456";
-                        case 20: return "강남세무서";
-                        case 21: return "부가가치세";
-                        case 23: return "2026";
-                        case 24: return "1000";
-                        case 27: return "1000";
-                        case 28: return "0";
-                        case 29: return "1000";
-                        case 30: return "1";
-                        case 31: return DateTime.Now.ToString("yyyyMMdd");
+                        // #11/#12, #14~#16, #18~#31, #33/#34, #36/#37은 연쇄 필드(501008/800000 응답에서
+                        // 옴, Protocol/TelegramChainMap.cs) — 기본값 없음(빈 칸으로 시작, PRD §14.2).
                         case 32: return DateTime.Now.ToString("yyyyMMdd");
-                        case 33: return "01";
-                        case 34: return "00";
-                        case 36: return "8001011234567";
-                        case 37: return "홍길동";
                         case 39: return "O";
                         case 41: return "Q";
                         case 42: return "1234567890BF0001";
@@ -236,9 +232,16 @@ namespace KFTCTaxCAP.KioskSim.Preset
             }
         }
 
-        /// <summary>프리셋 파일 값이 있으면 그 값, 없으면 코드 기본값(우선순위: 프리셋 &gt; 코드 기본값).</summary>
+        /// <summary>
+        /// 프리셋 파일 값이 있으면 그 값, 없으면 코드 기본값(우선순위: 프리셋 &gt; 코드 기본값).
+        /// 단 연쇄 필드(<see cref="TelegramChainMap.IsChainTarget"/>)는 항상 빈 칸이다 — 예전 프리셋
+        /// 파일에 값이 남아 있어도 읽지 않는다(PRD §14.5).
+        /// </summary>
         public static string Resolve(LoadResult loaded, string txType, int fieldNumber)
         {
+            if (TelegramChainMap.IsChainTarget(txType, fieldNumber))
+                return string.Empty;
+
             string? fromFile = loaded?.TryGet(txType, fieldNumber);
             return fromFile ?? GetCodeDefault(txType, fieldNumber);
         }

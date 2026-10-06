@@ -115,6 +115,39 @@ namespace KFTCTaxCAP.KioskSim.Forms
         /// <summary>그리드 셀 값 변경 이벤트가 "코드가 프로그램적으로 값을 채우는 중"에는 반응하지 않게 막는 플래그.</summary>
         private bool _suppressGridEvents;
 
+        // ---- 전문 간 필드 연쇄(Phase 40, 표는 Protocol/TelegramChainMap.cs) ----
+
+        /// <summary>연쇄로 채워진 값 셀의 배경색(회색 = 잠김, 흰색 = 직접 입력과 구분).</summary>
+        private static readonly Color ChainedCellColor = Color.FromArgb(214, 232, 255);
+
+        /// <summary>
+        /// 지금 연쇄로 채워져 있는 필드(전문타입, 필드번호). 이 집합에 든 셀만 <see cref="ChainedCellColor"/>로
+        /// 칠한다. 앞 전문이 성공하면 추가, 실패하면 제거한다(<see cref="ApplyChainFromResponse"/>).
+        /// </summary>
+        private readonly HashSet<(string Tx, int Field)> _chainedFields = new HashSet<(string Tx, int Field)>();
+
+        /// <summary>
+        /// 목록에서 고르는 연쇄 필드(<see cref="TelegramChainConversion.SelectFirstFromList"/>, 예: 902614 할부 개월 수)의
+        /// 선택 목록. 앞 전문 성공 시 받은 LIST를 잘라 넣고, 실패 시 지운다. 목록이 있는 필드만 그리드에서
+        /// 콤보 셀로 그린다.
+        /// </summary>
+        private readonly Dictionary<(string Tx, int Field), IReadOnlyList<string>> _chainListOptions =
+            new Dictionary<(string Tx, int Field), IReadOnlyList<string>>();
+
+        /// <summary>목록 콤보 셀의 항목 하나 — 값(<see cref="Code"/>)은 2자리 코드, 표시(<see cref="Text"/>)는 "03 (3개월)".</summary>
+        private sealed class ListOption
+        {
+            public string Code { get; }
+            public string Text { get; }
+
+            public ListOption(string code)
+            {
+                Code = code;
+                string meaning = TelegramChainMap.DescribeInstallment(code);
+                Text = meaning.Length > 0 ? $"{code} ({meaning})" : code;
+            }
+        }
+
         public MainForm()
         {
             Text = "KFTCTaxCAP 키오스크 시뮬레이터 — Phase 19";
@@ -317,7 +350,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
             _grid.Columns[ColRepresentation].Width = 60;
             _grid.Columns[ColLength].Width = 55;
             _grid.Columns[ColPosition].Width = 70;
-            _grid.Columns[ColSetLocation].Width = 130;
+            _grid.Columns[ColSetLocation].Width = 210; // 연쇄 필드는 "kiosk ← 501008 응답 #30+#31+#32"처럼 출처를 보여준다.
             _grid.Columns[ColValue].Width = 280;
             _grid.Columns[ColValue].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
 
@@ -346,9 +379,15 @@ namespace KFTCTaxCAP.KioskSim.Forms
             {
                 // 텍스트 셀 편집 중 커밋되지 않은 값도 즉시 CellValueChanged로 반영되게 한다
                 // (기본 동작은 포커스를 옮겨야 커밋된다 — 미리보기를 실시간처럼 보이게 하려면 이 처리가 필요).
-                if (_grid.IsCurrentCellDirty)
+                // 목록 콤보 셀은 제외한다 — 직접 입력 중인 글자("6" → "63")를 한 글자마다 확정하지 않고,
+                // 목록 선택(ListCombo_SelectionChangeCommitted)이나 셀을 떠날 때 확정한다.
+                if (_grid.IsCurrentCellDirty && !(_grid.CurrentCell is DataGridViewComboBoxCell))
                     _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
             };
+            _grid.EditingControlShowing += Grid_EditingControlShowing;
+            _grid.CellEndEdit += Grid_CellEndEdit;
+            _grid.CellParsing += Grid_CellParsing;
+            _grid.DataError += Grid_DataError;
         }
 
         /// <summary>
@@ -634,17 +673,28 @@ namespace KFTCTaxCAP.KioskSim.Forms
                     bool editable = field.SetLocation == TelegramSetLocation.Kiosk && !field.AlwaysBlank;
                     string valueCellText = editable && byNumber.TryGetValue(field.Number, out var v) ? v : string.Empty;
 
+                    var chainEntry = TelegramChainMap.FindEntry(schema.TxType, field.Number);
+
                     int rowIndex = _grid.Rows.Add(
                         field.Number,
                         field.Name,
                         field.Representation.ToString(),
                         field.Length,
                         field.Position,
-                        DescribeSetLocation(field),
+                        chainEntry != null ? DescribeChainSource(chainEntry) : DescribeSetLocation(field),
                         valueCellText);
 
                     var row = _grid.Rows[rowIndex];
                     row.Tag = field;
+
+                    // 목록에서 고르는 연쇄 필드(예: 902614 할부 개월 수)는 앞 전문에서 목록을 받았을 때만
+                    // 콤보 셀로 바꾼다. 목록이 없으면(앞 전문 응답 전/실패) 빈 텍스트 셀 그대로다.
+                    if (editable && _chainListOptions.TryGetValue((schema.TxType, field.Number), out var options))
+                    {
+                        row.Cells[ColValue] = CreateListCell(options, valueCellText);
+                        row.Cells[ColValue].Value = valueCellText.Length > 0 ? valueCellText : null;
+                    }
+
                     row.Cells[ColValue].ReadOnly = !editable;
                     if (!editable)
                     {
@@ -654,7 +704,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
                     }
                     else
                     {
-                        row.Cells[ColValue].Style.BackColor = Color.White;
+                        row.Cells[ColValue].Style.BackColor = ValueCellColor(schema.TxType, field.Number);
                     }
                 }
             }
@@ -674,6 +724,41 @@ namespace KFTCTaxCAP.KioskSim.Forms
             if (field.SetLocation == TelegramSetLocation.Kiosk && field.AlwaysBlank)
                 return "kiosk (공백 고정, 편집 불가)";
             return DescribeSetLocation(field.SetLocation);
+        }
+
+        /// <summary>
+        /// 연쇄 필드의 SET 장소 열 문구 — 값이 어디서 오는지를 그대로 보여준다
+        /// (예: "kiosk ← 501008 응답 #30+#31+#32", "kiosk ← 이 전문 #27+#28").
+        /// </summary>
+        private static string DescribeChainSource(TelegramChainEntry entry)
+        {
+            string fields = "#" + string.Join("+#", entry.SourceFields);
+            return entry.IsWithinSameRequest
+                ? $"kiosk ← 이 전문 {fields}"
+                : $"kiosk ← {entry.SourceTx} 응답 {fields}";
+        }
+
+        /// <summary>편집 가능한 값 셀의 배경색 — 연쇄로 채워진 필드면 연쇄 색, 아니면 흰색.</summary>
+        private Color ValueCellColor(string txType, int fieldNumber)
+            => _chainedFields.Contains((txType, fieldNumber)) ? ChainedCellColor : Color.White;
+
+        /// <summary>
+        /// 목록 콤보 셀을 만든다. 항목의 값은 2자리 코드, 표시는 "03 (3개월)" 형식이다. 지금 값이 목록에
+        /// 없으면(사용자가 직접 입력한 포인트 납부 값 "63" 등) 그 값도 항목으로 넣어 그대로 보이게 한다.
+        /// </summary>
+        private static DataGridViewComboBoxCell CreateListCell(IReadOnlyList<string> codes, string currentValue)
+        {
+            var cell = new DataGridViewComboBoxCell
+            {
+                DisplayMember = nameof(ListOption.Text),
+                ValueMember = nameof(ListOption.Code),
+                FlatStyle = FlatStyle.Flat,
+            };
+            foreach (string code in codes)
+                cell.Items.Add(new ListOption(code));
+            if (currentValue.Length > 0 && !codes.Contains(currentValue))
+                cell.Items.Add(new ListOption(currentValue));
+            return cell;
         }
 
         private static string DescribeSetLocation(TelegramSetLocation location)
@@ -704,7 +789,114 @@ namespace KFTCTaxCAP.KioskSim.Forms
             string value = Convert.ToString(row.Cells[ColValue].Value) ?? string.Empty;
             _currentValues[_currentSchema.TxType][field.Number] = value;
 
+            // 같은 전문 안에서 계산하는 연쇄 필드(예: 902614 총 납부 금액 = 납부 세액 + 수수료)는
+            // 입력 필드를 사용자가 고쳐도 다시 계산한다.
+            RecomputeWithinRequestEntries(_currentSchema.TxType);
+
             UpdatePreview();
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 목록 콤보 셀(902614 할부 개월 수) — 목록 선택 + 직접 입력
+        //
+        // 할부 개월 수는 800000 응답의 카드 할부개월 LIST에서 고른다. 단, 포인트 납부는 목록에 없다 —
+        // 포인트로 납부하려면 "할부 개월 수 + 60"을 직접 입력한다(포인트 일시불 = "60", 포인트 3개월 = "63").
+        // DataGridViewComboBoxCell은 기본적으로 목록 밖 값을 받지 않으므로 WinForms 표준 방식으로 직접
+        // 입력을 허용한다:
+        //   1) 편집 컨트롤의 DropDownStyle을 DropDown으로 바꿔 글자를 칠 수 있게 하고(EditingControlShowing),
+        //   2) 글자가 바뀌면 셀을 "변경됨"으로 표시해 셀을 떠날 때 확정되게 하고(ListCombo_TextChanged),
+        //   3) 표시 문구("03 (3개월)")나 입력 글자("63")에서 2자리 코드만 꺼내 셀 값으로 삼고(CellParsing),
+        //   4) 편집이 끝난 뒤 그 코드가 목록에 없으면 항목으로 추가해 "63 (포인트 3개월)"로 보이게 한다(CellEndEdit).
+        //      ※ 편집 도중(CellValidating 등)에 셀 항목을 바꾸면 WinForms가 편집 콤보를 원래 값으로 다시
+        //        초기화해 방금 친 글자가 사라진다 — 그래서 항목 추가는 반드시 편집이 끝난 뒤에 한다.
+        // 그래서 전문에는 언제나 코드만 들어가고 "(3개월)" 같은 표시 문구는 섞이지 않는다.
+        // ------------------------------------------------------------------------------------
+
+        private void Grid_EditingControlShowing(object? sender, DataGridViewEditingControlShowingEventArgs e)
+        {
+            if (e.Control is ComboBox combo && _grid.CurrentCell is DataGridViewComboBoxCell)
+            {
+                combo.DropDownStyle = ComboBoxStyle.DropDown; // 직접 입력 허용
+                // 편집 컨트롤은 셀끼리 재사용되므로 중복 구독을 막기 위해 먼저 뺀다.
+                combo.SelectionChangeCommitted -= ListCombo_SelectionChangeCommitted;
+                combo.SelectionChangeCommitted += ListCombo_SelectionChangeCommitted;
+                combo.TextChanged -= ListCombo_TextChanged;
+                combo.TextChanged += ListCombo_TextChanged;
+            }
+        }
+
+        /// <summary>
+        /// 직접 입력한 글자도 "값이 바뀌었다"고 그리드에 알린다. 콤보 편집 컨트롤은 목록 선택이 바뀔 때만
+        /// 이 신호를 보내므로, 이 처리가 없으면 직접 친 "63"이 셀을 떠날 때 버려진다. (한 글자마다 확정하지는
+        /// 않는다 — 확정은 셀을 떠날 때 CellParsing이 한다.)
+        /// </summary>
+        private void ListCombo_TextChanged(object? sender, EventArgs e)
+        {
+            if (sender is IDataGridViewEditingControl editingControl
+                && _grid.IsCurrentCellInEditMode && _grid.CurrentCell is DataGridViewComboBoxCell)
+            {
+                // 콤보 편집 컨트롤이 목록 선택 때 스스로 하는 것과 같은 두 가지 표시를 한다.
+                editingControl.EditingControlValueChanged = true;
+                _grid.NotifyCurrentCellDirty(true);
+            }
+        }
+
+        /// <summary>목록에서 항목을 고르면 바로 확정한다(콤보 글자가 선택 항목으로 바뀐 뒤에 확정하도록 한 박자 늦춘다).</summary>
+        private void ListCombo_SelectionChangeCommitted(object? sender, EventArgs e)
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (_grid.IsCurrentCellInEditMode && _grid.CurrentCell is DataGridViewComboBoxCell)
+                    _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }));
+        }
+
+        /// <summary>
+        /// 편집이 끝난 목록 콤보 셀의 값(직접 입력한 코드 등)이 목록에 없으면 항목으로 추가한다 — 그래야 셀이
+        /// 그 값을 "63 (포인트 3개월)"처럼 표시할 수 있다. 값의 형식(숫자 2자리 등)은 막지 않는다 — 전문을
+        /// 만들 때 길이 검사에 맡긴다.
+        /// </summary>
+        private void Grid_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex != ColValue)
+                return;
+            if (!(_grid.Rows[e.RowIndex].Cells[ColValue] is DataGridViewComboBoxCell cell))
+                return;
+
+            string code = Convert.ToString(cell.Value) ?? string.Empty;
+            if (code.Length > 0 && !cell.Items.Cast<ListOption>().Any(o => o.Code == code))
+                cell.Items.Add(new ListOption(code));
+        }
+
+        private void Grid_CellParsing(object? sender, DataGridViewCellParsingEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex != ColValue)
+                return;
+            if (!(_grid.Rows[e.RowIndex].Cells[ColValue] is DataGridViewComboBoxCell))
+                return;
+
+            string code = ExtractListCode(Convert.ToString(e.Value));
+            e.Value = code.Length > 0 ? code : null;
+            e.ParsingApplied = true;
+        }
+
+        /// <summary>"03 (3개월)" → "03", "63" → "63". 첫 공백이나 괄호 앞까지가 코드다.</summary>
+        private static string ExtractListCode(string? text)
+        {
+            string trimmed = (text ?? string.Empty).Trim();
+            int end = trimmed.IndexOfAny(new[] { ' ', '(' });
+            return end < 0 ? trimmed : trimmed.Substring(0, end);
+        }
+
+        /// <summary>
+        /// 셀 값 표시/변환 오류가 나도 기본 오류 대화상자를 띄우지 않고 상태 표시줄로만 알린다(안전망 —
+        /// 위 콤보 처리로 정상 경로에서는 발생하지 않는다).
+        /// </summary>
+        private void Grid_DataError(object? sender, DataGridViewDataErrorEventArgs e)
+        {
+            e.ThrowException = false;
+            _lblStatus.Text = $"그리드 값 오류(행 {e.RowIndex}): {e.Exception?.Message}";
+            _lblStatus.ForeColor = Color.DarkRed;
         }
 
         /// <summary>
@@ -792,7 +984,12 @@ namespace KFTCTaxCAP.KioskSim.Forms
             UpdatePreview();
             ClearResponseDisplay();
 
+            // 앞 전문 응답을 받지 않아 비어 있는 연쇄 필드가 있으면 알려만 준다 — 전송은 막지 않는다
+            // (빈 칸 그대로 보냈을 때 서버가 어떤 오류를 돌려주는지 보는 것도 점검 대상이다).
+            string emptyChainNotice = DescribeEmptyChainFields(_currentSchema.TxType);
+
             SetSendingState(true, _currentSchema.TxType);
+            _lblStatus.Text += emptyChainNotice;
             try
             {
                 // OneCapClient.SendAsync의 onElapsed 콜백은 백그라운드 스레드에서 호출된다
@@ -807,7 +1004,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
                         BeginInvoke(new Action(() =>
                         {
                             if (!IsDisposed)
-                                _lblStatus.Text = $"응답 대기 중… ({elapsed.TotalSeconds:F1}초)";
+                                _lblStatus.Text = $"응답 대기 중… ({elapsed.TotalSeconds:F1}초)" + emptyChainNotice;
                         }));
                     }
                     catch (ObjectDisposedException)
@@ -818,6 +1015,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
                 OneCapClientResult result = await OneCapClient.SendAsync(frame, onElapsed);
                 ShowResult(result);
+                _lblStatus.Text += emptyChainNotice;
             }
             finally
             {
@@ -860,6 +1058,11 @@ namespace KFTCTaxCAP.KioskSim.Forms
                 ClearResponseDisplay();
                 _lblResponseCode.Text = "#7 응답 코드: (응답 본문 없음 — 전송/수신 자체가 실패했다. 위 상태 메시지 참고)";
                 _lblResponseCode.ForeColor = Color.DarkRed;
+
+                // 응답을 받지 못한 것도 연쇄에서는 "실패"다 — 그 전문에서 온 연쇄 값을 비운다.
+                // (999999 직전 거래 조회는 연쇄와 무관하다.)
+                if (_lastRequestSchema != null && _lastRequestSchema.TxType != TelegramSchemas.StatusInquiryTransactionType)
+                    ApplyChainFromResponse(_lastRequestSchema.TxType, null);
                 return;
             }
 
@@ -884,6 +1087,175 @@ namespace KFTCTaxCAP.KioskSim.Forms
             }
 
             ShowFieldDecomposition(_lastRequestSchema, _lastRequestBody, result.ResponseBody);
+
+            // 응답을 뒤 전문 요청 필드로 연쇄한다(#7 = "000"이면 채우고, 아니면 비운다).
+            ApplyChainFromResponse(_lastRequestSchema.TxType, result.ResponseBody);
+        }
+
+        // ====================================================================================
+        // 전문 간 필드 연쇄 — 키오스크가 구현해야 하는 핵심 로직
+        //
+        // 규칙 표는 Protocol/TelegramChainMap.cs 한 곳에 있고, 화면은 아래 두 함수로 그 표를 적용한다.
+        //   - ApplyChainFromResponse        : 앞 전문 응답을 받았을 때(또는 받지 못했을 때) 한 번 호출
+        //   - RecomputeWithinRequestEntries : 같은 전문 안에서 계산하는 항목(총 납부 금액 등) 재계산
+        // 필드 번호는 여기 하드코딩하지 않는다 — 전부 표에서 얻는다.
+        // ====================================================================================
+
+        /// <summary>
+        /// 앞 전문(<paramref name="sourceTx"/>)의 응답으로 뒤 전문 요청 필드를 채우거나 비운다.
+        /// <list type="number">
+        /// <item>성공 판정: 응답 본문이 있고, 길이가 전문 길이와 같고, 응답 <c>#7</c> 응답 코드가 <c>"000"</c>.</item>
+        /// <item>성공이면 표에서 출처가 <paramref name="sourceTx"/>인 항목을 계산해 대상 전문 값에 쓰고 "연쇄로 채워짐"
+        ///       표시(색)를 단다. 사용자가 그 사이 고친 값도 덮어쓴다.</item>
+        /// <item>실패(<c>#7</c> ≠ <c>"000"</c>, 응답 없음, 길이 불일치)면 같은 항목의 값을 빈 칸으로 되돌리고 표시를 지운다.
+        ///       다른 전문에서 온 값은 건드리지 않는다.</item>
+        /// <item>이어서 같은 전문 안에서 계산하는 항목(예: 902614 총 납부 금액)을 다시 계산한다.</item>
+        /// </list>
+        /// 지금 화면에 보이지 않는 전문의 값도 갱신된다(전문 버튼을 누르면 갱신된 값으로 다시 그려진다).
+        /// </summary>
+        /// <param name="sourceTx">방금 보낸 전문(501008/800000/902614).</param>
+        /// <param name="responseBody">응답 본문. 전송/수신 자체가 실패했으면 null.</param>
+        private void ApplyChainFromResponse(string sourceTx, byte[]? responseBody)
+        {
+            // 1) 성공 판정
+            TelegramSchema sourceSchema = TelegramSchemas.ByTxType(sourceTx);
+            TelegramBuffer? response = null;
+            if (responseBody != null && responseBody.Length == sourceSchema.TotalLength)
+            {
+                var parsed = new TelegramBuffer(sourceSchema, responseBody);
+                if (parsed.Read(7).Trim() == "000")
+                    response = parsed;
+            }
+
+            // 2)·3) 출처가 이 전문 응답인 항목을 채우거나 비운다.
+            var targetTxs = new HashSet<string>();
+            int filledCount = 0;
+            int clearedCount = 0;
+            foreach (var entry in TelegramChainMap.Entries)
+            {
+                if (entry.IsWithinSameRequest || entry.SourceTx != sourceTx)
+                    continue;
+
+                var key = (entry.TargetTx, entry.TargetField);
+                targetTxs.Add(entry.TargetTx);
+
+                if (response != null)
+                {
+                    var sourceValues = entry.SourceFields.Select(n => response.Read(n)).ToList();
+                    int targetLength = TelegramSchemas.ByTxType(entry.TargetTx).ByNumber(entry.TargetField).Length;
+                    string value = TelegramChainMap.Convert(entry, sourceValues, targetLength);
+
+                    _currentValues[entry.TargetTx][entry.TargetField] = value;
+                    if (value.Length > 0)
+                        _chainedFields.Add(key);
+                    else
+                        _chainedFields.Remove(key); // 응답 필드가 공백이었다 — 채울 값이 없으므로 빈 칸(색 없음).
+                    filledCount++;
+
+                    // 목록에서 고르는 필드는 받은 목록도 함께 보관한다(그리드가 콤보 셀로 그린다).
+                    if (entry.Conversion == TelegramChainConversion.SelectFirstFromList)
+                        _chainListOptions[key] = TelegramChainMap.SplitInstallmentList(sourceValues[0]);
+                }
+                else
+                {
+                    _currentValues[entry.TargetTx][entry.TargetField] = string.Empty;
+                    _chainedFields.Remove(key);
+                    _chainListOptions.Remove(key);
+                    clearedCount++;
+                }
+            }
+
+            if (targetTxs.Count == 0)
+                return; // 이 전문의 응답을 쓰는 연쇄 항목이 없다(예: 902614).
+
+            // 4) 같은 전문 안에서 계산하는 항목 재계산.
+            foreach (string targetTx in targetTxs)
+                RecomputeWithinRequestEntries(targetTx);
+
+            // 지금 보고 있는 그리드가 대상 전문이면 다시 그린다.
+            if (_currentSchema != null && targetTxs.Contains(_currentSchema.TxType))
+            {
+                LoadGridForSchema(_currentSchema);
+                UpdatePreview();
+            }
+
+            string targets = string.Join("·", targetTxs);
+            _lblStatus.Text += response != null
+                ? $" / 연쇄 적용: {sourceTx} 응답(#7=000)으로 {targets} 필드 {filledCount}개를 채움"
+                : $" / 연쇄 해제: {sourceTx} 정상 응답(#7=000)이 아니어서 {targets}의 {sourceTx} 출처 필드 {clearedCount}개를 비움";
+        }
+
+        /// <summary>
+        /// <paramref name="txType"/> 전문 안에서 계산하는 연쇄 항목(<see cref="TelegramChainEntry.IsWithinSameRequest"/>,
+        /// 예: 902614 총 납부 금액 = 납부 세액 + 수수료)을 지금 값으로 다시 계산한다. 결과가 빈 칸이면
+        /// "연쇄로 채워짐" 표시도 지운다. 그 전문이 화면에 떠 있으면 해당 셀도 갱신한다.
+        /// </summary>
+        private void RecomputeWithinRequestEntries(string txType)
+        {
+            var values = _currentValues[txType];
+            foreach (var entry in TelegramChainMap.Entries)
+            {
+                if (!entry.IsWithinSameRequest || entry.TargetTx != txType)
+                    continue;
+
+                var sourceValues = entry.SourceFields
+                    .Select(n => values.TryGetValue(n, out var v) ? v : string.Empty)
+                    .ToList();
+                int targetLength = TelegramSchemas.ByTxType(txType).ByNumber(entry.TargetField).Length;
+                string value = TelegramChainMap.Convert(entry, sourceValues, targetLength);
+
+                values[entry.TargetField] = value;
+                if (value.Length > 0)
+                    _chainedFields.Add((txType, entry.TargetField));
+                else
+                    _chainedFields.Remove((txType, entry.TargetField));
+
+                if (_currentSchema != null && _currentSchema.TxType == txType)
+                    RefreshGridValueCell(entry.TargetField, value);
+            }
+        }
+
+        /// <summary>지금 그리드에서 필드 하나의 값 셀만 다시 채운다(값 + 연쇄 색). 이벤트는 발생시키지 않는다.</summary>
+        private void RefreshGridValueCell(int fieldNumber, string value)
+        {
+            if (_currentSchema == null)
+                return;
+
+            bool previous = _suppressGridEvents;
+            _suppressGridEvents = true;
+            try
+            {
+                foreach (DataGridViewRow row in _grid.Rows)
+                {
+                    if (row.Tag is TelegramField field && field.Number == fieldNumber)
+                    {
+                        row.Cells[ColValue].Value = value;
+                        row.Cells[ColValue].Style.BackColor = ValueCellColor(_currentSchema.TxType, fieldNumber);
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                _suppressGridEvents = previous;
+            }
+        }
+
+        /// <summary>
+        /// 이 전문의 연쇄 필드 중 비어 있는 것이 있으면 상태 표시줄 안내 문구를 만든다(없으면 빈 문자열).
+        /// </summary>
+        private string DescribeEmptyChainFields(string txType)
+        {
+            if (!_currentValues.TryGetValue(txType, out var values))
+                return string.Empty;
+
+            int emptyCount = TelegramChainMap.Entries.Count(entry =>
+                entry.TargetTx == txType
+                && (!values.TryGetValue(entry.TargetField, out var v) || v.Length == 0));
+
+            return emptyCount == 0
+                ? string.Empty
+                : $" / ※ 연쇄 필드 {emptyCount}개가 비어 있음(앞 전문 응답 전) — 빈 칸 그대로 보냄";
         }
 
         /// <summary>
