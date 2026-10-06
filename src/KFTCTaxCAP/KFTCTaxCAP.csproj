@@ -43,6 +43,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Phase 40 P40-7(docs/payment_relay/development_plan.md): KioskSim 연쇄 표 파일 하나를 링크 컴파일한다. 본 앱 표
+      (TelegramFieldChainMap)와 KioskSim 표를 자가진단(TelegramChainMapParitySelfTest)이 항목 단위로 대조하기 위해서다.
+      KioskSim은 본 앱을 참조하지 않고 단독 빌드되며(독립 전사 원칙, PRD §14.5) 이 링크는 한 방향(본 앱 → KioskSim
+      소스 한 파일)뿐이다 — 이 파일은 BCL 타입만 쓰므로 KioskSim의 다른 소스를 끌어오지 않는다.
+    -->
+    <Compile Include="..\KFTCTaxCAP.KioskSim\Protocol\TelegramChainMap.cs" Link="Services\Diagnostics\Linked\KioskSimTelegramChainMap.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets\Fonts\Pretendard-Regular.ttf" />
     <Resource Include="Assets\Fonts\Pretendard-Medium.ttf" />
     <Resource Include="Assets\Fonts\Pretendard-Bold.ttf" />

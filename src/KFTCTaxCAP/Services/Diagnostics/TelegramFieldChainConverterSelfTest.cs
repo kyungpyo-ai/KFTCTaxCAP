@@ -27,13 +27,15 @@ internal static class TelegramFieldChainConverterSelfTest
             bool sumOverflowOk = RunSumOverflowThrowsOnPad();
             bool sumNonNumericOk = RunSumNonNumericThrowsPosProtocolException();
             bool installmentOk = RunInstallmentListCases();
+            bool parityOk = TelegramChainMapParitySelfTest.RunAll(); // P40-7 — 본 앱 표 ↔ KioskSim 표 대조
             bool stubAmountRangeOk = RunStubAmountFieldRangeRegression();
 
-            bool allPassed = truncateOk && sumOk && sumOverflowOk && sumNonNumericOk && installmentOk && stubAmountRangeOk;
+            bool allPassed = truncateOk && sumOk && sumOverflowOk && sumNonNumericOk && installmentOk && parityOk && stubAmountRangeOk;
             FileLogger.Info(
                 $"[field-chain-converter-test] 완료 — 절삭 경계={(truncateOk ? "통과" : "실패")}, " +
                 $"합산={(sumOk ? "통과" : "실패")}, 합산 오버플로={(sumOverflowOk ? "통과" : "실패")}, " +
                 $"할부 LIST={(installmentOk ? "통과" : "실패")}, " +
+                $"본 앱↔KioskSim 표 대조={(parityOk ? "통과" : "실패")}, " +
                 $"합산 비숫자={(sumNonNumericOk ? "통과" : "실패")}, " +
                 $"스텁 금액 범위 회귀={(stubAmountRangeOk ? "통과" : "실패")}, " +
                 $"종합={(allPassed ? "통과" : "실패")}");
