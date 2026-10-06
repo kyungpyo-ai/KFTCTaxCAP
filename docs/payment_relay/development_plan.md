@@ -9313,3 +9313,314 @@ P32-1(DLL 교체, Opus) → **P32-2+3**(`reader-dll-integration-developer`) → 
 
 P32-1 직후 P32-2+3 전까지는 **DLL을 호출하는 하네스를 돌리지 않는다** — 새 DLL(6인자)과 옛 선언(5인자)이
 공존하는 구간이라 호출하면 스택이 깨진다.
+
+---
+
+# Phase 40 실행계획서 — 연쇄 동작 정비 + 키오스크 시뮬레이터 연쇄
+
+> **근거**: `PRD.md` §14(이 Phase의 요구사항 전부), §3.3.2(연쇄 표 정본), §13.2·§13.7(중계 경로 불변·변환 규칙)
+> · `ROADMAP.md` Phase 40 · 업체 제공용 `연쇄 필드 정리.txt`(저장소 루트, 2026-10-06 사용자 작성)
+
+**이 Phase가 끝나면**: 결제 화면과 KioskSim이 같은 규칙으로 연쇄한다 — 창을 열면 연쇄 필드는 비어 있고,
+`501008`/`800000`이 정상 응답(`#7`=`000`)을 받는 순간 뒤 전문 필드가 채워지며(색 구분, 수정 가능), 실패하면 그
+전문에서 온 값만 비워진다. `902614 #34`는 `800000 #22` LIST에서 고른다. 두 연쇄 표가 같은지 자가진단이 확인한다.
+
+## 이 Phase의 성격
+
+기능 추가 + **기존 동작 변경**이다. 결제 화면 쪽은 Phase 30(연쇄)·37(현실적인 테스트 값)에서 확정했던 동작
+일부를 사용자 결정으로 되돌린다(PRD §14.2~§14.4). 그래서 회귀 위험은 "연쇄가 안 되는 것"보다 **"빈 칸이어야 할
+필드에 값이 남는 것"**과 **"비워야 할 때 안 비우는 것"** 쪽에 있다. 검증도 그 방향으로 한다.
+
+KioskSim은 업체가 읽을 코드다. 연쇄 로직이 화면 이벤트 핸들러에 흩어지지 않고 **표 파일 하나 + 적용 함수 하나**로
+읽혀야 한다.
+
+## 착수 전 전제 (2026-10-06 코드 확인)
+
+1. 결제 화면 연쇄 진입점은 `PaymentScreenViewModel.OnTabPropertyChanged` → `ApplyChainMappingsFrom`이며,
+   **`HasResponse`가 true로 바뀔 때만** 호출된다. 전송 예외(연결 실패·타임아웃)는 `HasResponse`를 false로 둔 채
+   끝나므로 **지금은 실패 신호 자체가 없다** — P40-3에서 만들어야 한다. `HasResponse`의 false→true 전이는
+   `902614` 영수증 자동 출력(Phase 34 `PrintReceiptIfApproved`)도 쓰므로 **의미를 바꾸지 않는다**.
+2. 창이 열릴 때 `PaymentTelegramTabViewModel` 생성자가 `Regenerate()`를 1회 호출해 `RealisticTestValueGenerator`로
+   전 필드를 채우고, 이어 `ApplyFixedChainValues()`가 `#34`=`"00"`을 쓴다. "임의값 재생성" 버튼은 커밋 `9296750`에서
+   "취소"로 바뀌어 **`Regenerate()`의 호출자는 생성자뿐**이다.
+3. `TelegramFieldChainMap.Entries`의 고정값 항목은 `#34` 1건뿐이다(`FieldChainConversion.Fixed`).
+   `RealisticTestValueGeneratorSelfTest`(⑦)와 `TelegramFieldChainConverterSelfTest`가 이 표·변환을 쓴다.
+4. 스텁 LIST: `RealisticTestValueGenerator.CreditInstallmentList` = `"020304050607080910111224"`, 체크카드는 빈 값.
+5. 영수증 `ReceiptValueFormatter.Installment`는 `00`/`01` → 일시불, 그 외 `N개월`이다. 그래서 포인트 납부(`#34`=할부
+   개월+60, PRD §14.4)의 `63`이 `63개월`로 찍힌다 — P40-4에서 **이 함수 하나만** 고친다.
+6. KioskSim: 값은 `MainForm._currentValues[tx][field]`에 있고 그리드는 `LoadGridForSchema`가 다시 그린다. 응답 처리는
+   `ShowResult` → `ShowFieldDecomposition`. 프리셋 기본값은 `PresetStore`의 `switch`(902614 `#14`~`#37` 등, `#34`=`"00"`).
+   전문은 한 화면에서 버튼으로 바꿔 가며 보내므로(탭 3개가 아님) **지금 선택되지 않은 전문의 값도 연쇄로 갱신돼야
+   한다** — `_currentValues`를 갱신하고, 지금 보이는 전문이면 그리드도 다시 그린다.
+7. KioskSim은 본 앱을 참조하지 않는 독립 프로젝트(전용 `.sln`, NuGet 0개, `net48`/AnyCPU)이며 연쇄 표도 **독립
+   작성**한다(PRD §14.5, Phase 19 원칙).
+
+## 이 Phase에서 손대지 않는 것
+
+- `Services/Payment/**`, `Services/Pos/PosSocketServer.cs`, `TransactionQueue` — **`git diff`에 나타나면 설계 오류.**
+- 전문 스키마(`Protocol/Pos/Schemas/**`, KioskSim `Protocol/TelegramSchemas.cs`) — 필드 정의는 바뀌지 않는다.
+- 영수증 조립·출력(`Services/Receipt/**`, `NationalTaxReceiptAssembler`) — **`ReceiptValueFormatter.Installment` 하나만
+  예외**(P40-4 포인트 표기). 결제 알림창, 리더기 계층.
+- KioskSim 오류 주입 탭(`Net/ErrorInjectionClient.cs`, `BuildErrorInjectionTab`)과 `999999` 경로.
+
+## 작업 방식 — Task별 사이클과 에이전트 배정
+
+Phase 32와 같다: **구현 + 자체 테스트(구현 에이전트) → Opus 검증(diff 직접 읽기 + 핵심 명령 1개 재실행) → 수정
+(같은 에이전트에 SendMessage) → 체크포인트 1**. 구현 위임 모델은 Task 성격으로 고른다(5차 범위부터의 규칙).
+
+| Task | 담당 | 위임 단위 | 위임 프롬프트에 넣을 근거 |
+|---|---|---|---|
+| P40-1 본 앱 연쇄 표·변환기 | **`csharp-wpf-developer`** (Sonnet — 명세 완결 로직) | P40-1+2 한 번에 | PRD §14.3·§14.4, §3.3.2 `#34` 행, §13.7, 이 계획서 P40-1/P40-2 절 |
+| P40-2 스텁 LIST 형식 | 위와 같음 | (P40-1과 묶음) | — |
+| P40-3 결제 화면 연쇄 동작 | **`csharp-wpf-developer`** (Sonnet) — P40-1 에이전트에 SendMessage로 이어서 | P40-3+4 한 번에 | PRD §14.2·§14.3, 이 계획서 P40-3/P40-4 절, 착수 전 전제 1·2 |
+| P40-4 `#34` 선택 UI + 영수증 포인트 표기 | 위와 같음 (XAML 판단이 커지면 Opus가 화면 캡처로 직접 확인) | (P40-3과 묶음) | PRD §14.4(표시 형식·직접 입력·포인트 규칙), `docs/receipt_print/PRD.md` §2.2 #15 |
+| P40-5 KioskSim 연쇄 표·변환기 | **`csharp-wpf-developer`** (Opus — 업체가 읽을 샘플 구조 설계 판단) | P40-5+6 한 번에, **새 에이전트**(본 앱 표를 보지 않고 작성 — 독립 전사) | PRD §14.5, §3.3.2, §13.7, `연쇄 필드 정리.txt`, KioskSim `Protocol/TelegramSchemas.cs`. **본 앱 `Protocol/Pos/TelegramFieldChain*.cs`는 읽지 말 것**을 명시 |
+| P40-6 KioskSim 화면 연쇄 | 위와 같음 | (P40-5와 묶음) | 착수 전 전제 6 |
+| P40-7 두 표 자동 대조 | **`csharp-wpf-developer`** (Sonnet) — P40-1 에이전트에 SendMessage | 단독 | 이 계획서 P40-7 절, P40-5 결과(표 파일 경로·형태) |
+| P40-8 README 연쇄 절 | **Opus 직접** | — | — |
+| 체크포인트 1 | **`checkpoint-reviewer`** (같은 세션 서브에이전트) | P40-1~8 전체 | **중립 프롬프트**: diff 범위(`git diff <Phase 40 착수 커밋>..HEAD`), PRD §14, 이 계획서의 체크포인트 1 항목만 |
+| P40-9 통합 검증 | **Opus 직접 + 사용자** | — | — (관리자 권한 앱은 UIPI로 GUI 자동화 불가 — 필요하면 `asInvoker` 임시 전환 후 즉시 원복) |
+
+`pos-onecap-spec-expert`는 쓰지 않는다 — 전문 필드 정의는 바뀌지 않고, `800000 #22` 형식은 PRD §14.4에 원문 인용으로
+이미 정리돼 있다.
+
+---
+
+## P40-1. 본 앱 연쇄 표·변환기 정비 (`Protocol/Pos/TelegramFieldChainMap.cs`, `TelegramFieldChainConverter.cs`)
+
+### 구현할 것
+
+- `FieldChainConversion`에 **`SelectFromList`**를 추가한다. 출처 값(AN60)을 2바이트씩 잘라 목록을 만들고(뒤쪽
+  space 버림), **변환 결과(대상 필드 값)는 첫 항목**이다. 목록이 비면 빈 문자열. 목록 자체를 얻는 공개 함수
+  (`TelegramFieldChainConverter.SplitInstallmentList(string) → IReadOnlyList<string>`)를 따로 둬 P40-4 화면이 같은
+  규칙으로 콤보 항목을 만들게 한다(화면이 2바이트 분할을 다시 구현하지 않는다).
+- `#34` 항목을 `Fixed "00"` → `SelectFromList`, 출처 `800000 #22`로 바꾼다. 근거 문구는 PRD §14.4. **이제 `Fixed`를
+  쓰는 항목이 없다** — 열거값·분기는 남겨 두되(SPEC이 다시 고정값을 요구할 수 있음) "현재 사용처 없음" 주석.
+  `PaymentTelegramTabViewModel.ApplyFixedChainValues()`는 P40-3에서 정리한다.
+- **합산 입력 중 하나라도 공백(Trim 후 빈 문자열)이면 `Sum` 결과는 빈 문자열**이다(PRD §14.3 — `#29`가 `#28`이
+  비었을 때 `#27`만으로 계산되면 안 된다). 지금은 공백을 0으로 보는지 예외인지 먼저 코드로 확인하고, 바뀌는 동작을
+  보고서에 적는다.
+- 클래스 주석의 "고정값 1건(#34)" 등 개수 서술을 갱신한다.
+
+### Task 테스트
+
+- `TelegramFieldChainConverterSelfTest`에 추가: `SplitInstallmentList`(`"000203"`+space → `00,02,03`, `"00"`+space →
+  `00`, 전부 space → 빈 목록, 홀수 길이 잔여 처리), `SelectFromList`(첫 항목/빈 목록), `Sum` 공백 입력 → 빈 문자열.
+- `RealisticTestValueGeneratorSelfTest` ⑦을 새 표에 맞게 고친다(⑦이 `Fixed` 항목을 별도로 돌던 루프 정리).
+- `dotnet build` 경고 0·오류 0, 앱 기동 시 자가진단 로그 PASS.
+
+### Opus 확인 포인트
+
+- `Sum` 공백 규칙이 `#27`(501008 `#30`+`#31`+`#32`)에도 적용된다. 스텁 501008 응답에서 `#31`/`#32`가 `0`이 아니라
+  공백으로 오는 경우가 있는지 확인해, 정상 경로에서 `#27`이 비는 회귀가 없어야 한다.
+- 화면 쪽에 2바이트 분할 코드가 중복으로 생기지 않았다.
+
+### 완료 조건
+
+- [ ] 위 테스트 통과, 표에 `Fixed` 사용처 0건, 문서 주석의 개수 서술 일치
+
+## P40-2. 스텁 할부 LIST 형식 (`Protocol/Pos/RealisticTestValueGenerator.cs`)
+
+### 구현할 것
+
+- `CreditInstallmentList` = `"00020304050607080910111224"`, 체크카드 `values[22]` = `"00"`(PRD §14.4). 주석에 근거
+  (2026-10-06 사용자 확인 — SPEC 예시 `01020304`와 다름)를 기록한다.
+
+### Task 테스트 / 완료 조건
+
+- [ ] `RealisticTestValueGeneratorSelfTest`가 `800000 #22`를 검사하는 부분이 있으면 새 값으로 갱신해 PASS
+- [ ] 스텁 응답의 `#22`가 신용 `0002…24`, 체크 `00`인 것을 하네스 출력 또는 단위 확인으로 보고
+
+---
+
+## P40-3. 결제 화면 연쇄 동작 (`ViewModels/Payment/PaymentTelegramTabViewModel.cs`, `PaymentScreenViewModel.cs`)
+
+### 구현할 것
+
+1. **빈 칸 시작** — `Regenerate()`가 생성기로 요청을 채운 뒤, `TelegramFieldChainMap.Entries`에서 **대상이 이 탭인 모든
+   항목의 대상 필드를 빈 값으로** 덮는다(필드번호를 하드코딩하지 않고 표에서 얻는다). `IsChainedField`는 false.
+   생성기 자체는 고치지 않는다 — 생성기는 스텁 응답·영수증 하네스(⑦)도 쓰는 공용 부품이다. `ApplyFixedChainValues()`는
+   삭제한다(호출처 포함).
+2. **결과 신호** — 탭에 "이번 전송의 결과"를 알리는 신호를 추가한다(예: `event EventHandler<TelegramOutcome>
+   SendCompleted`, `TelegramOutcome` = `Success` / `Failed`). 판정은 다음과 같다.
+   - 응답 파싱 성공 **그리고** 응답 `#7` = `"000"` → `Success`
+   - 응답 `#7` ≠ `"000"`, 응답 파싱 실패, 전송 예외(연결·타임아웃) → `Failed`
+   `HasResponse`의 기존 의미·전이 순서는 그대로 둔다(착수 전 전제 1 — 영수증 자동 출력이 의존). `#7` 판정은 기존
+   응답코드 처리와 같은 방식(Trim 여부 등)으로 한다.
+3. **`PaymentScreenViewModel`** — 연쇄 적용을 `HasResponse` 감시에서 `SendCompleted` 구독으로 옮긴다.
+   - `Success` → 지금의 `ApplyChainMappingsFrom` 그대로(출처 = 그 탭).
+   - `Failed` → 출처가 그 탭인 항목의 대상 필드를 **빈 값 + `IsChainedField=false`**로 바꾼다(새 메서드, 예: `ClearChainedValue`).
+   - 영수증 자동 출력은 지금처럼 `HasResponse` 전이에 남긴다(옮기지 않는다).
+4. **`#29` 연동** — 자기참조 재계산(`RecomputeSelfReferencingChainTargets`)은 `#27`/`#28`이 비워질 때도 돌아야 하고,
+   P40-1의 `Sum` 공백 규칙으로 `#29`가 빈 칸이 된다. 빈 값이 된 `#29`는 `IsChainedField=false`로 둔다(값이 없는
+   필드에 연쇄 색이 남지 않게).
+5. **`#34` 값** — `800000` `Success` 시 `SelectFromList`로 첫 항목이 들어가고, 탭 행 ViewModel이 선택 목록을 갖게 한다
+   (P40-4가 바인딩). `Failed` 시 값·목록 모두 비운다.
+
+### Task 테스트
+
+- 자가진단(또는 기존 하네스 체계에 맞춘 시나리오)으로 ViewModel만 구동해 확인한다.
+  1. 창 생성 직후 연쇄 대상 필드 전부 빈 값, 비연쇄 필드는 값 있음
+  2. 501008 Success → 800000/902614 대상 채움
+  3. 501008 `#7`≠`000` → 501008 출처 필드만 빈 값, 800000 출처 필드 유지
+  4. 800000 Failed → `#28`/`#33`/`#34`/`#29` 빈 값
+  5. 전송 예외 → 3과 같은 비움
+  스텁 경로로 `#7`≠`000`을 만들기 어렵다면 테스트 전용 응답 주입 지점을 ViewModel 밖(`PosClient` 생성 주입 등)에
+  최소로 두고 이유를 주석에 적는다.
+- `dotnet build` 경고 0·오류 0.
+
+### Opus 확인 포인트
+
+- `git diff`에 `Services/Payment/`·`PosSocketServer.cs` 없음.
+- `HasResponse` 전이 순서·영수증 자동 출력 경로가 바뀌지 않았다(Phase 34 회귀 위험).
+- 비움이 **출처 전문 단위**로만 일어난다(PRD §14.3 — 다른 출처 값 보존).
+
+## P40-4. 결제 화면 `#34` 선택 UI + 영수증 포인트 표기 (`Views/PaymentScreenWindow.xaml`, `PosFieldRowViewModel.cs`, `Services/Receipt/ReceiptValueFormatter.cs`)
+
+### 구현할 것
+
+- 요청 행 ViewModel에 선택 목록(예: `IReadOnlyList<InstallmentOption> Options`, 표시 문구 `"00 (일시불)"`/`"03 (3개월)"`)을
+  두고, 목록이 있는 행만 ComboBox로 그린다(DataTemplateSelector 또는 트리거 — 기존 `RequestFieldBoxStyle`의 둥근 박스와
+  연쇄 색을 그대로 쓴다). 선택 변경은 기존 `Value` 파이프라인(`OnRequestRowValueChanged` → `_requestTelegram.Write`)을 탄다.
+- **ComboBox는 직접 입력을 허용한다**(`IsEditable=True`, PRD §14.4) — 포인트 납부(`63` 등)를 사용자가 직접 친다. 칸에
+  들어가는 값은 **2자리 코드**여야 한다: 목록에서 고르면 표시 문구가 아니라 코드(`03`)가 `Value`로 가고, 직접 친 값은
+  그대로 간다(바인딩 방식 — `SelectedValue`+`Text` 조합 등 — 은 구현 시 정하되, 전송 원문 `#34`가 `"(3개월)"` 같은 표시
+  문구로 오염되지 않는 것을 반드시 확인). 목록에 없는 값이어도 막지 않는다(N2 범위 검사는 기존 Write 경로에 맡긴다).
+  포인트 항목을 목록에 자동으로 넣지 않는다.
+- `ReceiptValueFormatter.Installment`: 숫자 값이 `60` 이상이면 `60`·`61` → `포인트 일시불`, 그 외 → `포인트 N개월`(N = 값 −
+  60). `60` 미만은 지금 규칙 그대로. XML 주석에 근거(`docs/receipt_print/PRD.md` §2.2 #15) 추가.
+- 목록이 없을 때(800000 전/실패)는 빈 박스. **ComboBox를 쓰는 필드는 `#34` 하나지만 필드번호를 XAML에 하드코딩하지
+  않는다** — "목록이 있는 행"이라는 데이터 조건으로 분기한다.
+- 작업 트리에 이미 `PaymentScreenWindow.xaml` 미커밋 변경이 있다 — **착수 전에 그 diff를 확인하고 사용자에게 처리
+  방법(커밋/보류)을 먼저 묻는다.**
+
+### Task 테스트 / 완료 조건
+
+- [ ] 빌드 후 화면 캡처: 창 직후 `#34` 빈 박스 → 800000 정상 응답 후 "00 (일시불)" 선택 상태 → 다른 항목을 고르면 전송
+      원문 `#34`가 바뀐다. 연쇄 색이 다른 연쇄 필드와 같다. compact 모드에서 레이아웃이 깨지지 않는다.
+- [ ] 체크카드(LIST=`00`)일 때 항목 1개.
+- [ ] `#34`에 `63`을 직접 입력 → 전송 원문 `#34`=`63`. 목록에서 "03 (3개월)" 선택 → 원문 `#34`=`03`(표시 문구가 섞이지 않음).
+- [ ] 영수증 포맷 자가진단(기존 영수증 자가진단에 추가): `00`/`01`→일시불, `03`→3개월, `60`/`61`→포인트 일시불,
+      `63`→포인트 3개월, `72`→포인트 12개월.
+
+---
+
+## P40-5. KioskSim 연쇄 표·변환기 (`src/KFTCTaxCAP.KioskSim/Protocol/TelegramChainMap.cs` 신설)
+
+### 구현할 것
+
+- **파일 하나**에 연쇄 표(대상 전문·대상 필드·출처 전문·출처 필드들·변환 종류)와 변환 함수(그대로/반글자 방지 절삭/합산
+  /목록 선택)를 모은다. 0패딩·표현 변환을 `TelegramBuffer.Write`의 기존 패딩에 맡길 수 있는지 먼저 확인하고 결정한다.
+- 항목마다 한글 주석으로 대상 필드명, 출처 필드명, 변환 이유(예: "AHN40 → AHN20, 한글 반 글자 방지")를 적는다. 파일 머리
+  주석에 "SPEC이 정본, 이 표는 참고 사본"(README와 같은 문구)과 SPEC에 명문 근거가 있는 항목(`902614 #11`/`#12`/`#29`)을
+  표시한다.
+- **BCL 타입만 사용**하고 KioskSim의 다른 타입(`TelegramSchemas` 등)에 의존하지 않는다 — P40-7이 이 파일을 본 앱에
+  링크 컴파일한다. 대상 필드 길이가 필요한 절삭은 길이를 인자로 받는다. 네임스페이스는 KioskSim 것을 유지한다.
+- **본 앱 `TelegramFieldChain*.cs`를 보지 않고** PRD §3.3.2·§13.7·§14.4와 `연쇄 필드 정리.txt`만으로 작성한다(독립 전사).
+
+### Task 테스트
+
+- KioskSim에는 테스트 프로젝트가 없다. 변환 경계(절삭: 한글/ASCII 혼합·정확히 한도·1바이트 초과, 합산: 공백 입력,
+  목록: `000203`/`00`/공백)를 확인하는 **작은 콘솔 확인 코드를 임시로** 돌리고 결과를 보고서에 붙인 뒤 지운다(업체
+  제공 소스에 검증용 잔여물을 남기지 않는다). 영구 검증은 P40-7이 맡는다.
+
+## P40-6. KioskSim 화면 연쇄 (`Forms/MainForm.cs`, `Preset/PresetStore.cs`)
+
+### 구현할 것
+
+1. **적용 함수 하나** — 예: `ApplyChainFromResponse(string sourceTx, byte[]? responseBody)`. `ShowResult`에서 응답 분해
+   직후 호출한다. 성공 판정 = 응답 본문 있음 + 응답 `#7`=`"000"`. 전송/수신 실패(`ResponseBody == null`)도 실패로
+   호출한다. `999999` 응답에서는 호출하지 않는다.
+2. 성공 → 표의 출처가 `sourceTx`인 항목을 계산해 대상 전문의 `_currentValues`에 쓰고 "연쇄 필드 집합"(예:
+   `HashSet<(string tx, int field)>`)에 추가한다. 실패 → 같은 항목의 대상 값을 빈 값으로 바꾸고 집합에서 제거한다.
+   이어서 `902614 #29`를 재계산한다. 지금 그리드가 대상 전문이면 `LoadGridForSchema`로 다시 그린다.
+3. 그리드: 연쇄 필드 셀은 별도 배경색(기존 회색 잠김/흰색 입력과 구분), **편집 가능**. 사용자가 `#27`/`#28`을 고치면
+   `#29`를 다시 계산한다(`Grid_CellValueChanged`). 사용자 편집 값은 다음 앞 전문 응답에서 덮어쓴다(PRD §14.3).
+4. `#34`: `800000` 성공 시 받은 LIST를 저장하고, `902614` 그리드의 `#34` 셀을 `DataGridViewComboBoxCell`(항목
+   `"00 (일시불)"` 등, 값은 2자리 코드)로 만든다. 목록이 없으면 빈 텍스트 셀. **직접 입력도 허용한다**(PRD §14.4 —
+   포인트 납부 `63` 등). `DataGridViewComboBoxCell`은 목록 밖 값을 받지 않으므로, 편집 컨트롤의 `DropDownStyle`을
+   `DropDown`으로 바꾸고 `CellValidating`에서 입력값을 셀 값으로 받아들이는 방식 등 WinForms 표준 패턴으로 처리한다.
+   업체가 읽을 코드이므로 이 처리에 "포인트 납부는 할부 개월 + 60을 직접 입력" 주석을 단다.
+5. **프리셋** — `PresetStore`에서 연쇄 대상 필드의 기본값을 지운다(`902614 #14`~`#31`·`#33`·`#34`·`#36`·`#37`,
+   `800000 #15`/`#16` 등 — 표에서 대상 목록을 얻어 정확히 맞춘다). 저장(`Save`)과 로드 때도 연쇄 대상 필드를 건너뛴다.
+   기존 프리셋 파일에 연쇄 필드 값이 남아 있어도 로드 시 무시한다.
+6. 전송 시 대상 전문의 연쇄 필드 중 빈 칸 개수를 세어 상태 표시줄에 "연쇄 필드 N개가 비어 있음(앞 전문 응답 전)"을
+   안내만 한다(전송은 막지 않는다).
+
+### Task 테스트
+
+- KioskSim 전용 `.sln` 빌드 경고 0·오류 0(`dotnet build src/KFTCTaxCAP.KioskSim/KFTCTaxCAP.KioskSim.sln`).
+- 본 앱(스텁 VAN)을 띄우고 KioskSim으로 501008 전송 → 800000/902614 화면 전환 시 연쇄 값·색 확인(캡처). 리더기가 필요한
+  800000/902614 왕복은 P40-9로 미룬다.
+- 기존 프리셋 파일(연쇄 필드 포함)이 있는 상태로 기동해도 연쇄 필드가 빈 칸인지 확인한다.
+
+### Opus 확인 포인트
+
+- 연쇄 로직이 적용 함수 하나와 표 파일에 모여 있다(이벤트 핸들러에 필드번호가 흩어지지 않음 — 업체 가독성).
+- 오류 주입 탭·`999999` 경로 diff 없음.
+
+---
+
+## P40-7. 두 연쇄 표 자동 대조 (본 앱 `KFTCTaxCAP.csproj`, `Services/Diagnostics/`)
+
+### 구현할 것
+
+- `KFTCTaxCAP.csproj`에 `<Compile Include="..\KFTCTaxCAP.KioskSim\Protocol\TelegramChainMap.cs" Link="Services\Diagnostics\Linked\KioskSimTelegramChainMap.cs" />`
+  처럼 **링크 컴파일**한다(본 앱이 KioskSim 소스 한 파일을 참조. KioskSim은 여전히 본 앱 없이 단독 빌드된다).
+- 자가진단 `TelegramChainMapParitySelfTest`: 두 표를 (대상 전문, 대상 필드) 키로 맞춰 **출처 전문·출처 필드 목록(순서
+  포함)·변환 종류**가 1:1로 같은지, 한쪽에만 있는 항목이 없는지 확인한다. 변환 종류 이름이 다르면 대응표를 테스트 안에
+  명시한다. 같은 입력에 대한 변환 결과(절삭·합산·목록)도 샘플 몇 개로 비교한다.
+- 기존 자가진단 실행 경로(`App.xaml.cs`의 기동 시 자가진단)에 등록한다.
+
+### Task 테스트 / 완료 조건
+
+- [ ] PASS 확인, 그리고 **일부러 KioskSim 표의 한 항목을 바꿔 FAIL이 나는 것**을 확인한 뒤 원복(보고서에 두 출력 첨부)
+- [ ] KioskSim 단독 빌드가 여전히 성공(링크 때문에 KioskSim 쪽에 본 앱 의존이 생기지 않았다)
+
+## P40-8. KioskSim README 연쇄 절 (Opus 직접)
+
+- "전문 간 필드 연쇄" 절 추가: 동작 요약(빈 칸 시작·정상 응답일 때만·실패 시 비움·`#34` 목록 선택), 표 파일 위치,
+  "SPEC 우선" 주의. 폴더 구조 절에 표 파일 추가. `연쇄 필드 정리.txt`와 항목 대조.
+- 업체 제공 압축본에 `연쇄 필드 정리.txt`를 함께 넣을지 사용자에게 확인한다(ROADMAP 열린 항목).
+
+---
+
+## 체크포인트 1 — `checkpoint-reviewer` 종합 검증 (P40-1~P40-8 직후)
+
+중립 프롬프트로 다음만 준다: diff 범위, PRD §14, 아래 확인 항목.
+
+1. 결제 화면·KioskSim 모두 시작 직후 연쇄 대상 필드가 빈 칸이고 비연쇄 kiosk 필드는 값이 있다.
+2. 연쇄 적용 조건이 `#7`=`000`이고, 실패(비정상 코드·응답 없음·파싱 실패) 시 출처 전문 단위로만 비운다. `#29` 연동.
+3. `#34`가 LIST 첫 항목 기본 선택, LIST에 온 값만 표시, 직접 입력 허용(전송 원문에 표시 문구가 섞이지 않음), 실패 시 비움.
+   영수증 `60` 이상 포인트 표기.
+4. `HasResponse`·영수증 자동 출력 경로 무변경, `Services/Payment/`·`PosSocketServer.cs` 무변경.
+5. KioskSim 단독 빌드, NuGet 0개 유지, 오류 주입·`999999` 무변경, 프리셋이 연쇄 필드를 저장·로드하지 않음.
+6. 두 표 대조 자가진단이 실제로 불일치를 잡아내는가(테스트가 항상 통과하도록 짜이지 않았는가).
+7. 본 앱 빌드·KioskSim 빌드 경고 0, 기동 시 자가진단 전부 PASS.
+
+## P40-9. 통합 검증 (Opus 직접 + 사용자)
+
+실 리더기 + 실 PIN, 스텁 VAN 경로.
+
+1. 결제 화면: 정순 신용카드(`#34` 기본 `00` → 다른 개월 선택) → `902614` 요청 원문 `#34`·영수증 할부개월수 확인. 체크카드
+   (LIST `00` 하나). 포인트 납부: `#34`에 `63` 직접 입력 → 원문 `#34`=`63`, 영수증 `포인트 3개월`(스텁 VAN은 `#34`를
+   검사하지 않으므로 승인 응답이 온다). 501008 실패를 유도한 뒤 비움 확인(스텁으로 `#7`≠`000`을 낼 수 없으면 P40-3의 주입 지점 사용 — 방법은
+   착수 시 확정).
+2. KioskSim: 같은 시나리오. KioskSim 쪽 실패는 본 앱을 끈 상태로 501008 전송(연결 거부 = 응답 없음)으로 유도한다.
+3. 회귀: `--pos-client-test`, `--payment-flow-test`, 기동 자가진단.
+4. `app.manifest`를 임시로 바꿨다면 원복 후 `git diff`로 확인한다.
+
+## 완료 기준 (Phase 전체)
+
+ROADMAP Phase 40 완료 기준과 같다.
+
+## 열린 항목
+
+- 업체 제공 패키지에 `연쇄 필드 정리.txt` 포함 여부(P40-8에서 확인).
+- SPEC `800000 #22` 예시(`01020304`)와 실제 형식(`00`으로 시작, `01` 없음)의 차이 — `spec_open_questions.md`에 기록하고 다음
+  SPEC 개정 때 판단.
+- 스텁으로 `#7`≠`000`을 만드는 방법(P40-3 Task 테스트·P40-9) — 착수 시 확정.
+
+## 착수 순서 요약
+
+P40-1+2 → P40-3+4 → P40-5+6(새 에이전트, 독립 작성) → P40-7 → P40-8 → 체크포인트 1 → P40-9

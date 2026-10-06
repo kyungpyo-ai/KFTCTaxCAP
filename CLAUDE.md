@@ -47,7 +47,7 @@ KioskSim은 범위 밖. 원본 캡처는 `docs/alert_dialog/screenshots/`(캡처
 `development_plan.md` Task 표에 근거 기록), 메인 세션은 Opus. Phase 38(알림창 컴포넌트)·39(기존 호출부 교체 — 앱 내
 `MessageBox.Show` 0건, 세 ViewModel `AlertRequested(AlertMessage)` 통합, 고정 문구 줄 폭 자동 검증) 완료(2026-10-02) — 5차 범위 종료.
 
-**Phase 번호는 다섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~(`docs/alert_dialog/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
+**Phase 번호는 다섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32·40(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~39(`docs/alert_dialog/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
 
 ## 원본 MFC 소스 (참고용, 이 저장소 밖)
 
