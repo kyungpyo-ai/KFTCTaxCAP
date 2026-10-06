@@ -195,8 +195,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
                         case 3: return "0200";
                         case 4: return "800000";
                         case 6: return "G";
-                        case 11: return "01";
-                        case 12: return "1234567";
+                        // #11/#12는 kiosk가 채우지 않는 공백 필드(SPEC 2026-09-22 개정) — 기본값 없음.
                         // #15/#16은 연쇄 필드(501008 응답에서 옴) — 기본값 없음(빈 칸으로 시작).
                         default: return string.Empty;
                     }

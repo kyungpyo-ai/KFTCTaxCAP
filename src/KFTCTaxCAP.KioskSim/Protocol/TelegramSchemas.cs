@@ -267,9 +267,11 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "space로 채움)에 따라 Kiosk로 분류했다. 전송 화면에서는 편집을 막아 둔다(현재 정의된 " +
                     "실제 값이 없다, 2026-08-28 확정 — 필요해지면 다시 편집 가능하게 바꾼다).", alwaysBlank: true),
                 new TelegramField(11, "이용기관 발행기관 분류코드", TelegramRepresentation.N, 2, 59, TelegramSetLocation.Kiosk,
-                    "SPEC 표는 kiosk 열만 체크."),
+                    "SPEC 2026-09-22 개정에서 SET 장소 표시가 삭제됐다 — kiosk가 채우지 않는 필드(space). " +
+                    "이용기관은 #2로 식별되므로 필요 없다. 전송 화면에서는 편집을 막아 둔다(2026-10-06).", alwaysBlank: true),
                 new TelegramField(12, "이용기관 지로 번호", TelegramRepresentation.N, 7, 61, TelegramSetLocation.Kiosk,
-                    "SPEC 표는 kiosk 열만 체크."),
+                    "SPEC 2026-09-22 개정에서 SET 장소 표시가 삭제됐다 — kiosk가 채우지 않는 필드(space). " +
+                    "#11과 같은 이유로 편집을 막아 둔다(2026-10-06).", alwaysBlank: true),
                 new TelegramField(13, "FILLER (응답 코드 구분)", TelegramRepresentation.N, 2, 68, TelegramSetLocation.Kiosk,
                     "SPEC 표에 SET 장소 체크가 전혀 없다(공란) — #10과 같은 이유로 Kiosk로 분류. 전송 " +
                     "화면에서는 편집을 막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true),
