@@ -9359,6 +9359,8 @@ KioskSim은 업체가 읽을 코드다. 연쇄 로직이 화면 이벤트 핸들
 
 - `Services/Payment/**`, `Services/Pos/PosSocketServer.cs`, `TransactionQueue` — **`git diff`에 나타나면 설계 오류.**
 - 전문 스키마(`Protocol/Pos/Schemas/**`, KioskSim `Protocol/TelegramSchemas.cs`) — 필드 정의는 바뀌지 않는다.
+  **예외(2026-10-06 사용자 확정)**: KioskSim `800000 #11`/`#12`를 공백 고정(`alwaysBlank`)으로 바꿨다 — SPEC 2026-09-22
+  개정(kiosk 미작성)을 KioskSim이 반영하지 못하고 있던 것을 P40-6 검증 중 발견(커밋 `f7a0883`). 위치·길이는 불변.
 - 영수증 조립·출력(`Services/Receipt/**`, `NationalTaxReceiptAssembler`) — **`ReceiptValueFormatter.Installment` 하나만
   예외**(P40-4 포인트 표기). 결제 알림창, 리더기 계층.
 - KioskSim 오류 주입 탭(`Net/ErrorInjectionClient.cs`, `BuildErrorInjectionTab`)과 `999999` 경로.
@@ -9398,7 +9400,10 @@ Phase 32와 같다: **구현 + 자체 테스트(구현 에이전트) → Opus �
   쓰는 항목이 없다** — 열거값·분기는 남겨 두되(SPEC이 다시 고정값을 요구할 수 있음) "현재 사용처 없음" 주석.
   `PaymentTelegramTabViewModel.ApplyFixedChainValues()`는 P40-3에서 정리한다.
 - **합산 입력 중 하나라도 공백(Trim 후 빈 문자열)이면 `Sum` 결과는 빈 문자열**이다(PRD §14.3 — `#29`가 `#28`이
-  비었을 때 `#27`만으로 계산되면 안 된다). 지금은 공백을 0으로 보는지 예외인지 먼저 코드로 확인하고, 바뀌는 동작을
+  비었을 때 `#27`만으로 계산되면 안 된다). **→ 구현 중 정정(2026-10-06 사용자 확정)**: 이 규칙을 모든 합산에 적용하면
+  서버가 501008 `#31`/`#32`를 공백으로 보낼 때 `#27`·`800000 #15`가 통째로 빈다(P30 L-5). 그래서 둘로 나눴다 —
+  응답 필드 합산(`902614 #27`, `800000 #15`)은 `Sum`(공백 = 0), 같은 전문 요청 필드 합산(`902614 #29`)만
+  `SumAllRequired`(하나라도 비면 빈 칸). 지금은 공백을 0으로 보는지 예외인지 먼저 코드로 확인하고, 바뀌는 동작을
   보고서에 적는다.
 - 클래스 주석의 "고정값 1건(#34)" 등 개수 서술을 갱신한다.
 

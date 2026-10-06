@@ -211,6 +211,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
                         // #11/#12, #14~#16, #18~#31, #33/#34, #36/#37은 연쇄 필드(501008/800000 응답에서
                         // 옴, Protocol/TelegramChainMap.cs) — 기본값 없음(빈 칸으로 시작, PRD §14.2).
                         case 32: return DateTime.Now.ToString("yyyyMMdd");
+                        case 35: return "01012345678"; // 연락 전화 번호 — 실제로는 납부자가 입력하는 값(테스트 값)
                         case 39: return "O";
                         case 41: return "Q";
                         case 42: return "1234567890BF0001";

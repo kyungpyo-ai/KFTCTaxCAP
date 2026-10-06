@@ -285,7 +285,9 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
             // 합산 자리수 초과 등으로 던지는 PosProtocolException이 ApplyChainedValue 내부의 기존
             // try/catch(OnRequestRowValueChanged)를 거치지 못하고 이 메서드 밖으로 그대로 전파될 수
             // 있다 — 이벤트 핸들러(OnTabPropertyChanged) 안에서 잡히지 않으면 창이 죽으므로 여기서
-            // 직접 감싼다. 실패한 필드는 건너뛰고 다음 항목을 계속 처리한다.
+            // 직접 감싼다. 실패한 필드는 비우고 다음 항목을 계속 처리한다 — Phase 40 체크포인트 1 L-1(2026-10-06):
+            // 예전엔 건너뛰기만 해서 이전 응답 값이 그대로 남았다. PRD §14.3 "화면 값은 언제나 가장 최근 정상
+            // 응답에서 온 것"에 맞춰 비운다(KioskSim TelegramChainMap도 변환 실패 시 빈 칸 — 두 프로그램 동작 통일).
             string computed;
             try
             {
@@ -294,6 +296,7 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
             }
             catch (PosProtocolException)
             {
+                targetTab.ClearChainedValue(entry.TargetFieldNumber);
                 continue;
             }
 
