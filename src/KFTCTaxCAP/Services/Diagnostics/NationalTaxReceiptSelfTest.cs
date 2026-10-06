@@ -65,7 +65,14 @@ internal static class NationalTaxReceiptSelfTest
         ok &= Check("Installment 01", ReceiptValueFormatter.Installment("01"), "일시불");
         ok &= Check("Installment 00", ReceiptValueFormatter.Installment("00"), "일시불");
         ok &= Check("Installment 03", ReceiptValueFormatter.Installment("03"), "3개월");
-        ok &= Check("Installment 공백", ReceiptValueFormatter.Installment("  "), string.Empty);
+        // Phase 40 P40-4 — 60 이상은 포인트 납부(할부 개월 + 60): 60·61 → 포인트 일시불, 그 외 → 포인트 N개월.
+        ok &= Check("Installment 59(포인트 아님)", ReceiptValueFormatter.Installment("59"), "59개월");
+        ok &= Check("Installment 60", ReceiptValueFormatter.Installment("60"), "포인트 일시불");
+        ok &= Check("Installment 61", ReceiptValueFormatter.Installment("61"), "포인트 일시불");
+        ok &= Check("Installment 63", ReceiptValueFormatter.Installment("63"), "포인트 3개월");
+        ok &= Check("Installment 72", ReceiptValueFormatter.Installment("72"), "포인트 12개월");
+        ok &= Check("Installment 99", ReceiptValueFormatter.Installment("99"), "포인트 39개월");
+        ok &= Check("Installment 공백",ReceiptValueFormatter.Installment("  "), string.Empty);
         ok &= Check("Installment 비정상", ReceiptValueFormatter.Installment("XY"), "XY");
         ok &= Check("Installment null", ReceiptValueFormatter.Installment(null), string.Empty);
 

@@ -24,7 +24,7 @@ namespace KFTCTaxCAP.ViewModels.Payment;
 /// </summary>
 public sealed partial class PaymentScreenViewModel : ObservableObject
 {
-    public PaymentScreenViewModel() : this(new ReceiptPrintService(), new LastReceiptStore())
+    public PaymentScreenViewModel() : this(new ReceiptPrintService(), new LastReceiptStore(), null)
     {
     }
 
@@ -32,6 +32,15 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
     /// Phase 35 P35-1 — 직전 영수증 저장소도 같이 받는다(self는 임시 DB 경로를 넣는다).
     /// 운영 경로는 위 기본 생성자만 쓴다.</summary>
     internal PaymentScreenViewModel(ReceiptPrintService receiptPrintService, LastReceiptStore lastReceiptStore)
+        : this(receiptPrintService, lastReceiptStore, null)
+    {
+    }
+
+    /// <summary>Phase 40 P40-3 self 검증용 — 탭 3개의 전송 함수를 바꿔 끼운다(<see cref="PaymentTelegramTabViewModel"/>
+    /// 의 <c>transportOverride</c> 주석 참고). 운영 경로는 <see langword="null"/>(소켓 왕복).</summary>
+    internal PaymentScreenViewModel(
+        ReceiptPrintService receiptPrintService, LastReceiptStore lastReceiptStore,
+        Func<byte[], TimeSpan, Task<byte[]>>? transportOverride)
     {
         _receiptPrintService = receiptPrintService ?? throw new ArgumentNullException(nameof(receiptPrintService));
         _lastReceiptStore = lastReceiptStore ?? throw new ArgumentNullException(nameof(lastReceiptStore));
@@ -47,10 +56,10 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
 
         Tabs = new ObservableCollection<PaymentTelegramTabViewModel>
         {
-            new("국고 상세 고지내역 조회", NoticeInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider),
-            new("카드 정보 조회", CardInfoInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider),
+            new("국고 상세 고지내역 조회", NoticeInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider, transportOverride),
+            new("카드 정보 조회", CardInfoInquirySchema.Create(), () => PosClient.DefaultResponseTimeout, kioskIdProvider, transportOverride),
             new("국고 신용카드 승인요청", CardApprovalSchema.Create(),
-                () => PosClient.ComputeCardApprovalResponseTimeout(shopSettingsService.Load()), kioskIdProvider),
+                () => PosClient.ComputeCardApprovalResponseTimeout(shopSettingsService.Load()), kioskIdProvider, transportOverride),
         };
 
         // 체크포인트 2 M-2 수정(2026-09-21, 사용자 확정 "통신중일때는 다른 걸 못하게 하는게 맞아") —
@@ -67,7 +76,10 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         // 탭의 전송/재생성 버튼만 개별적으로 막는 방식(PaymentTelegramTabViewModel.IsBlockedByOtherTab)
         // 으로 바꿨다.
         foreach (PaymentTelegramTabViewModel tab in Tabs)
+        {
             tab.PropertyChanged += OnTabPropertyChanged;
+            tab.SendCompleted += OnTabSendCompleted;
+        }
     }
 
     private void OnTabPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -77,13 +89,48 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
         else if (e.PropertyName == nameof(PaymentTelegramTabViewModel.HasResponse)
                  && sender is PaymentTelegramTabViewModel { HasResponse: true } sourceTab)
         {
-            ApplyChainMappingsFrom(sourceTab);
-
-            // Phase 34 P34-3(docs/receipt_print/PRD.md §4.1) — 응답 처리(연쇄 적용) **뒤**에 자동 출력을
-            // 시도한다. 902614 탭의 false→true 전이만 대상이다(SendAsync가 전송 직전 HasResponse를 false로
-            // 떨어뜨려 응답마다 전이가 보장된다).
+            // Phase 40 P40-3 — 전문 간 연쇄는 이제 HasResponse가 아니라 SendCompleted 신호(OnTabSendCompleted)가
+            // 맡는다. 이 분기는 영수증 자동 출력 전용이다 — HasResponse의 의미("응답을 받았다")와 전이는 그대로.
+            //
+            // Phase 34 P34-3(docs/receipt_print/PRD.md §4.1) — 응답 처리(연쇄 적용, SendCompleted가 HasResponse=true
+            // 직전에 이미 끝남) **뒤**에 자동 출력을 시도한다. 902614 탭의 false→true 전이만 대상이다(SendAsync가
+            // 전송 직전 HasResponse를 false로 떨어뜨려 응답마다 전이가 보장된다).
             if (sourceTab.TransactionTypeCode == CardApprovalTransactionTypeCode)
                 PrintReceiptIfApproved(sourceTab);
+        }
+    }
+
+    /// <summary>
+    /// Phase 40 P40-3(PRD §14.3) — 탭의 전송 결과 신호를 받아 연쇄를 적용하거나 비운다.
+    /// <see cref="TelegramOutcome.Success"/>면 <see cref="ApplyChainMappingsFrom"/>(앞 전문 응답 → 뒤 전문 채움),
+    /// <see cref="TelegramOutcome.Failed"/>면 <see cref="ClearChainedFrom"/>(그 탭에서 온 값만 비움).
+    /// </summary>
+    private void OnTabSendCompleted(object? sender, TelegramOutcome outcome)
+    {
+        if (sender is not PaymentTelegramTabViewModel sourceTab)
+            return;
+
+        if (outcome == TelegramOutcome.Success)
+            ApplyChainMappingsFrom(sourceTab);
+        else
+            ClearChainedFrom(sourceTab);
+    }
+
+    /// <summary>
+    /// Phase 40 P40-3(PRD §14.3) — <paramref name="sourceTab"/>이 실패했을 때, <b>출처가 그 전문인 항목의 대상
+    /// 필드만</b> 빈 칸으로 되돌린다(다른 출처에서 온 값은 건드리지 않는다 — 예: 800000 실패 시 902614 #28/#33/#34만
+    /// 비우고 501008에서 온 #14~#27은 유지). 자기참조 항목(902614 #29)은 출처가 같은 전문의 요청 필드라 여기서
+    /// 직접 비우지 않는다 — 입력(#27/#28)이 비워지면 <see cref="PaymentTelegramTabViewModel"/>의 자기참조 재계산
+    /// (SumAllRequired)이 알아서 빈 칸으로 만든다.
+    /// </summary>
+    private void ClearChainedFrom(PaymentTelegramTabViewModel sourceTab)
+    {
+        foreach (TelegramFieldChainMap.ChainEntry entry in TelegramFieldChainMap.Entries)
+        {
+            if (entry.SourceTelegram != sourceTab.TransactionTypeCode || entry.SourceTelegram == entry.TargetTelegram)
+                continue;
+
+            FindTab(entry.TargetTelegram)?.ClearChainedValue(entry.TargetFieldNumber);
         }
     }
 
@@ -249,6 +296,11 @@ public sealed partial class PaymentScreenViewModel : ObservableObject
             {
                 continue;
             }
+
+            // Phase 40 P40-4 — 목록에서 고르는 필드는 선택 목록(같은 분할 규칙 SplitInstallmentList)을 먼저 채우고
+            // 값(= 목록 첫 항목, computed)을 나중에 쓴다. 화면이 2바이트 분할을 다시 구현하지 않는다.
+            if (entry.Conversion == FieldChainConversion.SelectFromList)
+                targetTab.ApplyChainedOptions(entry.TargetFieldNumber, TelegramFieldChainConverter.SplitInstallmentList(sourceValues[0]));
 
             targetTab.ApplyChainedValue(entry.TargetFieldNumber, computed);
         }

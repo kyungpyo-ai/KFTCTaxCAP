@@ -115,6 +115,76 @@
                 <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
                     <Setter Property="Foreground" Value="{StaticResource TblEmptyTextBrush}"/>
                 </DataTrigger>
+                <!-- Phase 40 P40-4 — 선택 목록이 있는 행은 아래 콤보가 같은 자리를 쓴다(필드번호가 아니라
+                     HasOptions 데이터 조건으로 분기). -->
+                <DataTrigger Binding="{Binding HasOptions}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!--
+            Phase 40 P40-4(PRD §14.4) — 선택 목록이 있는 요청 행(현재 902614 #34 할부 개월 수)용 편집 가능 콤보.
+            RequestFieldBoxStyle의 둥근 박스·연쇄 색을 그대로 쓰도록 콤보 자체는 테두리·배경이 없다(바깥 Border가 그린다).
+            - IsEditable=True: 목록에 없는 값(포인트 납부 63 등)을 직접 칠 수 있다. 입력은 Text → Value로 곧장 간다.
+            - TextSearch.TextPath="Code": 목록에서 고르면 편집 칸에 표시 문구("03 (3개월)")가 아니라 코드("03")가
+              들어간다 → Value·전송 원문 #34에 표시 문구가 섞이지 않는다. 드롭다운 항목은 ItemTemplate이 Display를 보여준다.
+            - IsTextSearchEnabled=False: 직접 입력 중 자동완성이 코드를 바꿔 끼우지 않게 한다.
+            - 표준 TextBox 암시적 스타일(MinHeight 44)이 템플릿 안 편집 칸에 적용되지 않도록 Style을 비운다.
+            HasOptions가 false인 행(대부분)에서는 Collapsed라 영향이 없다.
+        -->
+        <Style x:Key="RequestFieldComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="IsEditable" Value="True"/>
+            <Setter Property="IsTextSearchEnabled" Value="False"/>
+            <Setter Property="FontFamily" Value="{StaticResource PretendardMediumFontFamily}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource TitleTextBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource SkinnedComboBoxItemStyle}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="PART_EditableTextBox" Grid.Column="0" Style="{x:Null}"
+                                     BorderThickness="0" Background="Transparent" Padding="0" Margin="0"
+                                     MinHeight="0" VerticalContentAlignment="Center" VerticalAlignment="Center"
+                                     FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
+                                     Foreground="{TemplateBinding Foreground}" Focusable="True"/>
+                            <ToggleButton Grid.Column="1" Focusable="False" ClickMode="Press" Width="22" Margin="2,0,0,0"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent">
+                                            <Path Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource SubTextBrush}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
+                                   Focusable="False" PopupAnimation="Fade" PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}">
+                                <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}" Margin="0,8,0,0" SnapsToDevicePixels="True">
+                                    <ScrollViewer SnapsToDevicePixels="True">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasOptions}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -133,7 +203,20 @@
                 <TextBlock Text="{Binding NumberAndName}" FontFamily="{StaticResource PretendardMediumFontFamily}" FontSize="12" Foreground="{StaticResource SubTextBrush}"
                            TextTrimming="CharacterEllipsis" Margin="2,0,0,6"/>
                 <Border Style="{StaticResource RequestFieldBoxStyle}">
-                    <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource RequestFieldTextBoxStyle}"/>
+                    <Grid>
+                        <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource RequestFieldTextBoxStyle}"/>
+                        <!-- Phase 40 P40-4 — 선택 목록이 있는 행(HasOptions)에서만 보이는 편집 가능 콤보. 항목 표시는
+                             Display("03 (3개월)"), 칸에 들어가는 값은 Code("03")(TextSearch.TextPath) — 직접 입력도 허용. -->
+                        <ComboBox ItemsSource="{Binding Options}" TextSearch.TextPath="Code"
+                                  Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  Style="{StaticResource RequestFieldComboBoxStyle}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type payment:PosFieldOption}">
+                                    <TextBlock Text="{Binding Display}" FontSize="13"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
                 </Border>
             </StackPanel>
         </DataTemplate>

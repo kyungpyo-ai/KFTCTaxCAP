@@ -47,10 +47,15 @@ public static class ReceiptValueFormatter
         return trimmed;
     }
 
+    /// <summary>포인트 납부는 <c>#34</c>에 할부 개월 수 + 60을 넣는다(<see cref="Installment"/> 주석).</summary>
+    private const int PointInstallmentOffset = 60;
+
     /// <summary>
     /// 할부개월수(N2) → <c>00</c>/<c>01</c>은 <c>일시불</c>, 그 외 숫자는 앞자리 0을 뗀 <c>N개월</c>
-    /// (예: <c>03</c> → <c>3개월</c>, PRD §2.2 #15). 숫자가 아니면 트림한 원문 그대로. 공백뿐이거나
-    /// <c>null</c>이면 빈 문자열.
+    /// (예: <c>03</c> → <c>3개월</c>, PRD §2.2 #15). <b>60 이상은 포인트 납부</b>(할부 개월 + 60, 2026-10-06
+    /// 사용자 확인, docs/receipt_print/PRD.md §2.2 #15 · docs/payment_relay/PRD.md §14.4) — <c>60</c>·<c>61</c> →
+    /// <c>포인트 일시불</c>, 그 외 → <c>포인트 N개월</c>(N = 값 − 60, 예 <c>63</c> → <c>포인트 3개월</c>). 숫자가
+    /// 아니면 트림한 원문 그대로. 공백뿐이거나 <c>null</c>이면 빈 문자열.
     /// </summary>
     public static string Installment(string? raw)
     {
@@ -62,7 +67,15 @@ public static class ReceiptValueFormatter
             return "일시불";
 
         if (IsAllDigits(trimmed) && int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out int months))
+        {
+            if (months >= PointInstallmentOffset)
+            {
+                int pointMonths = months - PointInstallmentOffset;
+                return pointMonths <= 1 ? "포인트 일시불" : $"포인트 {pointMonths}개월";
+            }
+
             return $"{months}개월";
+        }
 
         return trimmed;
     }

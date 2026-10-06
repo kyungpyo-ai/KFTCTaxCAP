@@ -44,6 +44,12 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     /// </summary>
     private const int TransactionTypeFieldNumber = 4;
 
+    /// <summary>응답 코드 필드 번호(3전문 공통 <c>#7</c>) — <see cref="SendCompleted"/> 판정에 쓴다.</summary>
+    private const int ResponseCodeFieldNumber = 7;
+
+    /// <summary>정상 응답 코드(SPEC p.6 — <see cref="NationalTaxReceiptAssembler"/>의 승인 판정과 같은 값).</summary>
+    private const string SuccessResponseCode = "000";
+
     /// <summary>Phase 37 P37-1 — <see cref="RealisticTestValueGenerator"/>에 넘기는 난수원. 탭 인스턴스마다
     /// <c>new Random()</c>을 만들면 짧은 간격으로 생성된 세 탭이 같은 시드(시간 기반)를 받아 같은 값을 낼 수
     /// 있어(StubVanRelayService L-2와 같은 이유) static 하나를 공유한다. UI 스레드에서만 쓰인다.</summary>
@@ -92,9 +98,20 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     /// 캐시에 남아 있으면 다른 탭이 그 값을 계속 읽어가는 모순이 생기기 때문이다.</summary>
     private PosTelegram? _lastResponseTelegram;
 
+    /// <summary>
+    /// 요청 본문을 보내고 응답 본문을 받는 전송 함수. 운영 경로는 <see langword="null"/>(기본 =
+    /// <see cref="PosClient"/>로 localhost:8002 왕복, PRD §12.4). <b>자가진단 전용 주입점</b>이다 — 결과 신호
+    /// (<see cref="SendCompleted"/>)의 실패 분기(#7≠000, 파싱 실패, 전송 예외)는 스텁 VAN이 항상 <c>000</c>만
+    /// 돌려주고 소켓 서버·리더기 없이는 만들 수 없어, 소켓 계층 대신 이 함수 하나만 바꿔 끼워 ViewModel만으로
+    /// 5개 시나리오를 재현한다(서버/스텁/<c>Services/**</c>는 손대지 않는다).
+    /// </summary>
+    private readonly Func<byte[], TimeSpan, Task<byte[]>>? _transportOverride;
+
     public PaymentTelegramTabViewModel(
-        string tabTitle, PosTelegramSchema schema, Func<TimeSpan> responseTimeoutProvider, Func<string> kioskIdProvider)
+        string tabTitle, PosTelegramSchema schema, Func<TimeSpan> responseTimeoutProvider, Func<string> kioskIdProvider,
+        Func<byte[], TimeSpan, Task<byte[]>>? transportOverride = null)
     {
+        _transportOverride = transportOverride;
         _kioskIdProvider = kioskIdProvider;
         TabTitle = tabTitle;
         _schema = schema;
@@ -173,6 +190,20 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     public IRelayCommand RegenerateCommand { get; }
 
     public IAsyncRelayCommand SendCommand { get; }
+
+    /// <summary>
+    /// Phase 40 P40-3(PRD §14.3) — 전송 1회가 끝날 때마다 <b>정확히 한 번</b> 올라오는 결과 신호. 판정은
+    /// <see cref="SendAsync"/>가 한다: 응답 파싱 성공 &amp;&amp; 응답 <c>#7</c>(트림) = <c>"000"</c> →
+    /// <see cref="TelegramOutcome.Success"/>, 그 외(#7≠000 / 파싱 실패 / 전송 예외) →
+    /// <see cref="TelegramOutcome.Failed"/>. <see cref="PaymentScreenViewModel"/>이 구독해 전문 간 연쇄를
+    /// 적용(Success)하거나 이 탭에서 온 값을 비운다(Failed).
+    ///
+    /// <b>HasResponse와의 관계</b> — <see cref="HasResponse"/>의 의미·전이는 그대로다(응답을 받았는지; 902614
+    /// 영수증 자동 출력이 그 false→true 전이를 쓴다). 응답이 오는 경로에서는 이 신호가 <c>HasResponse = true</c>
+    /// <b>직전에</b> 올라간다(연쇄 적용 → 영수증 출력 순서 유지 — Phase 30·34와 같은 순서). 전송 예외는
+    /// <c>HasResponse</c>가 false인 채 끝나므로 이 신호만이 실패를 알린다.
+    /// </summary>
+    public event EventHandler<TelegramOutcome>? SendCompleted;
 
     partial void OnHasResponseChanged(bool value) => RefreshStatusBadge();
 
@@ -263,12 +294,20 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                 _requestTelegram.Write(42, kioskId);
         }
 
+        // Phase 40 P40-3(PRD §14.2) — 연쇄 대상 필드는 빈 칸으로 시작한다(앞 전문의 정상 응답이 오기 전에는 값이
+        // 없다). 대상은 연쇄 표에서 얻는다(필드번호 하드코딩 금지) — 이 탭이 대상인 모든 항목, 자기참조(#29)
+        // 포함. 생성기는 스텁 응답·영수증 하네스도 쓰는 공용 부품이라 고치지 않고 여기서 덮는다. 행은 이 아래
+        // RebuildRequestRows가 이 전문에서 만들므로 IsChainedField는 자연히 false다.
+        foreach (TelegramFieldChainMap.ChainEntry entry in TelegramFieldChainMap.Entries)
+        {
+            if (entry.TargetTelegram == _schema.TransactionTypeCode)
+                _requestTelegram.Write(entry.TargetFieldNumber, string.Empty);
+        }
+
         RebuildRequestRows();
 
         foreach (KeyValuePair<int, string> entry in chainedSnapshot)
             ApplyChainedValue(entry.Key, entry.Value);
-
-        ApplyFixedChainValues();
 
         // _lastResponseTelegram을 비운다 — HasResponse=false인데 이전 응답이 캐시에 남아 있으면 다른
         // 탭이 그 값을 계속 읽어가는 모순이 생긴다(PRD §13.6).
@@ -278,21 +317,6 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         HasResponse = false;
         StatusMessage = string.Empty;
         IsStatusError = false;
-    }
-
-    /// <summary>Phase 30 P30-4(PRD §13.3 "902614 #34 = 고정 '00'") — 출처 전문이 없는 고정값 연쇄를
-    /// 적용한다. 어느 전문을 보냈는지와 무관하게 <see cref="Regenerate"/> 직후 항상 적용된다.</summary>
-    private void ApplyFixedChainValues()
-    {
-        foreach (TelegramFieldChainMap.ChainEntry entry in TelegramFieldChainMap.Entries)
-        {
-            if (entry.Conversion != FieldChainConversion.Fixed || entry.TargetTelegram != _schema.TransactionTypeCode)
-                continue;
-
-            string computed = TelegramFieldChainConverter.Convert(
-                entry.Conversion, Array.Empty<string>(), _schema[entry.TargetFieldNumber].Length, entry.FixedValue);
-            ApplyChainedValue(entry.TargetFieldNumber, computed);
-        }
     }
 
     /// <summary>Phase 30 P30-4(PRD §13.3) — <see cref="PaymentScreenViewModel"/>(다른 탭 응답 연쇄) 및
@@ -305,8 +329,41 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         if (row is null)
             return; // 현재 연쇄 대상은 전부 kiosk 소유 필드라 RequestRows에 항상 있어야 정상 — 방어적 처리.
 
-        row.IsChainedField = true;
+        // Phase 40 P40-3 — 값이 비면(예: 입력이 비어 SumAllRequired가 빈 칸을 낸 902614 #29) 연쇄 색도 남기지 않는다.
+        row.IsChainedField = value.Length > 0;
         row.Value = value; // Value setter가 OnRequestRowValueChanged를 통해 _requestTelegram.Write까지 반영.
+    }
+
+    /// <summary>
+    /// Phase 40 P40-4(PRD §14.4) — 목록에서 고르는 필드(<see cref="FieldChainConversion.SelectFromList"/>)의 선택
+    /// 목록을 갱신한다. <b>값을 쓰기 전에 먼저</b> 부른다(콤보가 목록 교체 중 칸 텍스트를 건드려도 뒤따르는
+    /// <see cref="ApplyChainedValue"/>가 최종 값을 정한다). 표시 문구는 영수증 할부 표기와 같은 함수로 만든다.
+    /// </summary>
+    internal void ApplyChainedOptions(int fieldNumber, IReadOnlyList<string> codes)
+    {
+        PosFieldRowViewModel? row = RequestRows.FirstOrDefault(r => r.Number == fieldNumber);
+        if (row is null)
+            return;
+
+        row.Options = codes
+            .Select(code => new PosFieldOption(code, $"{code} ({KFTCTaxCAP.Services.Receipt.ReceiptValueFormatter.Installment(code)})"))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Phase 40 P40-3(PRD §14.3) — 앞 전문이 실패했을 때 그 전문에서 온 연쇄 값을 비운다: 값 빈 칸 + 연쇄 표시
+    /// 해제 + 선택 목록 비움. 값 변경은 기존 <see cref="OnRequestRowValueChanged"/> 파이프라인을 타므로 이 필드를
+    /// 입력으로 삼는 자기참조 합산(902614 #29)도 같이 다시 계산돼 빈 칸이 된다.
+    /// </summary>
+    internal void ClearChainedValue(int fieldNumber)
+    {
+        PosFieldRowViewModel? row = RequestRows.FirstOrDefault(r => r.Number == fieldNumber);
+        if (row is null)
+            return;
+
+        row.Options = Array.Empty<PosFieldOption>();
+        row.IsChainedField = false;
+        row.Value = string.Empty;
     }
 
     /// <summary>Phase 30 P30-4(PRD §13.6) — 다른 탭(<see cref="PaymentScreenViewModel"/>)이 이 응답을
@@ -430,17 +487,28 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         HasResponse = false;
         _lastResponseTelegram = null;
 
+        // Phase 40 P40-3 — SendCompleted를 정확히 한 번만 올리기 위한 표지. 응답이 온 경로는 아래 try 안에서
+        // HasResponse=true 직전에 올리고, 그 전에(요청 직렬화·연결·전송·수신) 던진 예외는 catch에서 올린다.
+        bool completionRaised = false;
+
         try
         {
             byte[] requestBody = _requestTelegram.ToBody();
             TimeSpan timeout = _responseTimeoutProvider();
 
             byte[] responseBody;
-            using (var client = new PosClient())
+            if (_transportOverride is not null)
             {
+                responseBody = await _transportOverride(requestBody, timeout).ConfigureAwait(true);
+            }
+            else
+            {
+                using var client = new PosClient();
                 await client.ConnectAsync().ConfigureAwait(true);
                 responseBody = await client.SendAsync(requestBody, timeout).ConfigureAwait(true);
             }
+
+            TelegramOutcome outcome = TelegramOutcome.Failed;
 
             // Phase 30 P30-4(PRD §13.6) — _lastResponseTelegram을 HasResponse=true보다 먼저 채운다.
             // HasResponse setter가 PropertyChanged를 동기적으로 발생시키고, PaymentScreenViewModel이
@@ -455,6 +523,13 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                 RebuildResponseRows(responseTelegram);
                 StatusMessage = "전송 완료 — 응답 수신됨";
                 IsStatusError = false;
+
+                // Phase 40 P40-3(PRD §14.3) — 결과 판정: 파싱 성공 && 응답 #7(트림) == "000"(AN 필드라 Read가
+                // 이미 패딩을 뗀다. 기존 승인 판정 NationalTaxReceiptAssembler.IsApproved와 같은 방식).
+                // 응답 #7은 3개 스키마 공통부 필드 번호(PosRequestTelegram.TransactionTypeFieldNumber 옆, SPEC p.5~7).
+                outcome = responseTelegram.Read(ResponseCodeFieldNumber).Trim() == SuccessResponseCode
+                    ? TelegramOutcome.Success
+                    : TelegramOutcome.Failed;
             }
             catch (PosProtocolException ex)
             {
@@ -467,12 +542,25 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                 IsStatusError = true;
             }
 
+            // 결과 신호는 HasResponse=true보다 먼저 — 연쇄 적용이 영수증 자동 출력(HasResponse 전이) 앞에 오는
+            // 기존 순서를 유지한다(이 클래스 SendCompleted 주석).
+            completionRaised = true;
+            SendCompleted?.Invoke(this, outcome);
+
             HasResponse = true;
         }
         catch (Exception ex)
         {
             StatusMessage = $"전송 실패: {ex.Message}";
             IsStatusError = true;
+
+            // 전송 예외(연결 실패·타임아웃 등)는 HasResponse를 false로 둔 채 끝난다 — 연쇄 쪽에 실패를 알릴 수
+            // 있는 유일한 신호다. 구독자 핸들러가 던진 예외로 여기 온 경우(이미 올렸음)에는 다시 올리지 않는다.
+            if (!completionRaised)
+            {
+                completionRaised = true;
+                SendCompleted?.Invoke(this, TelegramOutcome.Failed);
+            }
         }
         finally
         {

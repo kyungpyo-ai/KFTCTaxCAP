@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using KFTCTaxCAP.Protocol.Pos;
 
@@ -69,6 +70,16 @@ public sealed partial class PosFieldRowViewModel : ObservableObject
     /// 제외)와 P30-6(색 구분)이 이 값을 쓴다 — 이 Task 범위는 값을 정확히 세팅하는 것까지다.</summary>
     [ObservableProperty]
     private bool isChainedField;
+
+    /// <summary>Phase 40 P40-4(PRD §14.4) — 이 필드가 목록에서 고르는 필드일 때의 선택 항목(예: 800000 <c>#22</c>
+    /// LIST에서 만든 902614 <c>#34</c> 목록). 비어 있으면 일반 입력 칸이다. 목록이 있어도 칸 값은 직접 입력할 수
+    /// 있다(포인트 납부 <c>63</c> 등) — 목록은 제안일 뿐 값을 제한하지 않는다.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOptions))]
+    private IReadOnlyList<PosFieldOption> options = Array.Empty<PosFieldOption>();
+
+    /// <summary>XAML이 필드 번호가 아니라 이 데이터 조건으로 콤보/텍스트 입력을 가른다.</summary>
+    public bool HasOptions => Options.Count > 0;
 
     partial void OnValueChanged(string value) => _onValueChanged?.Invoke(this);
 }

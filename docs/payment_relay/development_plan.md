@@ -9609,6 +9609,10 @@ Phase 32와 같다: **구현 + 자체 테스트(구현 에이전트) → Opus �
 2. KioskSim: 같은 시나리오. KioskSim 쪽 실패는 본 앱을 끈 상태로 501008 전송(연결 거부 = 응답 없음)으로 유도한다.
 3. 회귀: `--pos-client-test`, `--payment-flow-test`, 기동 자가진단.
 4. `app.manifest`를 임시로 바꿨다면 원복 후 `git diff`로 확인한다.
+5. **P40-9 통과 후 실서버 VAN 배선 복원** — Phase 40 착수 중(2026-10-06) 사용자의 서버 테스트용 `App.xaml.cs` 변경
+   (`StubVanRelayService` → `VanService`)을 `git stash`("VAN 실서버 배선 …")로 보관하고 스텁으로 검증했다. VAN 서버가 아직
+   없어 실서버로는 연쇄 검증이 불가능하기 때문이다. Phase 40 완료 커밋 뒤 `git stash pop`으로 되돌리고, 충돌이 없는지와
+   `App.xaml.cs`가 `new VanService()`인지 확인해 사용자에게 보고한다.
 
 ## 완료 기준 (Phase 전체)
 
