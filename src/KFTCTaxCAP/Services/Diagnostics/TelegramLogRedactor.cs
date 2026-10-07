@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KFTCTaxCAP.Protocol.Pos;
 using KFTCTaxCAP.Protocol.Pos.Schemas;
+using KFTCTaxCAP.Security;
 
 namespace KFTCTaxCAP.Services.Diagnostics;
 
@@ -201,6 +202,59 @@ internal static class TelegramLogRedactor
 
         ranges.Sort((a, b) => a.Position.CompareTo(b.Position));
         return BuildMaskedText(body, ranges);
+    }
+
+    /// <summary>
+    /// 2026-10-07 — VAN 응답이 기대한 형식(#0 길이 접두 + 본문)과 어긋났을 때(<c>VanService</c>의 "응답 #0 전문
+    /// 길이 불일치" 등) 응답 원문을 진단용으로 남기기 위한 마스킹. 어긋난 응답은 필드 POSITION의 기준 오프셋을
+    /// 신뢰할 수 없으므로(접두가 있는 정렬 = 4, 없는 정렬 = 0) <paramref name="candidateOffsets"/> 각각을
+    /// 기준으로 한 마스킹 대상 구간(902614 <c>#14</c>/<c>#36</c>/<c>#38</c>/<c>#46</c>)을 <b>전부</b> <c>*</c>로 가린다 —
+    /// 어느 정렬이 맞든 민감 필드가 평문으로 남지 않는다(정상 경로의 부분 노출 대신 전체 마스킹, 값이 space인
+    /// 바이트는 그대로 둔다). 앞 <paramref name="validLength"/> 바이트만 쓰고, 뒤쪽 NUL 패딩은 잘라낸다.
+    /// 실패하지 않는다(스키마 미상이면 마스킹 없이 원문).
+    /// </summary>
+    internal static string RedactUnalignedForLog(string transactionTypeCode, byte[] raw, int validLength, params int[] candidateOffsets)
+    {
+        int length = Math.Min(validLength, raw.Length);
+        while (length > 0 && raw[length - 1] == 0)
+            length--;
+
+        byte[] work = new byte[length];
+        Buffer.BlockCopy(raw, 0, work, 0, length);
+        try
+        {
+            if (PosSchemaRegistry.TryResolve(transactionTypeCode, out PosTelegramSchema? schema) && schema is not null
+                && string.Equals(schema.TransactionTypeCode, CardApprovalTransactionTypeCode, StringComparison.Ordinal))
+            {
+                int[] sensitiveFields =
+                {
+                    EncryptedCardDataFieldNumber, PayerRegistrationNumberFieldNumber14,
+                    PayerRegistrationNumberFieldNumber36, PayerRegistrationNumberFieldNumber38,
+                };
+
+                foreach (int offset in candidateOffsets)
+                {
+                    foreach (int fieldNumber in sensitiveFields)
+                    {
+                        if (!TryGetField(schema, fieldNumber, out PosField? field))
+                            continue;
+
+                        int end = Math.Min(offset + field!.Position + field.Length, work.Length);
+                        for (int i = offset + field.Position; i < end; i++)
+                        {
+                            if (work[i] != (byte)' ')
+                                work[i] = (byte)'*';
+                        }
+                    }
+                }
+            }
+
+            return PosMessageEncoding.Value.GetString(work).Replace('\0', '.');
+        }
+        finally
+        {
+            SecureClear.Clear(work);
+        }
     }
 
     /// <summary>#14/#36 공통 처리 — 필드가 존재하고(스키마에 따라 없을 수 있음) 값이 전부 space가

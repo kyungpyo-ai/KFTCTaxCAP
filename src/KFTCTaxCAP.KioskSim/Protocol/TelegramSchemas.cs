@@ -135,7 +135,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "것을 보여주는 실제 사례. 902614는 kiosk 열이 체크되어 있으나 동일하게 공백으로 " +
                     "충분하다 — 이 필드 자체가 요청 시 채울 필요가 없는 필드이기 때문, 바로 아래 참고). " +
                     "**요청 시에는 채우지 않아도 된다 — 공백으로 보내면 충분하다(2026-08-28 사용자 확인). " +
-                    "전송 화면에서도 편집을 막아 둔다(값을 넣을 수 없게 잠금).**", alwaysBlank: true),
+                    "전송 화면에서도 편집을 막아 둔다(값을 넣을 수 없게 잠금).**", alwaysBlank: true, zeroFilled: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
                     "SPEC 표 3열 모두 체크. 요청 시 \"G\". tools/spec_client.ps1도 공통부에서 무조건 " +
                     "\"G\"를 SET하고 실장비 왕복에 성공했다."),
@@ -155,14 +155,14 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "SPEC 표는 디지털예산+kiosk 열 체크."),
                 new TelegramField(13, "FILLER", TelegramRepresentation.N, 2, 68, TelegramSetLocation.Kiosk,
                     "SPEC 표 3열 모두 체크. 요청 시 kiosk가 space로 채운다. 전송 화면에서는 편집을 " +
-                    "막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true),
+                    "막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true, zeroFilled: true),
 
                 // 조회정보부(#14~56, p.7~8).
                 new TelegramField(14, "전자납부번호", TelegramRepresentation.AN, 19, 70, TelegramSetLocation.Kiosk,
                     "조회 대상 전자납부번호. SPEC 표(p.7)는 kiosk 열만 체크되어 있다 — 이 전문의 1차 " +
                     "조회 키다(#16 실 납부자번호는 국세청 연대 납부 등 특수 케이스의 보조 키)."),
                 new TelegramField(15, "납부 순번", TelegramRepresentation.N, 3, 89, TelegramSetLocation.InternetGiro,
-                    "dBrain이 '001'부터 순차 채번(SPEC 설명). 응답 전용."),
+                    "dBrain이 '001'부터 순차 채번(SPEC 설명). 응답 전용.", zeroFilled: true),
                 new TelegramField(16, "실 납부자번호(고객관리번호)", TelegramRepresentation.AN, 13, 92, TelegramSetLocation.Kiosk,
                     "국세청 연대 납부인 경우 필수(SPEC 설명). SPEC 표는 디지털예산+kiosk 열 체크."),
                 new TelegramField(17, "납세 의무자 번호", TelegramRepresentation.AN, 13, 105, TelegramSetLocation.InternetGiro),
@@ -171,24 +171,24 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                 new TelegramField(20, "징수 과목 코드(세목 코드)", TelegramRepresentation.AN, 7, 198, TelegramSetLocation.InternetGiro),
                 new TelegramField(21, "징수 과목명", TelegramRepresentation.AHN, 40, 205, TelegramSetLocation.InternetGiro),
                 new TelegramField(22, "징수관 계좌번호", TelegramRepresentation.AN, 6, 245, TelegramSetLocation.InternetGiro),
-                new TelegramField(23, "소계정", TelegramRepresentation.N, 1, 251, TelegramSetLocation.InternetGiro),
-                new TelegramField(24, "징수 결의 회계 년도", TelegramRepresentation.N, 4, 252, TelegramSetLocation.InternetGiro),
-                new TelegramField(25, "납기내 금액", TelegramRepresentation.N, 15, 256, TelegramSetLocation.InternetGiro),
-                new TelegramField(26, "납기일 (납기내)", TelegramRepresentation.N, 8, 271, TelegramSetLocation.InternetGiro),
-                new TelegramField(27, "납기후 금액", TelegramRepresentation.N, 15, 279, TelegramSetLocation.InternetGiro),
-                new TelegramField(28, "납기일 (납기후)", TelegramRepresentation.N, 8, 294, TelegramSetLocation.InternetGiro),
+                new TelegramField(23, "소계정", TelegramRepresentation.N, 1, 251, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(24, "징수 결의 회계 년도", TelegramRepresentation.N, 4, 252, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(25, "납기내 금액", TelegramRepresentation.N, 15, 256, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(26, "납기일 (납기내)", TelegramRepresentation.N, 8, 271, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(27, "납기후 금액", TelegramRepresentation.N, 15, 279, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(28, "납기일 (납기후)", TelegramRepresentation.N, 8, 294, TelegramSetLocation.InternetGiro, zeroFilled: true),
                 new TelegramField(29, "고지서 유형", TelegramRepresentation.AN, 1, 302, TelegramSetLocation.InternetGiro,
                     "1: 본세+가산금, 2: 본세+농특세+교육세+가산금, 3: 그 외 전세목 포함(SPEC 설명 표)."),
-                new TelegramField(30, "본세", TelegramRepresentation.N, 15, 303, TelegramSetLocation.InternetGiro),
-                new TelegramField(31, "농어촌 특별세", TelegramRepresentation.N, 15, 318, TelegramSetLocation.InternetGiro),
-                new TelegramField(32, "교육세", TelegramRepresentation.N, 15, 333, TelegramSetLocation.InternetGiro),
-                new TelegramField(33, "특별 소비세", TelegramRepresentation.N, 15, 348, TelegramSetLocation.InternetGiro),
-                new TelegramField(34, "주세", TelegramRepresentation.N, 15, 363, TelegramSetLocation.InternetGiro),
-                new TelegramField(35, "부가가치세", TelegramRepresentation.N, 15, 378, TelegramSetLocation.InternetGiro),
-                new TelegramField(36, "교통세", TelegramRepresentation.N, 15, 393, TelegramSetLocation.InternetGiro),
-                new TelegramField(37, "방위세", TelegramRepresentation.N, 15, 408, TelegramSetLocation.InternetGiro),
-                new TelegramField(38, "예비 정보 FIELD", TelegramRepresentation.N, 15, 423, TelegramSetLocation.InternetGiro),
-                new TelegramField(39, "가산금", TelegramRepresentation.N, 15, 438, TelegramSetLocation.InternetGiro),
+                new TelegramField(30, "본세", TelegramRepresentation.N, 15, 303, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(31, "농어촌 특별세", TelegramRepresentation.N, 15, 318, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(32, "교육세", TelegramRepresentation.N, 15, 333, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(33, "특별 소비세", TelegramRepresentation.N, 15, 348, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(34, "주세", TelegramRepresentation.N, 15, 363, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(35, "부가가치세", TelegramRepresentation.N, 15, 378, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(36, "교통세", TelegramRepresentation.N, 15, 393, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(37, "방위세", TelegramRepresentation.N, 15, 408, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(38, "예비 정보 FIELD", TelegramRepresentation.N, 15, 423, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(39, "가산금", TelegramRepresentation.N, 15, 438, TelegramSetLocation.InternetGiro, zeroFilled: true),
                 new TelegramField(40, "회계명", TelegramRepresentation.AHN, 40, 453, TelegramSetLocation.InternetGiro),
                 new TelegramField(41, "소관명", TelegramRepresentation.AHN, 40, 493, TelegramSetLocation.InternetGiro,
                     "수납 소관 기관명. 예) 경찰청(SPEC 설명)."),
@@ -200,15 +200,15 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "Y: 수정 허용(제한 없음), P: 부분 납부 허용(고지 금액 이내), N: 수정 금지(SPEC 설명)."),
                 new TelegramField(46, "연대 납부 대상 유무", TelegramRepresentation.AN, 1, 630, TelegramSetLocation.InternetGiro,
                     "Y: 연대 납부 대상, N: 대상 아님(SPEC 설명)."),
-                new TelegramField(47, "수납은행 점별 코드", TelegramRepresentation.N, 7, 631, TelegramSetLocation.InternetGiro),
-                new TelegramField(48, "납부 일시", TelegramRepresentation.N, 14, 638, TelegramSetLocation.InternetGiro),
-                new TelegramField(49, "고지 일자", TelegramRepresentation.N, 8, 652, TelegramSetLocation.InternetGiro),
+                new TelegramField(47, "수납은행 점별 코드", TelegramRepresentation.N, 7, 631, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(48, "납부 일시", TelegramRepresentation.N, 14, 638, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(49, "고지 일자", TelegramRepresentation.N, 8, 652, TelegramSetLocation.InternetGiro, zeroFilled: true),
                 new TelegramField(50, "대리 납부 허용 유무", TelegramRepresentation.N, 1, 660, TelegramSetLocation.InternetGiro,
-                    "0: 대리 납부 불허, 1: 대리 납부 허용. 국세 간편계좌납부는 이 값과 무관하게 항상 허용(SPEC 설명)."),
+                    "0: 대리 납부 불허, 1: 대리 납부 허용. 국세 간편계좌납부는 이 값과 무관하게 항상 허용(SPEC 설명).", zeroFilled: true),
                 new TelegramField(51, "기 납부 금액", TelegramRepresentation.N, 15, 661, TelegramSetLocation.InternetGiro,
-                    "분납 시 발생하는 기 납부 금액(SPEC 설명)."),
+                    "분납 시 발생하는 기 납부 금액(SPEC 설명).", zeroFilled: true),
                 new TelegramField(52, "잔여 납부할 금액", TelegramRepresentation.N, 15, 676, TelegramSetLocation.InternetGiro,
-                    "분납 시 발생하는 잔여 납부할 금액(SPEC 설명)."),
+                    "분납 시 발생하는 잔여 납부할 금액(SPEC 설명).", zeroFilled: true),
                 new TelegramField(53, "분야(기능) 코드", TelegramRepresentation.AN, 3, 691, TelegramSetLocation.InternetGiro),
                 new TelegramField(54, "신용카드 납부 가능 여부", TelegramRepresentation.AN, 1, 694, TelegramSetLocation.InternetGiro,
                     "Y: 가능, N: 제한(SPEC 설명)."),
@@ -244,7 +244,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                 new TelegramField(5, "상태 코드", TelegramRepresentation.N, 3, 16, TelegramSetLocation.InternetGiro,
                     "SPEC 표는 인터넷지로+VAN 열만 체크, kiosk 열은 체크되어 있지 않다(501008/902614와 다름 " +
                     "— 다만 501008/902614도 이 필드는 요청 시 채울 필요가 없어(공백으로 충분, 2026-08-28 " +
-                    "사용자 확인) 실질적인 요청 값 관점에서는 3전문 모두 결과가 같다)."),
+                    "사용자 확인) 실질적인 요청 값 관점에서는 3전문 모두 결과가 같다).", zeroFilled: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
                     "**정정(2026-08-28)**: SPEC 표(p.12)는 이 행에서 인터넷지로+**kiosk** 열이 체크되어 " +
                     "있다(VAN 열이 아니다 — 초기 전사와 `pos-onecap-spec-expert` 재확인 둘 다 kiosk 열을 " +
@@ -268,13 +268,13 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "실제 값이 없다, 2026-08-28 확정 — 필요해지면 다시 편집 가능하게 바꾼다).", alwaysBlank: true),
                 new TelegramField(11, "이용기관 발행기관 분류코드", TelegramRepresentation.N, 2, 59, TelegramSetLocation.Kiosk,
                     "SPEC 2026-09-22 개정에서 SET 장소 표시가 삭제됐다 — kiosk가 채우지 않는 필드(space). " +
-                    "이용기관은 #2로 식별되므로 필요 없다. 전송 화면에서는 편집을 막아 둔다(2026-10-06).", alwaysBlank: true),
+                    "이용기관은 #2로 식별되므로 필요 없다. 전송 화면에서는 편집을 막아 둔다(2026-10-06).", alwaysBlank: true, zeroFilled: true),
                 new TelegramField(12, "이용기관 지로 번호", TelegramRepresentation.N, 7, 61, TelegramSetLocation.Kiosk,
                     "SPEC 2026-09-22 개정에서 SET 장소 표시가 삭제됐다 — kiosk가 채우지 않는 필드(space). " +
-                    "#11과 같은 이유로 편집을 막아 둔다(2026-10-06).", alwaysBlank: true),
+                    "#11과 같은 이유로 편집을 막아 둔다(2026-10-06).", alwaysBlank: true, zeroFilled: true),
                 new TelegramField(13, "FILLER (응답 코드 구분)", TelegramRepresentation.N, 2, 68, TelegramSetLocation.Kiosk,
                     "SPEC 표에 SET 장소 체크가 전혀 없다(공란) — #10과 같은 이유로 Kiosk로 분류. 전송 " +
-                    "화면에서는 편집을 막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true),
+                    "화면에서는 편집을 막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true, zeroFilled: true),
 
                 // 정보부(#14~27, p.12).
                 // SPEC 20260930(p.13~14) 개정: #14 "BIN" AN8 → "마스킹 카드번호" AN19. 뒤따르는 #15~#28
@@ -297,14 +297,14 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "할부개월수 2Byte 단위 코드를 연속 구성. 예: 01020304 (space padding), 총 60Byte로 최대 30개(SPEC 각주)."),
                 new TelegramField(23, "포인트 할부개월 LIST", TelegramRepresentation.AN, 60, 201, TelegramSetLocation.InternetGiro,
                     "형식은 #22와 동일."),
-                new TelegramField(24, "납부대행 수수료 금액", TelegramRepresentation.N, 12, 261, TelegramSetLocation.InternetGiro),
-                new TelegramField(25, "합계금액", TelegramRepresentation.N, 12, 273, TelegramSetLocation.InternetGiro),
+                new TelegramField(24, "납부대행 수수료 금액", TelegramRepresentation.N, 12, 261, TelegramSetLocation.InternetGiro, zeroFilled: true),
+                new TelegramField(25, "합계금액", TelegramRepresentation.N, 12, 273, TelegramSetLocation.InternetGiro, zeroFilled: true),
                 // #26 신규 추가(SPEC 20260831 개정) — 뒤따르는 #27/#28은 이 삽입으로 번호·POSITION이
                 // 한 칸씩 밀렸다(20260826판에서는 #26/#27이었음). 본 앱(Protocol/Pos/Schemas/
                 // CardInfoInquirySchema.cs)과 독립적으로 SPEC PDF를 다시 옮겨 적었다(P19-2 원칙 유지).
                 new TelegramField(26, "납부대행 수수료율", TelegramRepresentation.N, 4, 285, TelegramSetLocation.InternetGiro,
                     "SPEC 20260831 개정판 신규 필드 — 인터넷지로 열만 체크(응답 전용, kiosk/원캡/VAN 전부 공란). " +
-                    "소수점 2자리 기준(0050 = 0.5%, SPEC 20260930 p.14)."),
+                    "소수점 2자리 기준(0050 = 0.5%, SPEC 20260930 p.14).", zeroFilled: true),
                 new TelegramField(27, "API 세부 응답코드", TelegramRepresentation.AN, 6, 289, TelegramSetLocation.InternetGiro),
                 new TelegramField(28, "예비 정보 FIELD", TelegramRepresentation.AN, 205, 295, TelegramSetLocation.InternetGiro,
                     "SPEC 표(20260930 p.13)는 인터넷지로 열이 체크되어 있다 — 응답 전용. #26 신규 삽입으로 " +
@@ -343,7 +343,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "SPEC 표는 인터넷지로+kiosk 열 체크(800000과 달리 kiosk 열도 체크되어 있다 — 직접 대조로 " +
                     "확인). **다만 요청 시에는 채우지 않아도 되는 필드다 — 공백으로 보내면 충분하다" +
                     "(2026-08-28 사용자 확인). 전송 화면에서도 편집을 막아 둔다(값을 넣을 수 없게 잠금).**",
-                    alwaysBlank: true),
+                    alwaysBlank: true, zeroFilled: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
                     "SPEC 표는 인터넷지로+kiosk 열 체크. 요청 시 \"G\"(tools/spec_client.ps1에서 실장비 " +
                     "왕복 확인된 값)."),
@@ -360,7 +360,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                 new TelegramField(12, "이용기관 지로 번호", TelegramRepresentation.N, 7, 61, TelegramSetLocation.Kiosk,
                     "SPEC 표는 인터넷지로+kiosk 열 체크."),
                 new TelegramField(13, "FILLER (응답 코드 구분)", TelegramRepresentation.N, 2, 68, TelegramSetLocation.InternetGiro,
-                    "SPEC 표는 인터넷지로 열만 체크, kiosk 열은 체크되어 있지 않다(501008/800000과 다름)."),
+                    "SPEC 표는 인터넷지로 열만 체크, kiosk 열은 체크되어 있지 않다(501008/800000과 다름).", zeroFilled: true),
 
                 // 납부정보부(#14~54, p.13~14).
                 new TelegramField(14, "주민(사업자,법인)등록번호", TelegramRepresentation.AN, 13, 70, TelegramSetLocation.Kiosk),

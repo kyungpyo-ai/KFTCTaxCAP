@@ -193,13 +193,22 @@ internal static class RealisticTestValueGeneratorSelfTest
                     PosTelegram q800 = RealisticTestValueGenerator.GenerateRequest(s800, random, now);
                     PosTelegram q902 = RealisticTestValueGenerator.GenerateRequest(s902, random, now);
 
-                    // ① 요청: kiosk 비담당 필드는 공백(원캡 표식을 넣기 전에 확인).
+                    // ① 요청: kiosk 비담당 필드는 공백, 단 N이면서 원캡도 아닌 필드는 '0' 채움(서버 요구 2026-10-07,
+                    // PRD §15). 원캡 표식을 넣기 전에 확인.
                     foreach (PosTelegram q in new[] { q501, q800, q902 })
                     {
                         foreach (PosField f in q.Schema.Fields.Where(f => !f.Owners.HasFlag(PosFieldOwner.Kiosk)))
                         {
                             string v = q.Read(f.Number);
-                            t.Check(1, v.Length == 0, () => $"{ctx} [{q.Schema.TransactionTypeCode}] 요청의 kiosk 비담당 #{f.Number}가 공백이 아님: \"{v}\"");
+                            if (f.Type == PosFieldType.N && !f.Owners.HasFlag(PosFieldOwner.OneCap))
+                            {
+                                t.Check(1, v == new string('0', f.Length),
+                                    () => $"{ctx} [{q.Schema.TransactionTypeCode}] 요청의 kiosk·원캡 비담당 N #{f.Number}가 0 채움이 아님: \"{v}\"");
+                            }
+                            else
+                            {
+                                t.Check(1, v.Length == 0, () => $"{ctx} [{q.Schema.TransactionTypeCode}] 요청의 kiosk 비담당 #{f.Number}가 공백이 아님: \"{v}\"");
+                            }
                         }
                     }
 
@@ -283,7 +292,10 @@ internal static class RealisticTestValueGeneratorSelfTest
             else if (f.Owners == PosFieldOwner.None)
             {
                 string v = r.Read(f.Number);
-                t.Check(1, v.Length == 0, () => $"{ctx} [{code}] 소유자 없음 #{f.Number}가 공백이 아님: \"{v}\"");
+                // 스텁 응답은 요청 clone 위에 만든다 — 요청에서 0으로 채운 소유자 없음 N 필드(PRD §15)는 응답에도
+                // 그대로 따라오므로 N이면 공백 또는 전부 '0'을 허용한다(스텁 한정, 실서버 응답은 SPEC 소관).
+                bool ok = v.Length == 0 || (f.Type == PosFieldType.N && v == new string('0', f.Length));
+                t.Check(1, ok, () => $"{ctx} [{code}] 소유자 없음 #{f.Number}가 공백이 아님: \"{v}\"");
             }
         }
 
@@ -352,8 +364,8 @@ internal static class RealisticTestValueGeneratorSelfTest
         t.Check(3, Regex.IsMatch(q501.Read(14), epn) && Regex.IsMatch(q902.Read(15), epn), () => $"{ctx} 전자납부번호 형식 위반");
         t.Check(3, q501.Read(11) == "01" && q501.Read(12) == "2600000" && q902.Read(11) == "01" && q902.Read(12) == "2600000",
             () => $"{ctx} #11/#12 위반");
-        t.Check(3, q800.Read(11).Length == 0 && q800.Read(12).Length == 0, () => $"{ctx} 800000 #11/#12가 공백이 아님");
-        t.Check(3, q902.Read(5) == "000" && q501.Read(5).Length == 0 && q800.Read(5).Length == 0, () => $"{ctx} 요청 #5 규칙 위반");
+        t.Check(3, q800.Read(11) == "00" && q800.Read(12) == "0000000", () => $"{ctx} 800000 #11/#12가 0 채움이 아님(PRD §15)");
+        t.Check(3, q902.Read(5) == "000" && q501.Read(5) == "000" && q800.Read(5) == "000", () => $"{ctx} 요청 #5 규칙 위반(902614는 kiosk 값, 501008/800000은 0 채움 PRD §15)");
         t.Check(3, Regex.IsMatch(r501.Read(17), @"^9001011\d{6}$"), () => $"{ctx} 501008 #17({r501.Read(17)}) 형식 위반");
         t.Check(3, Regex.IsMatch(q902.Read(14), @"^9001011\d{6}$") && q902.Read(36) == q902.Read(14), () => $"{ctx} 902614 #14/#36 위반");
         t.Check(3, r902.Read(38) == q902.Read(36), () => $"{ctx} 902614 응답 #38 ≠ 요청 #36");

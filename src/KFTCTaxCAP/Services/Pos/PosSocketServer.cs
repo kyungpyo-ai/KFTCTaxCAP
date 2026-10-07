@@ -421,7 +421,7 @@ internal sealed class PosSocketServer
         {
             SecureClear.Clear(requestBodyForLog);
         }
-        FileLogger.Info(LogCategory.Pos, $"[PosSocketServer] {remote} 요청 수신 전문={request.TransactionTypeCode} 원문={redactedRequestBody}", code: null, requestTxId);
+        FileLogger.Info(LogCategory.Pos, $"[PosSocketServer] ▶▶▶ ① 키오스크→원캡 요청 {remote} 요청 수신 전문={request.TransactionTypeCode} 원문=\"{redactedRequestBody}\"", code: null, requestTxId);
 
         _queue.Enqueue(request, response =>
         {
@@ -493,7 +493,7 @@ internal sealed class PosSocketServer
         {
             SecureClear.Clear(responseBodyForLog);
         }
-        FileLogger.Info(LogCategory.Pos, $"[PosSocketServer] {remote} 응답 송신 원문={redactedResponseBody}", resultCode, responseTxId);
+        FileLogger.Info(LogCategory.Pos, $"[PosSocketServer] ◀◀◀ ④ 원캡→키오스크 응답 {remote} 응답 송신 원문=\"{redactedResponseBody}\"", resultCode, responseTxId);
 
         try
         {

@@ -27,8 +27,21 @@ public sealed class FileLogSink : ILogSink
 
     // 아래 여러 메서드 공용 — 텍스트가 두 곳에서 갈라지면(예: 오탈자 수정을 한쪽만 하는 실수) 사람이
     // 같은 의미의 구분선을 두 가지 모양으로 보게 된다.
-    private const string TransactionEndBoundaryText = "---------------- 거래 종료 ----------------";
-    private const string TransactionStartBoundaryText = "---------------- 거래 시작 ----------------";
+    // 2026-10-07 사용자 지적("눈에 확 안 들어온다") — 한 줄 하이픈 구분선은 전문 한 건의 경계로 묻혔다. 굵은 선
+    // 위/아래 + 가운데 제목 줄의 3줄 블록으로 바꾼다. 프로세스 시작 구분선(WriteStartupBanner, '=' 한 줄)과는
+    // 모양이 달라 둘이 헷갈리지 않는다. 세 줄 모두 LogLineRenderer.LineFormat에 매치되지 않아 파싱 대상이 아니다.
+    private const string BoundaryRule = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+
+    private static string BuildBoundaryBlock(string title, string arrows, string boundaryLabel) =>
+        $"{Environment.NewLine}{BoundaryRule}{Environment.NewLine}" +
+        $"{arrows}  {title}  {arrows}  [{boundaryLabel}]{Environment.NewLine}" +
+        $"{BoundaryRule}{Environment.NewLine}";
+
+    private static string BuildTransactionStartBoundary(string boundaryLabel) =>
+        BuildBoundaryBlock("거래 시작", "▶▶▶▶▶▶", boundaryLabel);
+
+    private static string BuildTransactionEndBoundary(string boundaryLabel) =>
+        BuildBoundaryBlock("거래 종료", "◀◀◀◀◀◀", boundaryLabel);
 
     public void Write(LogRecord record)
     {
@@ -81,7 +94,7 @@ public sealed class FileLogSink : ILogSink
     public void WriteThenBoundary(LogRecord record, string boundaryLabel)
     {
         byte[] recordBytes = RenderRecordBytes(record);
-        byte[] boundaryBytes = Encoding.UTF8.GetBytes($"{Environment.NewLine}{TransactionEndBoundaryText} [{boundaryLabel}]{Environment.NewLine}");
+        byte[] boundaryBytes = Encoding.UTF8.GetBytes(BuildTransactionEndBoundary(boundaryLabel));
 
         lock (SyncRoot)
         {
@@ -164,7 +177,7 @@ public sealed class FileLogSink : ILogSink
     /// </summary>
     public void WriteBoundaryThenWrite(LogRecord record, string boundaryLabel)
     {
-        byte[] boundaryBytes = Encoding.UTF8.GetBytes($"{Environment.NewLine}{TransactionStartBoundaryText} [{boundaryLabel}]{Environment.NewLine}");
+        byte[] boundaryBytes = Encoding.UTF8.GetBytes(BuildTransactionStartBoundary(boundaryLabel));
         byte[] recordBytes = RenderRecordBytes(record);
 
         lock (SyncRoot)

@@ -50,8 +50,28 @@ public static class PosRandomValueGenerator
 
             telegram.Write(field.Number, GenerateValue(field.Type, field.Length, random));
         }
-
         return telegram;
+    }
+
+    /// <summary>
+    /// 서버 요구(2026-10-07): 요청 전문에서 SET 장소에 kiosk도 원캡도 없는 N(숫자) 필드(인터넷지로/VAN/디지털예산
+    /// 단독, 또는 소유자 없음)는 공백이면 오류가 나므로 <c>'0'</c>으로 채운다. <b>요청을 만드는 쪽(결제창·테스트
+    /// 프로그램)의 일</b>이다 — 원캡이 받은 요청을 고치지 않는다(키오스크 잘못과 원캡 내부 잘못을 가리려면 수신한
+    /// 그대로 중계해야 한다). 이미 값이 있는 칸은 건드리지 않는다. 현재는 <see cref="RealisticTestValueGenerator"/>(결제창)만 쓴다 — 테스트 프로그램 적용은 별도.
+    /// </summary>
+    internal static void FillNonSetNumericFieldsWithZero(PosTelegram telegram)
+    {
+        foreach (PosField field in telegram.Schema.Fields)
+        {
+            if (field.Type != PosFieldType.N)
+                continue;
+            if (field.Owners.HasFlag(PosFieldOwner.Kiosk) || field.Owners.HasFlag(PosFieldOwner.OneCap))
+                continue;
+            if (telegram.Read(field.Number).Length != 0)
+                continue;
+
+            telegram.Write(field.Number, new string('0', field.Length));
+        }
     }
 
     /// <summary>

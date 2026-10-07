@@ -100,7 +100,7 @@ internal sealed class VanService : IVanRelayService
                 // 실제로 나가는 mode(R/OT/IT)를 한 토큰 남긴다. 민감정보가 아니므로 마스킹하지 않는다.
                 // P23-8 "OT/R이 FNAISCRDVAN 첫 인자로 실제로 나가는 것을 로그로 확인"의 선행 조건.
                 // P32-4 — hostCode 토큰을 mode 옆에 추가(민감정보 아님, 마스킹 대상 아님).
-                FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} mode={vanMode} hostCode={hostCode} FNAISCRDVAN 호출 원문={bodyLength:D4}{redactedRequestBody}", code: null, txId);
+                FileLogger.Info(LogCategory.Van, $"[VanService] ▶▶▶ ② 원캡→VAN 요청 거래구분={transactionTypeCode} mode={vanMode} hostCode={hostCode} FNAISCRDVAN 호출 원문=\"{bodyLength:D4}{redactedRequestBody}\"", code: null, txId);
 
                 // P24-3(docs/operations/development_plan.md) — P/Invoke 호출·NUL 종단·버퍼 할당·예외
                 // 차단은 FnaisCrdVanInvoker로 옮겨졌다. 이 메서드는 그 결과를 해석만 한다(응답 절단,
@@ -187,6 +187,7 @@ internal sealed class VanService : IVanRelayService
                                 LogCategory.Van,
                                 $"[VanService] 거래구분={transactionTypeCode} 응답 #0 전문 길이 불일치 — 응답앞4바이트='{responseLengthField}' 기대={bodyLength:D4}",
                                 code: null, txId);
+                            LogUnexpectedResponse(transactionTypeCode, outData, bodyLength, txId, "#0 길이 불일치");
                             return VanRelayOutcome.CommunicationFailure(
                                 VanFailureKind.CommunicationFailure,
                                 $"응답 전문 길이 불일치(응답앞4바이트='{responseLengthField}', 기대={bodyLength:D4})");
@@ -213,6 +214,7 @@ internal sealed class VanService : IVanRelayService
                             // 값이 어디로도 새지 않는다. GC가 회수할 뿐이라 P25-5의 "즉시 클리어" 대상이
                             // 아니다(이 배열을 여기서 지운다고 심사 대응이 더 좋아지지 않는다 — 참조가
                             // 그대로 사라지므로).
+                            LogUnexpectedResponse(transactionTypeCode, outData, bodyLength, txId, "본문에 0x00 포함");
                             return VanRelayOutcome.CommunicationFailure(
                                 VanFailureKind.CommunicationFailure, "nRet=0이지만 응답 본문이 불완전함(0x00 포함, 방어적 처리)");
                         }
@@ -220,7 +222,7 @@ internal sealed class VanService : IVanRelayService
                         // 사용자 요청(2026-09-01) — 응답 전문 원문(위치기반 마스킹, TelegramLogRedactor 클래스
                         // 요약 참고).
                         string redactedResponseBody = TelegramLogRedactor.Redact(transactionTypeCode, responseBody);
-                        FileLogger.Info(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} 응답 원문={responseLengthField}{redactedResponseBody}", code: null, txId);
+                        FileLogger.Info(LogCategory.Van, $"[VanService] ◀◀◀ ③ VAN→원캡 응답 거래구분={transactionTypeCode} 응답 원문=\"{responseLengthField}{redactedResponseBody}\"", code: null, txId);
 
                         return VanRelayOutcome.Success(responseBody);
                     }
@@ -269,6 +271,29 @@ internal sealed class VanService : IVanRelayService
             // DLL 호출 실패로 앱이 죽으면 안 된다(PRD §9) — 어떤 예외도 밖으로 던지지 않는다.
             FileLogger.Error(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} 예상치 못한 예외: {ex.GetType().Name}: {ex.Message}", code: null, txId);
             return VanRelayOutcome.CommunicationFailure(VanFailureKind.CommunicationFailure, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 2026-10-07 — 서버가 nRet=0으로 응답했는데 형식이 기대와 어긋나 중계하지 못할 때, <b>실제로 온 응답</b>을
+    /// 로그에 남긴다(이전에는 앞 4바이트만 남아 서버가 무엇을 보냈는지 알 수 없었다). 접두 있는 정렬(오프셋 4)과
+    /// 없는 정렬(오프셋 0) 양쪽을 가정해 902614 민감 필드를 전부 가린 뒤(<see cref="TelegramLogRedactor.RedactUnalignedForLog"/>)
+    /// 버퍼에서 실제로 채워진 앞부분만 남긴다. 로깅 실패는 호출 흐름에 영향을 주지 않는다.
+    /// </summary>
+    private static void LogUnexpectedResponse(string transactionTypeCode, byte[] outData, int bodyLength, string txId, string reason)
+    {
+        try
+        {
+            string text = TelegramLogRedactor.RedactUnalignedForLog(
+                transactionTypeCode, outData, LengthFieldSize + bodyLength, 0, LengthFieldSize);
+            FileLogger.Error(
+                LogCategory.Van,
+                $"[VanService] ◀◀◀ ③ VAN→원캡 응답(형식 이상) 거래구분={transactionTypeCode} 응답 형식 이상({reason}) 원문(마스킹, 길이 {text.Length}자)=\"{text}\"",
+                code: null, txId);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Warn(LogCategory.Van, $"[VanService] 거래구분={transactionTypeCode} 이상 응답 원문 로깅 실패: {ex.GetType().Name}", code: null, txId);
         }
     }
 

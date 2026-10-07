@@ -260,8 +260,8 @@ namespace KFTCTaxCAP.KioskSim.Preset
                 // (기본값이 항상 빈 문자열이라 실질적 동작 차이는 없었지만) "저장/보관은 되는데
                 // 화면에는 절대 안 보이는" 죽은 값이 프리셋 파일에 계속 쌓일 수 있었다
                 // (2026-08-31 검증에서 발견 — 낮음).
-                if (field.SetLocation != TelegramSetLocation.Kiosk || field.AlwaysBlank)
-                    continue;
+                if (field.SetLocation != TelegramSetLocation.Kiosk || field.AlwaysBlank || field.ZeroFilled)
+                    continue; // ZeroFilled(서버 요구 0 고정)도 사용자가 값을 갖지 않는다.
                 result[field.Number] = Resolve(loaded, schema.TxType, field.Number);
             }
             return result;

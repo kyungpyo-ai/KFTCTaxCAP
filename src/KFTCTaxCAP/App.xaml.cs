@@ -185,7 +185,7 @@ public partial class App : Application
         // Phase 15(P15-6~P15-9), Phase 17(P17-5)에서 3전문 구조로 재구성: 결제 Flow 조립. 리더기1/2를
         // IReaderEndpoint로 감싸고(P15-2 어댑터), 하나의 IntegrityCheckStore/IntegrityCheckService를
         // 공유시킨다(App.ReaderConnections의 Reader1/Reader2 순서를 그대로 따름 — PaymentOrchestrator
-        // 클래스 주석의 "인덱스 0=리더기1" 전제). VAN은 아직 스텁(실제 FNAISCRDVAN은 Phase 20).
+        // 클래스 주석의 "인덱스 0=리더기1" 전제). VAN은 실제 FNAISCRDVAN(VanService, 2026-10-06 스텁에서 교체).
         var integrityStore = new IntegrityCheckStore();
         var observedIdentityStore = new ObservedIdentityStore();
         var lastTransactionResponseStore = new LastTransactionResponseStore();
@@ -196,12 +196,9 @@ public partial class App : Application
             new ReaderEndpoint(ReaderConnections.Reader2, integrityCheckService),
         };
         var paymentPresenter = new PaymentNoticePresenter();
-        var vanRelay = new StubVanRelayService();
-        // (2026-08-25, Opus 검증 리뷰 M-2 — Phase 17에서 StubVanRelayService로 교체돼도 같은 취지로
-        // 유지) 이 빌드를 실단말에서 그대로 돌리면 모든 거래가 실제 VAN 통신 없이 조용히 승인된다 —
-        // 로그만 보는 사람이 실거래 승인으로 오해하지 않도록 기동 시점에 명시적으로 남긴다. Phase 20이
-        // 이 스텁을 실제 FNAISCRDVAN 구현으로 교체하면 이 로그도 함께 제거한다.
-        FileLogger.Warn(LogCategory.App, "[PaymentOrchestrator] VAN 서비스가 스텁(StubVanRelayService)입니다 — 실제 승인이 아닙니다(Phase 20에서 FNAISCRDVAN으로 교체 예정)");
+        // 2026-10-06 — VAN 서버 개발 완료로 스텁(StubVanRelayService)에서 실제 FNAISCRDVAN 호출로 교체.
+        // 스텁으로 되돌리려면 아래를 new StubVanRelayService()로 바꾼다(검증 하네스는 계속 스텁을 쓴다).
+        var vanRelay = new VanService();
         Orchestrator = new PaymentOrchestrator(readerEndpoints, integrityStore, observedIdentityStore, lastTransactionResponseStore, paymentPresenter, SetupScreenGate, vanRelay);
 
         // Phase 14(P14-2/P14-3): 소켓 서버 + 단일 워커 Queue 기동. 8002 포트가 이미 사용 중이어도
@@ -369,7 +366,7 @@ public partial class App : Application
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P20-3 완료 조건, 최종 산출물
             // 아님): VanService(Phase 20)를 직접 만들어 FNAISCRDVAN을 실제로 호출한다. App.Orchestrator
-            // 는 여전히 StubVanRelayService를 쓰므로(결정 1) 이 테스트와 무관하다 — VAN 배선은
+            // 의 VAN 배선(2026-10-06부터 VanService)과 별개로 동작한다 — VAN 배선은
             // 건드리지 않는다. VAN 서버가 아직 없어 기대 결과는 통신 실패(D01/D02)이고, 확인하는 것은
             // 호출이 크래시 없이 성립하는가다.
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);

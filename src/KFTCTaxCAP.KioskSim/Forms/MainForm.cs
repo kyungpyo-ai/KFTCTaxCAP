@@ -670,8 +670,12 @@ namespace KFTCTaxCAP.KioskSim.Forms
                     // Kiosk여도 편집을 막는다 — 정의된 유효값이 없어 편집 가능하게 열어두면 업체가
                     // 무엇을 넣어야 하는지 헷갈리고 잘못된 값을 실수로 채워 보낼 위험만 커진다
                     // (2026-08-28 사용자 확정, TelegramField.AlwaysBlank 문서 참고).
-                    bool editable = field.SetLocation == TelegramSetLocation.Kiosk && !field.AlwaysBlank;
-                    string valueCellText = editable && byNumber.TryGetValue(field.Number, out var v) ? v : string.Empty;
+                    // ZeroFilled 필드(서버 요구 2026-10-07 — kiosk·원캡이 안 채우는 N 필드는 0 채움)도 편집을 막고,
+                    // 값 칸에 0(필드 길이만큼)을 그대로 보여준다 — 보이는 값이 곧 전송되는 값이다.
+                    bool editable = field.SetLocation == TelegramSetLocation.Kiosk && !field.AlwaysBlank && !field.ZeroFilled;
+                    string valueCellText = field.ZeroFilled
+                        ? field.FixedValue
+                        : editable && byNumber.TryGetValue(field.Number, out var v) ? v : string.Empty;
 
                     var chainEntry = TelegramChainMap.FindEntry(schema.TxType, field.Number);
 
@@ -721,6 +725,8 @@ namespace KFTCTaxCAP.KioskSim.Forms
         /// </summary>
         private static string DescribeSetLocation(TelegramField field)
         {
+            if (field.ZeroFilled)
+                return "서버 요구: 0 고정 (편집 불가)";
             if (field.SetLocation == TelegramSetLocation.Kiosk && field.AlwaysBlank)
                 return "kiosk (공백 고정, 편집 불가)";
             return DescribeSetLocation(field.SetLocation);
@@ -783,7 +789,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
             var row = _grid.Rows[e.RowIndex];
             var field = (TelegramField)row.Tag!;
-            if (field.SetLocation != TelegramSetLocation.Kiosk || field.AlwaysBlank)
+            if (field.SetLocation != TelegramSetLocation.Kiosk || field.AlwaysBlank || field.ZeroFilled)
                 return; // 읽기 전용 셀은 편집될 수 없지만, 방어적으로 한 번 더 확인(AlwaysBlank도 동일).
 
             string value = Convert.ToString(row.Cells[ColValue].Value) ?? string.Empty;

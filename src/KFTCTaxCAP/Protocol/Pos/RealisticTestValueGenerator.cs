@@ -105,6 +105,8 @@ public static class RealisticTestValueGenerator
         foreach (KeyValuePair<int, string> entry in BuildRequestValues(schema.TransactionTypeCode, random, now))
             telegram.Write(entry.Key, entry.Value);
 
+        // 서버 측 확인(2026-10-07): kiosk·원캡 SET이 아닌 N 필드는 요청에서 "0"으로 채워야 한다(공백이면 오류).
+        PosRandomValueGenerator.FillNonSetNumericFieldsWithZero(telegram);
         return telegram;
     }
 

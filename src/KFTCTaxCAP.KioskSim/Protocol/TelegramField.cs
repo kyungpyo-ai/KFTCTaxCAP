@@ -123,6 +123,19 @@ namespace KFTCTaxCAP.KioskSim.Protocol
         /// </summary>
         public bool AlwaysBlank { get; }
 
+        /// <summary>
+        /// 서버 요구(2026-10-07): 요청 전문에서 <b>kiosk도 원캡도 채우지 않는 N(숫자) 필드는 공백이 아니라 전부
+        /// <c>0</c>으로 채워 보내야 한다</b>(공백이면 서버가 오류 처리). 이 값이 <c>true</c>인 필드는 편집이 잠기고
+        /// 그리드에 <c>0</c>(필드 길이만큼)이 그대로 보이며 그 값이 전송된다 — 보이는 값과 보내는 값이 같다.
+        /// 값은 별도 변환 코드가 아니라 이 플래그로만 정해지므로, 어느 필드가 왜 0인지는 스키마 정의에서
+        /// 바로 확인할 수 있다. <see cref="AlwaysBlank"/>와 함께 쓰이는 필드(FILLER 등)는 "공백 고정"이 아니라 이
+        /// 플래그가 우선한다. 본 앱 결제창(docs/payment_relay/PRD.md §15)과 같은 필드 집합이다.
+        /// </summary>
+        public bool ZeroFilled { get; }
+
+        /// <summary><see cref="ZeroFilled"/>인 필드가 요청에 담는 값 — <c>0</c>을 필드 길이만큼 반복한 문자열. 아니면 빈 문자열.</summary>
+        public string FixedValue => ZeroFilled ? new string('0', Length) : string.Empty;
+
         /// <summary>이 필드가 차지하는 본문 범위의 끝(배타적 상한). Position + Length.</summary>
         public int End => Position + Length;
 
@@ -134,7 +147,8 @@ namespace KFTCTaxCAP.KioskSim.Protocol
             int position,
             TelegramSetLocation setLocation,
             string? note = null,
-            bool alwaysBlank = false)
+            bool alwaysBlank = false,
+            bool zeroFilled = false)
         {
             if (number <= 0)
                 throw new ArgumentOutOfRangeException(nameof(number), number, "필드 번호는 1 이상이어야 한다.");
@@ -153,6 +167,9 @@ namespace KFTCTaxCAP.KioskSim.Protocol
             SetLocation = setLocation;
             Note = note;
             AlwaysBlank = alwaysBlank;
+            if (zeroFilled && representation != TelegramRepresentation.N)
+                throw new ArgumentException($"필드 #{number}({name}): zeroFilled는 N(숫자) 필드에만 쓸 수 있다.", nameof(zeroFilled));
+            ZeroFilled = zeroFilled;
         }
 
         public override string ToString()
