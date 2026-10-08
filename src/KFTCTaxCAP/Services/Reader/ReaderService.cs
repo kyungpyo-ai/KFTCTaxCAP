@@ -568,6 +568,17 @@ namespace KFTCTaxCAP.Services.Reader
             // 없지만, 나중에 누가 EventReceived를 구독하면 CompletePendingIfMatches 쪽이 먼저 지운
             // (이미 SecureClear로 채워진) 데이터를 볼 위험이 있다. 구독자를 추가할 때는 배열을
             // 공유하지 말고 각자 복사본을 갖도록 바꿔야 한다.
+            // 2026-10-08 — 정상 응답/비요청 이벤트가 아닌 것(타임아웃·LRC·수신 오류·프레임 정체·NAK)은
+            // 대기 중인 라운드와 매칭되는지와 무관하게 남긴다. 이전에는 commandCode가 기다리던 값과 달라
+            // 무시된 이벤트(LRC_ERROR로 잘못 분류된 NAK 등)가 앱 로그에 아무 흔적도 남기지 않았다.
+            // data는 싣지 않는다(카드 데이터 보호) — 길이만 남긴다.
+            if (eventType != (int)ReaderEventType.READER_EVENT_RESPONSE
+                && eventType != (int)ReaderEventType.READER_EVENT_UNSOLICITED)
+            {
+                FileLogger.Warn(LogCategory.Reader,
+                    $"[리더기 콜백] readerId={readerId} {ReaderNames.ReaderEventTypeToString(eventType)}({eventType}) commandCode=0x{commandCode:X2} dataLength={dataLength}");
+            }
+
             bool handedOff = CompletePendingIfMatches(eventType, commandCode, copy);
 
             EventReceived?.Invoke(this, new ReaderEventArgs(readerId, eventType, commandCode, copy));
@@ -596,8 +607,9 @@ namespace KFTCTaxCAP.Services.Reader
         /// <summary>
         /// P10-4 단일 유효 응답 게이트의 CALLBACK 쪽 절반. Phase 9의 CompletePendingInitIfMatches와
         /// 이벤트별 매칭 규칙(어떤 eventType이 commandCode를 요구하는지)은 동일하게 유지한다 —
-        /// READER_EVENT_RECEIVE_ERROR만 commandCode가 항상 0으로 오므로(docs/reader_dll/
-        /// DLL연동가이드.md §2 이벤트 표) commandCode 매칭 없이 그 자체로 통신 오류 확정 처리한다.
+        /// READER_EVENT_RECEIVE_ERROR(포트 장애)는 commandCode 매칭 없이 그 자체로 통신 오류 확정
+        /// 처리한다(2026-10-08 DLL 개정으로 commandCode가 0이 아니라 기다리던 응답 코드로 오지만,
+        /// 대기 중인 요청이 없으면 0이고 이 함수는 pending이 없으면 바로 반환하므로 매칭이 필요 없다).
         /// 실제 "이 CALLBACK이 이 라운드를 완료시킬 자격이 있는가"는 맨 마지막의
         /// Interlocked.CompareExchange 한 줄로만 결정된다(PendingReaderCommand.cs 클래스 주석).
         /// </summary>
@@ -630,6 +642,10 @@ namespace KFTCTaxCAP.Services.Reader
                 case ReaderEventType.READER_EVENT_LRC_ERROR when commandCode == pending.ExpectedResponseCode:
                 case ReaderEventType.READER_EVENT_RECEIVE_ERROR:
                 case ReaderEventType.READER_EVENT_FRAME_STALL when commandCode == pending.ExpectedResponseCode:
+                // 2026-10-08 — 리더기가 요청 프레임을 비정상으로 보고 NAK(0x15)를 보낸 경우. DLL이 요청을
+                // 이미 종료(IDLE 복귀)했고 commandCode는 기다리던 응답 코드다. 이전 DLL은 이걸 LRC_ERROR
+                // (commandCode=0x15)로 잘못 분류해 아래 매칭에서 빠지는 바람에 라운드가 끝나지 않았다.
+                case ReaderEventType.READER_EVENT_NAK when commandCode == pending.ExpectedResponseCode:
                     result = RawReaderCommandResult.CommunicationError(ReaderNames.ReaderEventTypeToString(eventType));
                     break;
 

@@ -22,7 +22,8 @@
 //
 // 원래(2026-08-19) 1:1 대조 결과, 위에서 바뀌지 않았다고 확인된 항목은 그대로 유효하다:
 //   - ReaderEventType: RESPONSE=0/TIMEOUT=1/LRC_ERROR=2/RECEIVE_ERROR=3/UNSOLICITED=4/FRAME_STALL=5
-//     — 헤더 enum 선언 순서·값과 정확히 일치.
+//     — 헤더 enum 선언 순서·값과 정확히 일치. (2026-10-08 DLL 개정으로 NAK=6 추가 — 새 헤더는
+//     아직 받지 못해 연동 SPEC docx 기준으로 맞췄다.)
 //   - PinpadEventType: RESPONSE=0/TIMEOUT=1/NAK=2/LRC_ERROR=3/TAMPER=4/SEND_FAIL=5/RECEIVE_ERROR=6/
 //     FRAME_STALL=7 — 헤더와 정확히 일치.
 //   - READER_CALLBACK(int readerId, int eventType, unsigned char commandCode,
@@ -55,6 +56,9 @@ namespace KFTCTaxCAP.Interop
         READER_EVENT_RECEIVE_ERROR = 3,
         READER_EVENT_UNSOLICITED = 4,
         READER_EVENT_FRAME_STALL = 5,
+        // 2026-10-08 DLL 개정 — 응답 대기 중 리더기가 NAK(0x15)를 보내면 DLL이 요청을 즉시 종료하고
+        // 통지한다. commandCode는 받은 0x15가 아니라 기다리던 응답 코드, data 없음.
+        READER_EVENT_NAK = 6,
     }
 
     // ReaderErrors.h의 ReaderResult(DLL 오류 코드, docs/reader_dll/DLL연동가이드.md §4)를 그대로
@@ -249,6 +253,7 @@ namespace KFTCTaxCAP.Interop
                 case ReaderEventType.READER_EVENT_RECEIVE_ERROR: return nameof(ReaderEventType.READER_EVENT_RECEIVE_ERROR);
                 case ReaderEventType.READER_EVENT_UNSOLICITED: return nameof(ReaderEventType.READER_EVENT_UNSOLICITED);
                 case ReaderEventType.READER_EVENT_FRAME_STALL: return nameof(ReaderEventType.READER_EVENT_FRAME_STALL);
+                case ReaderEventType.READER_EVENT_NAK: return nameof(ReaderEventType.READER_EVENT_NAK);
                 default: return "UNKNOWN";
             }
         }

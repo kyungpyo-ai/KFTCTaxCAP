@@ -6,6 +6,18 @@
 필요하면 원본 저장소(`C:\Project\KFTCReaderDLL`)를 직접 확인한다. DLL 자체의 동작을 바꾸는 작업(버그 수정, API
 추가 등)은 이 저장소가 아니라 그쪽에서 한다.
 
+> **2026-10-08 개정 (최신판은 `ReaderSerial_연동SPEC.docx`, 아래 md들은 8월 판이라 이 내용이 빠져 있다)**
+> - 새 이벤트 `READER_EVENT_NAK = 6` — 응답 대기 중 리더기가 NAK(`02 00 02 15 03 14`)를 보내면 DLL이 요청을
+>   즉시 종료(IDLE 복귀)하고 통지한다. 이전 DLL은 NAK의 LRC 계산 방식이 달라(0x20 OR 없음) 이를
+>   `LRC_ERROR`(commandCode=0x15)로 잘못 분류했다. data 없음.
+> - `LRC_ERROR`는 진짜 수신 전문 손상일 때만 발생. commandCode는 받은 손상 프레임의 코드이며, 기다리던 응답
+>   코드와 같을 때만 요청이 즉시 종료되고 다르면 타임아웃까지 대기 상태가 유지된다.
+> - `RECEIVE_ERROR`의 commandCode가 0 고정에서 "기다리던 응답 코드"(대기 요청 없으면 0)로 변경.
+> - commandCode 규칙: 응답을 받은 경우(RESPONSE/UNSOLICITED/LRC_ERROR)는 받은 프레임의 코드, 못 받은 경우
+>   (TIMEOUT/FRAME_STALL/NAK/RECEIVE_ERROR)는 기다리던 응답 코드.
+> - DLL 로그(`C:\KFTC_PosAgent\KFTCReaderLog\KFTCReader{yyMMdd}.log`)에 NAK 수신 / LRC mismatch / 파서 폐기
+>   바이트 줄이 추가됐다.
+
 ## 이 폴더 구성
 
 | 경로 | 내용 |
