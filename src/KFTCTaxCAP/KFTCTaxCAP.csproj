@@ -27,6 +27,12 @@
       앱을 항상 관리자 권한으로 실행해야 한다. app.manifest의 requireAdministrator가 이를 강제한다.
     -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      2026-10-12: 앱 아이콘(실행 파일·작업표시줄·창). 기존 원캡과 같은 KFTC CI 마크로, 16~256 여러 크기를 담았다
+      (원본 KFTCOneCAP.ico는 32x32 한 장뿐). scripts/make_app_icon.ps1로 다시 만든다. 트레이 아이콘도 같은 파일을
+      리소스로 읽는다(HomeWindow.EnsureTrayIcon).
+    -->
+    <ApplicationIcon>Assets\Icons\KFTCTaxCAP.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -57,6 +63,7 @@
     <Resource Include="Assets\Fonts\Pretendard-Medium.ttf" />
     <Resource Include="Assets\Fonts\Pretendard-Bold.ttf" />
     <Resource Include="Assets\Images\img_ci_mark.png" />
+    <Resource Include="Assets\Icons\KFTCTaxCAP.ico" />
     <!--
       Phase 13(docs/payment_relay/development_plan.md P13-1, 2026-08-21 자산 구조 재구성): 결제
       알림창 자산. 리더기 몸통은 IC/FALLBACK/PROCESSING 3개 상태 공용 정지 이미지 1장(reader.png,

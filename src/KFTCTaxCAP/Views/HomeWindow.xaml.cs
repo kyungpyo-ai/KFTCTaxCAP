@@ -295,9 +295,9 @@ public partial class HomeWindow : Window
     }
 
     /// <summary>
-    /// NotifyIcon 지연 생성. 아이콘은 별도 .ico 자산이 아직 없어(Phase 3 범위에 트레이 아이콘
-    /// 그래픽 자산 준비가 포함되지 않음) 실행 파일에 내장된 기본 아이콘을 재사용한다.
-    /// TODO: 전용 트레이 아이콘(.ico) 자산이 확보되면 교체할 것.
+    /// NotifyIcon 지연 생성. 아이콘은 앱 아이콘(Assets/Icons/KFTCTaxCAP.ico, 2026-10-12)을 리소스에서 읽되
+    /// 트레이 크기(SystemInformation.SmallIconSize — 100% 16px, 150% 24px 등)에 맞는 이미지를 고른다.
+    /// 실행 파일에서 꺼내는 ExtractAssociatedIcon은 32px 하나만 돌려줘 트레이에서 축소돼 흐려진다.
     /// </summary>
     private void EnsureTrayIcon()
     {
@@ -307,8 +307,11 @@ public partial class HomeWindow : Window
         System.Drawing.Icon icon;
         try
         {
-            icon = System.Drawing.Icon.ExtractAssociatedIcon(
-                System.Reflection.Assembly.GetExecutingAssembly().Location) ?? System.Drawing.SystemIcons.Application;
+            var resource = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/Icons/KFTCTaxCAP.ico"));
+            using (var stream = resource.Stream)
+            {
+                icon = new System.Drawing.Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
+            }
         }
         catch
         {
