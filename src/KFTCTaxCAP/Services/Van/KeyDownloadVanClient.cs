@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 using System.Threading.Tasks;
 using KFTCTaxCAP.Interop;
@@ -183,7 +184,10 @@ internal sealed class KeyDownloadVanClient : IKeyDownloadVanClient
         // 처럼 위치 기반 마스킹을 추가하는 방식으로 간다 — 지금 이 클래스가 그 마스킹을 미리 구현할
         // 필요는 없다.
         string mode = _loadSettings().VanMode;
-        string requestText = DecodeAscii(request);
+        // 2026-10-12 서버 SPEC 변경 — 키다운로드도 결제(VanService)와 같이 전문 길이 4자리(ASCII, 본문
+        // 길이 — 0100="0060", 0120="0572")를 "ISO" 앞에 붙여 보낸다. 응답도 길이 4자리부터 온다(아래 검증).
+        byte[] framedRequest = BuildLengthPrefixed(request);
+        string requestText = DecodeAscii(framedRequest);
         // P32-5 — hostCode 토큰 추가(0100/0120 둘 다 KftcGiroNative.HostCodeKeyDownload로 고정,
         // 민감정보 아님, 마스킹 대상 아님).
         FileLogger.Info(LogCategory.Keydown,
@@ -193,13 +197,14 @@ internal sealed class KeyDownloadVanClient : IKeyDownloadVanClient
         try
         {
             invokeResult = await FnaisCrdVanInvoker.InvokeAsync(
-                mode, KftcGiroNative.HostCodeKeyDownload, request, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
+                mode, KftcGiroNative.HostCodeKeyDownload, framedRequest, KftcGiroNative.DefaultTimeoutSeconds).ConfigureAwait(false);
         }
         finally
         {
             // 조립한 요청 바이트(SIGN/HASH/RND/암호화 데이터 포함, P-28/P-29)는 invoker 호출 직후
             // 더 필요 없다 — best-effort 클리어(2026-09-02 사용자 확정, 위 클래스 주석 참고).
             SecureClear.Clear(request);
+            SecureClear.Clear(framedRequest);
         }
 
         if (invokeResult.IsArgumentRejected)
@@ -238,12 +243,28 @@ internal sealed class KeyDownloadVanClient : IKeyDownloadVanClient
             return KeyDownloadVanCallOutcome.CommunicationFailure($"FNAISCRDVAN 통신 실패(nRet={invokeResult.ReturnCode})");
         }
 
-        // invoker의 OutData는 4096바이트 원본 버퍼 — 전문별 고정 길이(660/196)만큼 잘라 파서에 넘긴다.
-        // 결제(VanService)와 달리 요청 스키마 길이가 아니라 ISO 전문의 고정 응답 길이를 쓴다
-        // (요청과 응답의 길이가 다르므로 — development_plan.md P24-2 "착수 전 전제").
+        // 2026-10-12 서버 SPEC 변경 — 응답도 전문 길이 4자리(본문 길이)부터 온다. 숫자 4자리이고 전문별
+        // 고정 응답 길이(0110="0660", 0130="0196")와 같아야 한다. 어긋나면 파싱하지 않는다(실제로 온 앞부분은
+        // 이 서버 구간 원문 로깅 방침대로 그대로 남긴다 — 위 Phase 24 후속 주석 참고).
+        string responseLengthField = Encoding.ASCII.GetString(invokeResult.OutData, 0, Math.Min(LengthFieldSize, invokeResult.OutData.Length));
+        if (!int.TryParse(responseLengthField, NumberStyles.None, CultureInfo.InvariantCulture, out int responseLength)
+            || responseLength != expectedResponseLength)
+        {
+            string received = DecodeNulTerminated(invokeResult.OutData);
+            FileLogger.Error(LogCategory.Keydown,
+                $"[KeyDownloadVanClient] 전문={telegramName} 응답 전문 길이 불일치 — 응답앞4바이트='{responseLengthField}' " +
+                $"기대={expectedResponseLength:D4} 응답 원문(길이 {received.Length}자)={received}");
+            SecureClear.Clear(invokeResult.OutData);
+            return KeyDownloadVanCallOutcome.ResponseParseFailure(
+                $"응답 전문 길이 불일치(응답앞4바이트='{responseLengthField}', 기대={expectedResponseLength:D4})");
+        }
+
+        // invoker의 OutData는 4096바이트 원본 버퍼 — 길이 4바이트 뒤에서 전문별 고정 길이(660/196)만큼
+        // 잘라 파서에 넘긴다. 결제(VanService)와 달리 요청 스키마 길이가 아니라 ISO 전문의 고정 응답
+        // 길이를 쓴다(요청과 응답의 길이가 다르므로 — development_plan.md P24-2 "착수 전 전제").
         byte[] response = new byte[expectedResponseLength];
-        int copyLength = Math.Min(expectedResponseLength, invokeResult.OutData.Length);
-        Buffer.BlockCopy(invokeResult.OutData, 0, response, 0, copyLength);
+        int copyLength = Math.Min(expectedResponseLength, invokeResult.OutData.Length - LengthFieldSize);
+        Buffer.BlockCopy(invokeResult.OutData, LengthFieldSize, response, 0, copyLength);
         // invoker가 돌려준 원본 4096바이트 버퍼도 같은 응답 데이터를 담고 있다 — 위 response로
         // 필요한 부분을 옮겼으니 더 갖고 있을 필요가 없다.
         SecureClear.Clear(invokeResult.OutData);
@@ -276,7 +297,7 @@ internal sealed class KeyDownloadVanClient : IKeyDownloadVanClient
         if (!parsed.ParseFailed)
         {
             FileLogger.Info(LogCategory.Keydown,
-                $"[KeyDownloadVanClient] 전문={telegramName} 응답 원문={DecodeAscii(response)}");
+                $"[KeyDownloadVanClient] 전문={telegramName} 응답 원문={responseLengthField}{DecodeAscii(response)}");
         }
 
         // 필요한 필드(payload/responseCode)를 위 지역 변수로 복사해냈으니 원본 응답 바이트는 더
@@ -302,6 +323,20 @@ internal sealed class KeyDownloadVanClient : IKeyDownloadVanClient
     /// 와 동일 인코딩). NUL 종단 처리를 하지 않는다 — 이 전문들은 <see cref="DecodeNulTerminated"/>가
     /// 다루는 out_szRetCode(가변 길이, NUL 종단)와 달리 항상 고정 길이라 전체를 그대로 남긴다.</summary>
     private static string DecodeAscii(byte[] buffer) => Encoding.ASCII.GetString(buffer);
+
+    /// <summary>전문 길이 필드(ASCII 숫자 4자리, 본문 길이) 크기 — <see cref="VanService"/>와 같은 형식.</summary>
+    private const int LengthFieldSize = 4;
+
+    /// <summary>2026-10-12 — 전문 길이 4자리 + ISO 전문 본문. VanService.BuildLengthPrefixed와 같은 로직을
+    /// 그대로 복제한다(이 클래스의 다른 헬퍼와 같은 이유로 공용 유틸로 승격하지 않는다).</summary>
+    private static byte[] BuildLengthPrefixed(byte[] body)
+    {
+        byte[] lengthField = Encoding.ASCII.GetBytes(body.Length.ToString("D4", CultureInfo.InvariantCulture));
+        byte[] result = new byte[LengthFieldSize + body.Length];
+        Buffer.BlockCopy(lengthField, 0, result, 0, LengthFieldSize);
+        Buffer.BlockCopy(body, 0, result, LengthFieldSize, body.Length);
+        return result;
+    }
 
     /// <summary>VanService.DecodeNulTerminated와 동일한 로직(out_szRetCode NUL 종단 디코딩) —
     /// 로깅 전용이라 별도 공용 유틸로 승격하지 않고 그대로 복제한다.</summary>

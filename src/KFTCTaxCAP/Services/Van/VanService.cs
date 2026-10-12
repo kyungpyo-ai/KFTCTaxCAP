@@ -17,8 +17,9 @@ namespace KFTCTaxCAP.Services.Van;
 /// 자리에 꽂힌다(<c>App.xaml.cs</c>에서 둘 중 하나를 고른다).
 ///
 /// <b>inData/outData 형식</b>(2026-10-06): SPEC 공통부대로 <c>#0</c> 전문 길이(N4)부터 — 요청은 길이를
-/// 붙여 보내고, 응답은 길이 4바이트를 검증한 뒤 떼어 본문만 중계한다. 키다운로드(ISO 전문, "ISO"부터)는
-/// 형식이 달라 <see cref="FnaisCrdVanInvoker"/>는 손대지 않고 이 클래스에서만 처리한다. 실서버 검증 전.
+/// 붙여 보내고, 응답은 길이 4바이트를 검증한 뒤 떼어 본문만 중계한다. <see cref="FnaisCrdVanInvoker"/>는
+/// 손대지 않고 호출 측에서 처리한다 — 키다운로드(ISO 전문)도 2026-10-12 서버 SPEC 변경으로 같은 형식이 됐고
+/// <see cref="KeyDownloadVanClient"/>가 따로 처리한다.
 ///
 /// <b>스레드 안전성 전제</b>: <c>FNAISCRDVAN</c>은 <c>TransactionQueue</c>(Phase 14)가 보장하는 단일
 /// 워커 큐 안에서만 호출된다 — 동시에 두 번 호출되지 않는다. <c>KFTC_GIRO.dll</c> 자체의 스레드 안전성은
