@@ -1,9 +1,10 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:KFTCTaxCAP.Controls">
 
     <!--
         CModernToggleSwitch 대응: 좌측 라벨 텍스트 + 우측 토글 노브.
-        IsChecked 상태에 따라 노브가 좌우로 슬라이드하는 애니메이션 포함.
+        IsChecked 상태에 따라 노브가 좌우로 슬라이드하는 애니메이션 포함(사용자 클릭 시에만 — 2026-10-12).
         (완전한 IsPending 스피너 상태는 이번 Phase 필수 아님 — 여기서는 간단한 회전 스피너로 근사)
 
         2026-08-13 수정 (사용자 피드백: "OFF를 해도 파란색이 유지됨"):
@@ -37,6 +38,7 @@
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Focusable" Value="True"/>
         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="controls:ToggleSwitchAnimationHelper.AnimateOnClick" Value="True"/>
         <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>
         <Setter Property="FontSize" Value="18.67"/>
         <Setter Property="FontWeight" Value="Bold"/>
@@ -105,34 +107,13 @@
                     </Grid>
 
                     <ControlTemplate.Triggers>
-                        <!-- 노브 슬라이드만 애니메이션 (IsChecked 하나만 건드리는 단독 속성이라 안전) -->
+                        <!--
+                            노브 위치는 즉시 전환 Setter로 정한다(2026-10-12 — 창을 열 때 저장값이 들어오며
+                            노브가 미끄러져 보이던 문제 수정). 슬라이드 애니메이션은 사용자 클릭일 때만
+                            controls:ToggleSwitchAnimationHelper가 KnobTransform에 재생한다.
+                        -->
                         <Trigger Property="IsChecked" Value="True">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="KnobTransform"
-                                                          Storyboard.TargetProperty="X"
-                                                          To="20" Duration="0:0:0.15">
-                                            <DoubleAnimation.EasingFunction>
-                                                <BackEase EasingMode="EaseOut" Amplitude="0.4"/>
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="KnobTransform"
-                                                          Storyboard.TargetProperty="X"
-                                                          To="0" Duration="0:0:0.15">
-                                            <DoubleAnimation.EasingFunction>
-                                                <BackEase EasingMode="EaseOut" Amplitude="0.4"/>
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
+                            <Setter TargetName="Knob" Property="Margin" Value="23,0,0,0"/>
                         </Trigger>
 
                         <!--
