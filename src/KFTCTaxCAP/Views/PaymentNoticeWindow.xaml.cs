@@ -15,17 +15,16 @@ namespace KFTCTaxCAP.Views;
 /// </summary>
 public partial class PaymentNoticeWindow : Window
 {
-    private const double CrossfadeSeconds = 0.25;
     private const double FadeInSeconds = 0.15;
 
-    // 리더기 이미지 기준 위치 (reader.png: 340x226.67 at Canvas.Left=205, Canvas.Top=260)
+    // 리더기 이미지 기준 위치 (reader.png: 340x226.67 at Canvas.Left=205, Canvas.Top=260+40 — Phase 42에서 글자 확대와 함께 40 내림)
     private const double ReaderLeft = 205;
-    private const double ReaderTop = 260;
+    private const double ReaderTop = 300;
 
     // 1. IC 카드 위치 (폭 96px, 높이 214.6px - 카드의 하단이 리더기 IC 슬롯에 체결되는 위치)
     private const double CardIcDisplayWidth = 96;
     private const double CardIcRestLeft = 327;
-    private const double CardIcRestTop = 145;
+    private const double CardIcRestTop = 185;
     private const double CardIcSlideFromY = -60;
 
     // 2. MS 카드 위치 — 이동 각도는 화살표(31.4도, 위 참고)와 이미 일치.
@@ -50,18 +49,18 @@ public partial class PaymentNoticeWindow : Window
     // 오른쪽 아래로 이동시켰다.
     private const double CardMsDisplayWidth = 145;
     private const double CardMsRestLeft = 452;
-    private const double CardMsRestTop = 301;
+    private const double CardMsRestTop = 341;
     private const double CardMsSlideFromX = 80;
     private const double CardMsSlideFromY = 49;
 
     // 화살표 위치 및 크기 (IC: 글씨와 겹치지 않도록 카드 왼쪽 아래에 배치)
     private const double ArrowIcDisplayWidth = 52;
     private const double ArrowIcLeft = 255;
-    private const double ArrowIcTop = 155;
+    private const double ArrowIcTop = 195;
 
     private const double ArrowMsDisplayWidth = 85;
     private const double ArrowMsLeft = 485;
-    private const double ArrowMsTop = 175;
+    private const double ArrowMsTop = 215;
 
     // Phase 18(P18-2): 문구 크로스페이드 레이어(TextPanelA/B)는 IC/FALLBACK/PROCESSING 3개 상태
     // 공용 Canvas.Top=38 위치를 그대로 쓰지만, PinEntry는 그 위에 아이콘(76x76, Top=14)이 얹히므로
@@ -89,16 +88,18 @@ public partial class PaymentNoticeWindow : Window
 
     public PaymentNoticeWindow() : this(new PaymentNoticeViewModel())
     {
-        // 기본 실행 시 3초 주기로 3가지 상태(IC -> MS -> PROCESSING) 자동 순환 데모
+        // 기본 실행 시 3초 주기로 4가지 상태(IC -> MS -> PIN -> PROCESSING) 자동 순환 데모.
+        // PIN은 2026-10-12 추가 — 실제 902614 흐름(카드 → PIN → VAN) 순서로 전체 화면을 이어 보기 위해.
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         int stateIndex = 0;
         timer.Tick += (_, _) =>
         {
-            stateIndex = (stateIndex + 1) % 3;
+            stateIndex = (stateIndex + 1) % 4;
             _viewModel.State = stateIndex switch
             {
                 0 => PaymentNoticeState.IcCardRequest,
                 1 => PaymentNoticeState.FallbackCardRequest,
+                2 => PaymentNoticeState.PinEntry,
                 _ => PaymentNoticeState.VanProcessing,
             };
         };
@@ -107,6 +108,9 @@ public partial class PaymentNoticeWindow : Window
         // 확인됐다(닫은 뒤 10초간 3초 주기 그대로 계속 발화). Closed에서 반드시 멈춘다.
         Closed += (_, _) => timer.Stop();
         timer.Start();
+
+        // 데모에는 취소를 받아 줄 결제 흐름이 없으므로 취소하면 창을 닫는다(2026-10-12 사용자 요청).
+        _viewModel.Canceled += (_, _) => Close();
     }
 
     public PaymentNoticeWindow(PaymentNoticeViewModel viewModel)
@@ -121,6 +125,7 @@ public partial class PaymentNoticeWindow : Window
         PlateImage.Source = PaymentNoticeBackgroundSource.PlateSource;
         ReaderImage.Source = PaymentNoticeBackgroundSource.ReaderSource;
         PinIconImage.Source = PaymentNoticeBackgroundSource.PinIconSource;
+        AttachPageShift();
 
         _pinBoxes = new[] { PinDigitBox1, PinDigitBox2, PinDigitBox3, PinDigitBox4 };
         _pinDots = new[] { PinDigitDot1, PinDigitDot2, PinDigitDot3, PinDigitDot4 };
@@ -281,7 +286,7 @@ public partial class PaymentNoticeWindow : Window
         int length = _viewModel.PinLength;
         string? revealed = _viewModel.RevealedDigit;
         var highlightBrush = (Brush)FindResource("Blue500Brush");
-        var normalBrush = (Brush)FindResource("TblBorderBrush");
+        var normalBrush = (Brush)FindResource("PinBoxBorderBrush");
 
         for (int i = 0; i < _pinBoxes.Length; i++)
         {
@@ -301,12 +306,55 @@ public partial class PaymentNoticeWindow : Window
         }
     }
 
+    // ===== 화면 전환(Phase 43, 2026-10-12 사용자 확정 "공통 요소 고정 + 나머지 넘기기") =====
+    // 크로스페이드만으로는 흰 바탕 위에서 전환을 알아채기 어려워(사용자 지적), 화면 "내용"(문구·카드·PIN 패널·
+    // 처리 중 흐름)은 옆으로 넘기고, 두 화면에 공통인 리더기·원판은 제자리에 둔다(PIN으로 들어가고 나갈 때만
+    // 페이드). 리더기 표면에 붙은 효과(화살표·슬롯 빛·로고 펄스·진행광 링)는 넘기면 리더기와 어긋나므로
+    // 페이드만 한다. 넘기는 요소들은 TranslateTransform 하나(_pageShift)를 함께 쓴다.
+    private const double PageOutSeconds = 0.15;
+    private const double PageInSeconds = 0.25;
+    private const double PageShiftPixels = 30;
+
+    private readonly TranslateTransform _pageShift = new();
+    private PaymentNoticeState? _shownState;
+
+    // 전환 도중 상태가 또 바뀌면 앞 전환의 완료 콜백이 늦게 도착해 옛 상태를 적용할 수 있다 — 번호로 걸러 낸다.
+    private int _transitionId;
+
+    private void AttachPageShift()
+    {
+        TextPanelA.RenderTransform = _pageShift;
+        TextPanelB.RenderTransform = _pageShift;
+        PinPanel.RenderTransform = _pageShift;
+        SignalWaveIndicator.RenderTransform = _pageShift;
+        // 카드는 자체 슬라이드 애니메이션(CardTranslate)이 있어 둘을 묶는다.
+        var cardGroup = new TransformGroup();
+        cardGroup.Children.Add(CardTranslate);
+        cardGroup.Children.Add(_pageShift);
+        CardImage.RenderTransform = cardGroup;
+    }
+
+    private static void SetOpacity(UIElement element, double value)
+    {
+        element.BeginAnimation(UIElement.OpacityProperty, null);
+        element.Opacity = value;
+    }
+
     private void ApplyState(PaymentNoticeState state, bool animate)
     {
         _isFirstRender = false;
+        PaymentNoticeState? previous = _shownState;
+        _shownState = state;
+        int transitionId = ++_transitionId;
 
         if (!animate)
         {
+            _pageShift.BeginAnimation(TranslateTransform.XProperty, null);
+            _pageShift.X = 0;
+            SetOpacity(PlateImage, 1);
+            SetOpacity(ReaderImage, 1);
+            SetOpacity(ProcessingRing, 1);
+
             ApplyText(TextAKr1, TextAKr2, TextAEn1, TextAEn2, state);
             Canvas.SetTop(TextPanelA, state == PaymentNoticeState.PinEntry ? PinEntryTextTop : DefaultTextTop);
             TextPanelA.Opacity = 1;
@@ -336,11 +384,42 @@ public partial class PaymentNoticeWindow : Window
             return;
         }
 
+        bool wasPin = previous == PaymentNoticeState.PinEntry;
+        bool isPin = state == PaymentNoticeState.PinEntry;
         var frontText = _isTextAFront ? TextPanelA : TextPanelB;
         var backText = _isTextAFront ? TextPanelB : TextPanelA;
-        _isTextAFront = !_isTextAFront;
 
-        double textTop = state == PaymentNoticeState.PinEntry ? PinEntryTextTop : DefaultTextTop;
+        // ① 나가기(0.15초): 내용은 왼쪽으로 밀리며 흐려지고, 리더기 위 효과는 페이드아웃. PIN으로 들어갈 때는
+        //    리더기·원판도 함께 흐려진다(PIN 화면에는 리더기가 없다).
+        var outShift = new DoubleAnimation(-PageShiftPixels, TimeSpan.FromSeconds(PageOutSeconds))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+        outShift.Completed += (_, _) =>
+        {
+            if (transitionId == _transitionId)
+            {
+                EnterState(state, wasPin, isPin, backText);
+            }
+        };
+        FadeElement(frontText, 0, PageOutSeconds);
+        FadeElement(CardImage, 0, PageOutSeconds);
+        FadeElement(PinPanel, 0, PageOutSeconds);
+        FadeElement(SignalWaveIndicator, 0, PageOutSeconds);
+        FadeElement(OverlayHost, 0, PageOutSeconds);
+        FadeElement(ProcessingRing, 0, PageOutSeconds);
+        if (isPin && !wasPin)
+        {
+            FadeElement(PlateImage, 0, PageOutSeconds);
+            FadeElement(ReaderImage, 0, PageOutSeconds);
+        }
+        _pageShift.BeginAnimation(TranslateTransform.XProperty, outShift);
+    }
+
+    /// <summary>② 들어오기(0.25초): 새 상태로 구성한 뒤 내용을 오른쪽에서 밀어 넣고 효과를 페이드인한다.</summary>
+    private void EnterState(PaymentNoticeState state, bool wasPin, bool isPin, StackPanel backText)
+    {
+        _isTextAFront = !_isTextAFront;
         if (ReferenceEquals(backText, TextPanelA))
         {
             ApplyText(TextAKr1, TextAKr2, TextAEn1, TextAEn2, state);
@@ -349,45 +428,47 @@ public partial class PaymentNoticeWindow : Window
         {
             ApplyText(TextBKr1, TextBKr2, TextBEn1, TextBEn2, state);
         }
-        Canvas.SetTop(backText, textTop);
+        Canvas.SetTop(backText, isPin ? PinEntryTextTop : DefaultTextTop);
 
-        // 문구 크로스페이드
-        FadeElement(frontText, 0, CrossfadeSeconds);
-        FadeElement(backText, 1, CrossfadeSeconds);
-
-        // 오버레이 및 카드 전환: 페이드아웃 -> 새 상태 설정 -> 페이드인
-        FadeElement(OverlayHost, 0, CrossfadeSeconds, () =>
+        // 이전 상태의 효과 정리 후 새 상태 구성(구성 함수들이 각 요소의 표시·재생을 맡는다).
+        ProcessingIndicator.Stop();
+        ProcessingRing.Stop();
+        ProcessingRing.Visibility = Visibility.Collapsed;
+        // 링은 투명에서 시작해 다른 요소와 함께 페이드인한다 — 1로 두면 원판·문구보다 먼저 보인다(사용자 지적).
+        SetOpacity(ProcessingRing, 0);
+        SignalWaveIndicator.Stop();
+        SignalWaveIndicator.Visibility = Visibility.Collapsed;
+        if (!isPin)
         {
-            ProcessingIndicator.Stop();
-            ProcessingRing.Stop();
-            ProcessingRing.Visibility = Visibility.Collapsed;
-            SignalWaveIndicator.Stop();
-            SignalWaveIndicator.Visibility = Visibility.Collapsed;
-            ConfigureOverlay(state);
-            ConfigurePinPanel(state);
-            FadeElement(OverlayHost, state == PaymentNoticeState.PinEntry ? 0 : 1, FadeInSeconds);
-            if (state == PaymentNoticeState.PinEntry)
-            {
-                FadeElement(PinPanel, 1, FadeInSeconds);
-            }
-        });
-
-        // PIN 패널 페이드아웃(다른 상태로 나갈 때). PinEntry로 들어올 때는 위 콜백에서 별도로
-        // 페이드인한다 — 여기서는 "나가는" 방향만 처리하고, 완료 후 PinEntry가 아니면 Collapsed로
-        // 되돌려 히트테스트가 다시 걸리지 않게 한다.
-        FadeElement(PinPanel, 0, CrossfadeSeconds, () =>
+            PinPanel.Visibility = Visibility.Collapsed;
+        }
+        if (wasPin && !isPin)
         {
-            if (state != PaymentNoticeState.PinEntry)
-            {
-                PinPanel.Visibility = Visibility.Collapsed;
-            }
-        });
+            // 리더기가 다시 나타나는 전환 — 투명에서 시작해 페이드인(구성 함수가 Visible로 바꾼다).
+            SetOpacity(PlateImage, 0);
+            SetOpacity(ReaderImage, 0);
+        }
+        ConfigureOverlay(state);
+        ConfigureCard(state);
+        ConfigurePinPanel(state);
 
-        FadeElement(CardImage, 0, CrossfadeSeconds, () =>
+        var inShift = new DoubleAnimation(PageShiftPixels, 0, TimeSpan.FromSeconds(PageInSeconds))
         {
-            StopCard();
-            ConfigureCard(state);
-        });
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        _pageShift.BeginAnimation(TranslateTransform.XProperty, inShift);
+        FadeElement(backText, 1, PageInSeconds);
+        FadeElement(OverlayHost, isPin ? 0 : 1, PageInSeconds);
+        FadeElement(ProcessingRing, 1, PageInSeconds);
+        if (isPin)
+        {
+            FadeElement(PinPanel, 1, PageInSeconds);
+        }
+        if (wasPin && !isPin)
+        {
+            FadeElement(PlateImage, 1, PageInSeconds);
+            FadeElement(ReaderImage, 1, PageInSeconds);
+        }
     }
 
     /// <summary>
@@ -486,7 +567,7 @@ public partial class PaymentNoticeWindow : Window
             ProcessingRing.Visibility = Visibility.Visible;
             ProcessingRing.Play();
 
-            // 신호 웨이브 인디케이터(리더기 위쪽 공중, OverlayHost 소속 아님)도 별도로 켠다.
+            // 흐름 인디케이터(리더기 위쪽 공중, OverlayHost 소속 아님)도 별도로 켠다.
             SignalWaveIndicator.Visibility = Visibility.Visible;
             SignalWaveIndicator.Play();
             return;
@@ -572,7 +653,7 @@ public partial class PaymentNoticeWindow : Window
         {
             PaymentNoticeState.IcCardRequest => (
                 "그림과 같이 카드를 넣어주세요.",
-                "결제가 완료될 때 까지 카드를 빼지 마십시오.",
+                "결제가 완료될 때까지 카드를 빼지 마십시오.",
                 "Please Insert the card to the IC card reader.",
                 "Do not remove the card until the payment is completed"),
             PaymentNoticeState.FallbackCardRequest => (
@@ -580,10 +661,12 @@ public partial class PaymentNoticeWindow : Window
                 (string?)null,
                 "Please swipe the card through the reader",
                 (string?)null),
+            // 501008·800000(조회)과 902614(승인)가 모두 이 상태를 지나므로 결제에 한정되지 않는 공통 문구를 쓴다
+            // (Phase 42, 2026-10-12 사용자 확정 — 이전 "거래중입니다. / Payment is processing").
             PaymentNoticeState.VanProcessing => (
-                "거래중입니다.",
+                "처리 중입니다.",
                 (string?)null,
-                "Payment is processing",
+                "Processing, please wait",
                 (string?)null),
             // P18-2 "문구 2줄" 원문 그대로 — 실제 표시 위치(Canvas.Top)는 ApplyState의
             // PinEntryTextTop 상수로 PinPanel 아이콘과 겹치지 않게 아래로 내린다.

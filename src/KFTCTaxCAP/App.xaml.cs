@@ -245,18 +245,27 @@ public partial class App : Application
             var vm = new PaymentNoticeViewModel { State = PaymentNoticeState.VanProcessing };
             var window = new PaymentNoticeWindow(vm);
             MainWindow = window;
+            // 취소하면 창을 닫아 종료한다(2026-10-12). VanProcessing 중 ESC가 게이트를 뚫는 결함이 있다면
+            // 창이 닫히므로 오히려 더 잘 드러난다.
+            vm.Canceled += (_, _) => window.Close();
             window.Show();
 
             // VanProcessing 상태에서는 취소 버튼이 항상 disabled로 보이므로(정상 게이팅이든, ESC가
             // 게이트를 뚫고 실제로 취소해버린 버그든 겉보기엔 똑같다), 5초 뒤 IcCardRequest로 전환해
             // "여전히 취소 가능한지"(_canceled가 실제로는 false인지)를 눈으로 구분할 수 있게 한다.
-            var revealTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-            revealTimer.Tick += (_, _) =>
+            // 화면 확인용: `--notice-van-processing-test hold`는 IC로 전환하지 않고 거래중을 계속 유지한다
+            // (Phase 42, 실제 결제 흐름에서는 거래중이 너무 빨리 지나가 눈으로 보기 어려워 추가).
+            bool hold = e.Args.Length > 1 && e.Args[1].ToLowerInvariant() == "hold";
+            if (!hold)
             {
-                revealTimer.Stop();
-                vm.State = PaymentNoticeState.IcCardRequest;
-            };
-            revealTimer.Start();
+                var revealTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                revealTimer.Tick += (_, _) =>
+                {
+                    revealTimer.Stop();
+                    vm.State = PaymentNoticeState.IcCardRequest;
+                };
+                revealTimer.Start();
+            }
         }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--notice-pin-test")
         {
@@ -265,6 +274,8 @@ public partial class App : Application
             var vm = new PaymentNoticeViewModel { State = PaymentNoticeState.PinEntry };
             var window = new PaymentNoticeWindow(vm);
             MainWindow = window;
+            // 취소를 받아 줄 결제 흐름이 없으므로 취소하면 창을 닫아 종료한다(2026-10-12 사용자 요청).
+            vm.Canceled += (_, _) => window.Close();
             window.Show();
         }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--presenter-test")

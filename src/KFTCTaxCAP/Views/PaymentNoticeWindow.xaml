@@ -4,15 +4,17 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:KFTCTaxCAP.Views.Controls"
+        xmlns:pay="clr-namespace:KFTCTaxCAP.Services.Payment"
         mc:Ignorable="d"
         Title="결제 알림"
-        Width="600" Height="520"
+        Width="576" Height="600"
         WindowStyle="None"
+        AllowsTransparency="True"
         ResizeMode="NoResize"
         Topmost="True"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen"
-        Background="#F7F7F7">
+        Background="Transparent">
     <!--
         development_plan.md P13-3: Owner를 설정하지 않는다(홈 화면을 Owner로 지정하면 알림창을 띄울 때
         홈 화면까지 활성화되어 PRD §5.1을 위반한다). 상태 전환은 이 창을 재생성하지 않고 State 변경 +
@@ -39,34 +41,55 @@
         <!--
             Phase 18(P18-2) PIN 키패드 버튼 스타일. Themes/Buttons.xaml의 ModernButtonBase를 그대로
             베이스로 쓰되(눌림 시 살짝 축소되는 클릭 피드백 재사용), 배경/보더/폰트만 시안(pin입력.png)에
-            맞춘다 — 흰 배경 + 얇은 회색 보더 + 큰 볼드 숫자. 이 창 전용이라 전역 Buttons.xaml에는
-            넣지 않는다.
+            맞춘다. 이 창 전용이라 전역 Buttons.xaml에는 넣지 않는다.
+            Phase 43(2026-10-12 사용자 확정 "채운 버튼"): 흰 바탕+회색 테두리 → 테두리 없는 채움 버튼으로 바꿨다.
+            색은 바로 앞 화면(카드 요청·처리 중)의 리더기 일러스트·흐름 인디케이터와 같은 파랑 계열로 맞춘다
+            (사용자 요청 "거래 알림창 다음에 나오는 화면이니 색감을 비슷하게"). 흰 바탕+테두리인 PIN 4칸과 모양이
+            갈려 입력 칸이 키패드에 묻히지 않는다. 반지름은 베이스 템플릿 고정값(8)을 그대로 쓴다.
         -->
+        <!-- PIN 4칸의 기본 테두리(현재 칸은 Blue500). 코드비하인드 UpdatePinDigitsDisplay도 이 키를 쓴다. -->
+        <SolidColorBrush x:Key="PinBoxBorderBrush" Color="#C9D9F7"/>
         <Style x:Key="PinKeypadButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonBase}">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="{StaticResource TblBorderBrush}"/>
+            <Setter Property="Background" Value="#EEF4FF"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Foreground" Value="{StaticResource TitleTextBrush}"/>
             <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>
-            <Setter Property="FontSize" Value="26"/>
+            <Setter Property="FontSize" Value="28"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="0"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#F5F7FA"/>
+                    <Setter Property="Background" Value="#E0EBFE"/>
                 </Trigger>
                 <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Background" Value="#EAEDF1"/>
+                    <Setter Property="Background" Value="#CFE0FD"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
     </Window.Resources>
-    <Grid>
+    <!-- Phase 41(PRD docs/payment_alert_ui §2.1): 창 윤곽. 카드(600x520) 바깥에 투명 여백 40을 두고
+         그림자는 텍스트를 담지 않는 별도 레이어(ShadowLayer)에만 건다(5차 AlertDialog와 같은 방식). -->
+    <Grid Margin="40">
+        <Border x:Name="ShadowLayer" Background="White" CornerRadius="16" IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect Color="#1A202C" Opacity="0.22" BlurRadius="40" ShadowDepth="10" Direction="270"/>
+            </Border.Effect>
+        </Border>
+        <Border Background="White" CornerRadius="16" BorderBrush="#DCE0E4" BorderThickness="1"
+                RenderOptions.ClearTypeHint="Enabled" SnapsToDevicePixels="True">
+        <Grid>
         <!-- 2026-08-24 8차 수정(사용자 피드백 "창이 너무 크다"): 내부 좌표는 그대로 두고 Viewbox로
              감싸 전체 비율을 유지한 채 스케일만 축소한다. Canvas(750x650)와 취소 버튼을 750x650
              고정 크기 Grid 하나로 묶어야 Viewbox가 스케일을 함께 적용한다 — 원래 Window Width/Height
              였던 750x650 대비 약 80%인 600x520으로 Window 자체를 줄였다(비율 750:650 = 600:520 유지). -->
         <Viewbox Stretch="Uniform">
-        <Grid Width="750" Height="650">
+        <!-- Phase 43(2026-10-12 사용자 지적 "좌우 흰 공간이 너무 많다"): 750 좌표계의 양옆 65씩을 잘라 보이는 폭을
+             620으로 줄인다(카드 600→약 500, 창 680→576). 모든 상태가 같은 크기라 카드 요청 → PIN → 처리 중으로
+             넘어가도 창 크기가 바뀌지 않는다(상태별 폭 전환은 시도 후 폐기 — 창이 줄었다 늘어남).
+             안쪽 750 Grid에 같은 양의 음수 여백을 줘서 가운데(x=375) 기준 배치는 그대로다. 가장 넓은 요소인 MS 카드
+             (좌표 약 150~600)도 보이는 범위(65~685) 안이다. -->
+        <Grid Width="620" Height="650" ClipToBounds="True">
+        <Grid Width="750" Height="650" Margin="-65,0,-65,0">
         <Canvas Width="750" Height="650">
 
             <!-- ===== 바닥 원판 (진행광 링보다 먼저 그려져 가장 아래) =====
@@ -75,13 +98,13 @@
                  생긴다 — HighQuality(고품질 축소 필터)로 지정해 경계를 매끈하게 한다. -->
             <Image x:Name="PlateImage"
                    Stretch="Uniform" Width="340" Height="226.67"
-                   Canvas.Left="205" Canvas.Top="260" IsHitTestVisible="False"
+                   Canvas.Left="205" Canvas.Top="300" IsHitTestVisible="False"
                    RenderOptions.BitmapScalingMode="HighQuality"/>
 
             <!-- ===== 원형 진행광 링 (원판 위, 몸통 아래) ===== -->
             <controls:PaymentProcessingRing x:Name="ProcessingRing"
                    Width="340" Height="226.67"
-                   Canvas.Left="205" Canvas.Top="260"
+                   Canvas.Left="205" Canvas.Top="300"
                    Visibility="Collapsed" IsHitTestVisible="False"/>
 
             <!-- ===== 정지 리더기 몸통 =====
@@ -89,39 +112,41 @@
                  축소 렌더링 시 깨져 보이는 문제 — HighQuality 스케일링으로 개선. -->
             <Image x:Name="ReaderImage"
                    Stretch="Uniform" Width="340" Height="226.67"
-                   Canvas.Left="205" Canvas.Top="260" IsHitTestVisible="False"
+                   Canvas.Left="205" Canvas.Top="300" IsHitTestVisible="False"
                    RenderOptions.BitmapScalingMode="HighQuality"/>
 
             <!-- ===== 문구 크로스페이드 레이어 ===== -->
             <StackPanel x:Name="TextPanelA" Canvas.Left="0" Canvas.Top="38" Width="750" Opacity="1"
                         HorizontalAlignment="Center">
                 <TextBlock x:Name="TextAKr1" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="27" FontWeight="Bold"
                            Foreground="{StaticResource TitleTextBrush}"/>
+                <!-- Phase 42(PRD §2.2): 핵심 주의 문구 — 제목보다 한 단계 작고 강조색 -->
                 <TextBlock x:Name="TextAKr2" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
-                           Foreground="{StaticResource TitleTextBrush}" Margin="0,4,0,0"/>
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="20" FontWeight="SemiBold"
+                           Foreground="#C77700" Margin="0,10,0,0"/>
                 <TextBlock x:Name="TextAEn1" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="17"
                            Foreground="{StaticResource SubTextBrush}" Margin="0,14,0,0"/>
                 <TextBlock x:Name="TextAEn2" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="17"
                            Foreground="{StaticResource SubTextBrush}" Margin="0,2,0,0"/>
             </StackPanel>
 
             <StackPanel x:Name="TextPanelB" Canvas.Left="0" Canvas.Top="38" Width="750" Opacity="0"
                         HorizontalAlignment="Center">
                 <TextBlock x:Name="TextBKr1" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="27" FontWeight="Bold"
                            Foreground="{StaticResource TitleTextBrush}"/>
+                <!-- Phase 42(PRD §2.2): 핵심 주의 문구 — 제목보다 한 단계 작고 강조색 -->
                 <TextBlock x:Name="TextBKr2" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="22" FontWeight="Bold"
-                           Foreground="{StaticResource TitleTextBrush}" Margin="0,4,0,0"/>
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="20" FontWeight="SemiBold"
+                           Foreground="#C77700" Margin="0,10,0,0"/>
                 <TextBlock x:Name="TextBEn1" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="17"
                            Foreground="{StaticResource SubTextBrush}" Margin="0,14,0,0"/>
                 <TextBlock x:Name="TextBEn2" HorizontalAlignment="Center" TextAlignment="Center"
-                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="16"
+                           FontFamily="{StaticResource PretendardFontFamily}" FontSize="17"
                            Foreground="{StaticResource SubTextBrush}" Margin="0,2,0,0"/>
             </StackPanel>
 
@@ -188,7 +213,7 @@
                  2026-08-24 신설: 문구(TextPanelA/B, Top=38)와 리더기(ReaderImage, Top=260) 사이 여백에
                  배치한다. 컨트롤 자체 너비 300 기준 창 폭(750) 중앙 정렬 Left=225, Top=180. -->
             <controls:PaymentSignalWaveIndicator x:Name="SignalWaveIndicator"
-                   Canvas.Left="225" Canvas.Top="180"
+                   Canvas.Left="155" Canvas.Top="170"
                    Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="10"/>
 
             <!-- ===== PIN 입력 패널 (Phase 18 P18-2, PinEntry 전용) =====
@@ -212,45 +237,45 @@
                      대상). 기본값은 "1번째 칸이 강조된 초기 상태"(0자리 입력) — 나머지 3칸은 빈 칸. -->
                 <StackPanel x:Name="PinDigitsPanel" Orientation="Horizontal"
                             HorizontalAlignment="Center" VerticalAlignment="Top"
-                            Margin="0,186,0,0">
-                    <Border x:Name="PinDigitBox1" Width="54" Height="54" Margin="0,0,18,0"
-                            Background="White" CornerRadius="8"
+                            Margin="0,180,0,0">
+                    <Border x:Name="PinDigitBox1" Width="66" Height="66" Margin="0,0,18,0"
+                            Background="White" CornerRadius="10"
                             BorderBrush="{StaticResource Blue500Brush}" BorderThickness="2">
                         <Grid>
-                            <Ellipse x:Name="PinDigitDot1" Width="12" Height="12"
+                            <Ellipse x:Name="PinDigitDot1" Width="14" Height="14"
                                      Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
                             <TextBlock x:Name="PinDigitText1" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
                                        Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
                         </Grid>
                     </Border>
-                    <Border x:Name="PinDigitBox2" Width="54" Height="54" Margin="0,0,18,0"
-                            Background="White" CornerRadius="8"
-                            BorderBrush="{StaticResource TblBorderBrush}" BorderThickness="1">
+                    <Border x:Name="PinDigitBox2" Width="66" Height="66" Margin="0,0,18,0"
+                            Background="White" CornerRadius="10"
+                            BorderBrush="{StaticResource PinBoxBorderBrush}" BorderThickness="1">
                         <Grid>
-                            <Ellipse x:Name="PinDigitDot2" Width="12" Height="12"
+                            <Ellipse x:Name="PinDigitDot2" Width="14" Height="14"
                                      Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
                             <TextBlock x:Name="PinDigitText2" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
                                        Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
                         </Grid>
                     </Border>
-                    <Border x:Name="PinDigitBox3" Width="54" Height="54" Margin="0,0,18,0"
-                            Background="White" CornerRadius="8"
-                            BorderBrush="{StaticResource TblBorderBrush}" BorderThickness="1">
+                    <Border x:Name="PinDigitBox3" Width="66" Height="66" Margin="0,0,18,0"
+                            Background="White" CornerRadius="10"
+                            BorderBrush="{StaticResource PinBoxBorderBrush}" BorderThickness="1">
                         <Grid>
-                            <Ellipse x:Name="PinDigitDot3" Width="12" Height="12"
+                            <Ellipse x:Name="PinDigitDot3" Width="14" Height="14"
                                      Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
                             <TextBlock x:Name="PinDigitText3" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
                                        Foreground="{StaticResource TitleTextBrush}" Visibility="Collapsed"/>
                         </Grid>
                     </Border>
-                    <Border x:Name="PinDigitBox4" Width="54" Height="54"
-                            Background="White" CornerRadius="8"
-                            BorderBrush="{StaticResource TblBorderBrush}" BorderThickness="1">
+                    <Border x:Name="PinDigitBox4" Width="66" Height="66"
+                            Background="White" CornerRadius="10"
+                            BorderBrush="{StaticResource PinBoxBorderBrush}" BorderThickness="1">
                         <Grid>
-                            <Ellipse x:Name="PinDigitDot4" Width="12" Height="12"
+                            <Ellipse x:Name="PinDigitDot4" Width="14" Height="14"
                                      Fill="{StaticResource TitleTextBrush}" Visibility="Hidden"/>
                             <TextBlock x:Name="PinDigitText4" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontFamily="{StaticResource PretendardFontFamily}" FontSize="24" FontWeight="SemiBold"
@@ -262,9 +287,9 @@
                 <!-- 3x4 키패드: 1~9 / ⌫(삭제) / 0 / 빈칸. Command 배선은 P18-3 — 지금은 클릭해도
                      동작하지 않는다(x:Name만 미리 부여해 둔다). -->
                 <UniformGrid x:Name="PinKeypad" Rows="4" Columns="3"
-                             Width="500" Height="260"
+                             Width="450" Height="304"
                              HorizontalAlignment="Center" VerticalAlignment="Top"
-                             Margin="0,268,0,0">
+                             Margin="0,264,0,0">
                     <Button x:Name="PinButton1" Content="1" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
                             Command="{Binding PinDigitCommand}" CommandParameter="1"/>
                     <Button x:Name="PinButton2" Content="2" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
@@ -283,7 +308,9 @@
                             Command="{Binding PinDigitCommand}" CommandParameter="8"/>
                     <Button x:Name="PinButton9" Content="9" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
                             Command="{Binding PinDigitCommand}" CommandParameter="9"/>
+                    <!-- 기능 키라 숫자보다 옅은 청회색 글자로 구분(Phase 43) -->
                     <Button x:Name="PinButtonBackspace" Content="⌫" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
+                            Foreground="#5B6F96" FontSize="24"
                             Command="{Binding PinBackspaceCommand}"/>
                     <Button x:Name="PinButton0" Content="0" Margin="6" Style="{StaticResource PinKeypadButtonStyle}"
                             Command="{Binding PinDigitCommand}" CommandParameter="0"/>
@@ -295,13 +322,28 @@
         </Canvas>
 
         <!-- ===== 취소 버튼 ===== -->
+        <!-- Phase 42: 거래중(VanProcessing)에는 취소가 불가능하므로 버튼 자체를 숨긴다(사용자 확정 2026-10-08).
+             숨겨도 CancelCommand·ESC 게이팅(IsCancelAllowed)은 그대로다. -->
         <Button x:Name="CancelButton" Content="취소"
-                Style="{StaticResource ReaderSecondaryButtonStyle}"
                 Width="140" Height="40"
                 HorizontalAlignment="Center" VerticalAlignment="Bottom"
                 Margin="0,0,0,24"
-                Command="{Binding CancelCommand}"/>
+                Command="{Binding CancelCommand}">
+            <Button.Style>
+                <Style TargetType="Button" BasedOn="{StaticResource ReaderSecondaryButtonStyle}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding State}" Value="{x:Static pay:PaymentNoticeState.VanProcessing}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+
+        </Grid>
         </Grid>
         </Viewbox>
+        </Grid>
+        </Border>
     </Grid>
 </Window>

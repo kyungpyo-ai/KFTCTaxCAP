@@ -7,58 +7,27 @@
              Width="340" Height="226.67"
              d:DesignHeight="226.67" d:DesignWidth="340">
     <!--
-        2026-08-24 신설(원판/몸통 자산 분리에 따른 재구성):
-        이전에는 리더기 몸통+원판+그림자가 한 장으로 합성된 이미지(reader.png) 위에 이 진행광을
-        그릴 수밖에 없어서, 원판의 "몸통에 가려져야 할" 뒤쪽 절반까지 그대로 비쳐 보이는 문제가
-        있었다(PaymentProcessingIndicator.xaml의 기존 주석 참고). 이제 원판(circle.png)과 몸통
-        (reader_kftc.png)이 분리된 자산으로 제공되어, PaymentNoticeWindow.xaml의 Canvas 순서를
-        "원판 → 이 컨트롤(진행광 링) → 몸통" 순으로 쌓기만 하면 링이 몸통 뒤로 지나가는 부분은
-        몸통 이미지의 불투명 픽셀에 자동으로 가려진다 — 그래서 이 컨트롤은 반원 클리핑 편법 없이
-        "온전한 360도" 타원 경로를 그대로 쓴다.
-
-        타원 파라미터는 circle.png(1536x1024)를 Pillow(alpha 채널 촘촘한 경계 스캔 + 최소자승 피팅)로
-        재실측했다(2026-08-24 5차 수정, 사용자 재실측 피드백 — 상세 산출 근거는
-        PaymentProcessingRing.xaml.cs 상단 주석 참고): 중심(768.83,610.35) 반경(666.17,346.96) px →
-        340x226.67 캔버스로 스케일(340/1536 ≈ 0.221354) 변환 시 중심(170.18,135.10) 반경(147.46,76.80).
-        원판 안쪽의 넓은 투명 V자 구간(자산 자체에 뒤쪽이 처음부터 비어 있음)은 피팅에서 제외하고
-        좌/우 측면 플랭크와 하단 전 구간만 근거로 삼았다.
-
-        2026-08-24 6차 수정: 펄스 효과(BasePulseGlow)는 사용자 피드백에 따라 완전히 제거했다 — 로고
-        펄스(PaymentProcessingIndicator)와 함께 "이상해 보인다"는 지적을 받아 이 링의 베이스 백라이트
-        펄스도 함께 걷어냈다. 남은 것은 정적인 베이스 트랙 + 회전 진행광 아크뿐이다.
+        원판(circle.png) 위·리더기 몸통 아래 레이어(PaymentNoticeWindow.xaml 참고 — 몸통에 가려지는 부분은
+        몸통 픽셀이 자연스럽게 덮는다).
+        2026-10-12 재구성: 원판 테두리를 도는 진행광(링 아크 + 헤드라이트 점)은 "도는 게 어색하고 끊겨 보인다",
+        이어 시도한 유리 반사광(빛줄기 스윕)도 "조금 이상하다"는 사용자 피드백으로 걷어내고, 테두리가 박자에 맞춰
+        부드럽게 밝아졌다 어두워지는 맥박만 남겼다 — 움직이는 요소가 없어 끊겨 보일 일이 없고, 위쪽
+        "카드 → 은행" 흐름이 주인공이 된다. 타원 경로(중심 170.18,135.10 반경 147.46,76.80)의 실측 근거는
+        코드비하인드 주석 참고. 클래스·파일 이름은 창과의 연결을 유지하려고 그대로 둔다(Play/Stop 동일).
     -->
-    <Canvas IsHitTestVisible="False" Width="340" Height="226.67" ClipToBounds="False">
-
-        <!-- 타원 궤적 베이스 은은한 트랙 (테두리 전체) -->
+    <Canvas IsHitTestVisible="False" Width="340" Height="226.67">
+        <!-- 기본 트랙 — 항상 은은하게 보인다 -->
         <Path Data="M 170.18,58.30 A 147.46,76.80 0 1 1 170.17,58.30 Z"
               Stroke="#3B82F6" StrokeThickness="3" Opacity="0.3"/>
-
-        <!-- 글로우 효과를 입힌 회전 진행광 아크 — 온전한 360도 경로를 시계방향으로 계속 스크롤. -->
-        <Path x:Name="OrbitGlowArc"
-              Data="M 170.18,58.30 A 147.46,76.80 0 1 1 170.17,58.30 Z"
-              Stroke="#60A5FA" StrokeThickness="7"
-              StrokeDashArray="169 1000" StrokeDashCap="Round"
-              Opacity="0.85">
+        <!-- 맥박 글로우 — 박자마다 밝아졌다 어두워진다 -->
+        <Path x:Name="PulseGlow" Data="M 170.18,58.30 A 147.46,76.80 0 1 1 170.17,58.30 Z"
+              Stroke="#60A5FA" StrokeThickness="8" Opacity="0">
             <Path.Effect>
                 <BlurEffect Radius="8"/>
             </Path.Effect>
         </Path>
-
-        <!-- 선명한 코어 회전 진행광 아크 -->
-        <Path x:Name="OrbitCoreArc"
-              Data="M 170.18,58.30 A 147.46,76.80 0 1 1 170.17,58.30 Z"
-              Stroke="#E0F2FE" StrokeThickness="3.5"
-              StrokeDashArray="110 1000" StrokeDashCap="Round"
-              Opacity="0.95"/>
-
-        <!-- 진행광 선두(Head) 하이라이트 발광체 점 -->
-        <Ellipse x:Name="OrbitHeadLight" Width="14" Height="14"
-                 Fill="#FFFFFF" Opacity="0.95"
-                 Canvas.Left="0" Canvas.Top="0">
-            <Ellipse.Effect>
-                <BlurEffect Radius="4"/>
-            </Ellipse.Effect>
-        </Ellipse>
-
+        <!-- 맥박 코어 — 글로우 안쪽의 선명한 밝은 선 -->
+        <Path x:Name="PulseCore" Data="M 170.18,58.30 A 147.46,76.80 0 1 1 170.17,58.30 Z"
+              Stroke="#DBEAFE" StrokeThickness="2.5" Opacity="0"/>
     </Canvas>
 </UserControl>

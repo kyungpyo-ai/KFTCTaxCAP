@@ -2,25 +2,29 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
-using System.Windows.Shapes;
 
 namespace KFTCTaxCAP.Views.Controls;
 
 /// <summary>
 /// 결제 알림창(<see cref="PaymentNoticeWindow"/>) VanProcessing 상태에서 원판(circle.png) 위,
-/// 리더기 몸통(reader_kftc.png) 아래에 배치되는 원형 진행광 링. 2026-08-24 자산 분리(원판/몸통
-/// 별도 이미지)에 따라 <see cref="PaymentProcessingIndicator"/>에서 "바닥 링" 관련 요소만 떼어내
-/// 별도 컨트롤로 만들었다 — z-order가 원판/몸통 사이로 고정되어 있어야 하므로 몸통 "표면" 효과
-/// (슬롯 빛 흐름, 로고 펄스)와는 다른 레이어에 둔다(PaymentNoticeWindow.xaml 참고).
+/// 리더기 몸통(reader_kftc.png) 아래에 배치되는 원판 테두리 효과. 2026-08-24 자산 분리(원판/몸통 별도
+/// 이미지)에 따라 <see cref="PaymentProcessingIndicator"/>에서 떼어낸 별도 컨트롤이다 — z-order가 원판/몸통
+/// 사이로 고정되어야 해서 몸통 "표면" 효과와 다른 레이어에 둔다(PaymentNoticeWindow.xaml 참고).
 ///
-/// 이전(반원 클리핑 + AutoReverse 왕복)과 달리, 이제 링이 몸통보다 아래 레이어라 뒤쪽 절반은 몸통의
-/// 불투명 픽셀에 자동으로 가려지므로 온전한 360도 경로를 한 방향(시계방향)으로 계속 회전시킨다.
+/// 2026-10-12 재구성: 테두리를 도는 진행광 → 유리 반사광 스윕을 거쳐, 사용자 확인으로 "은은한 맥박"으로
+/// 정했다. 테두리가 위쪽 "카드 → 은행" 흐름(<see cref="PaymentSignalWaveIndicator"/>, 1.0초 주기, 0.6초에
+/// 은행 맥박)과 같은 박자로 부드럽게 밝아졌다 어두워진다 — 은행이 커지는 순간이 가장 밝다. 두 컨트롤은
+/// 창이 같은 시점에 Play하므로 박자가 맞는다.
 /// </summary>
 public partial class PaymentProcessingRing : UserControl
 {
-    private const double OrbitCycleSeconds = 2.2;
+    private const double BeatSeconds = 1.0;     // 흐름 인디케이터 한 바퀴
+    private const double RiseStartSeconds = 0.45; // 은행 맥박(0.6초) 조금 전부터 밝아지기 시작
+    private const double PeakSeconds = 0.7;     // 은행이 가장 커지는 무렵(0.6 + 0.3/2 근처)
+    private const double GlowPeakOpacity = 0.75;
+    private const double CorePeakOpacity = 0.6;
 
-    // 원판(circle.png) 실측 타원 파라미터.
+    // 원판(circle.png) 실측 타원 파라미터 — XAML의 테두리 경로가 이 값을 쓴다.
     // 2026-08-24 5차 수정(사용자 재실측 피드백): 이전(4차) 실측은 좌/우/전면 극점 3개만 잡아 반경을
     // 추정하는 성긴 방식이라 정밀도가 부족했다. 이번엔 alpha>128 픽셀을 열(x)마다/행(y)마다 촘촘히
     // (1px 단위) 스캔해 전체 외곽 경계점(수백~수천 개)을 모으고, 최소자승법(algebraic ellipse fit)으로
@@ -41,10 +45,6 @@ public partial class PaymentProcessingRing : UserControl
     private const double EllipseRadiusX = 147.46;
     private const double EllipseRadiusY = 76.80;
 
-    // Ramanujan 근사로 다시 계산한 이 타원(147.46,76.80)의 둘레(≈722.13) — StrokeDashOffset을 정확히
-    // 한 바퀴(=둘레)만큼 이동시키면 임의의 StrokeDashArray 패턴과 무관하게 seamless하게 반복된다.
-    private const double EllipseCircumference = 722.13;
-
     private bool _isPlaying;
 
     public PaymentProcessingRing()
@@ -52,7 +52,7 @@ public partial class PaymentProcessingRing : UserControl
         InitializeComponent();
     }
 
-    /// <summary>진행광 링 + 베이스 펄스를 동시에 무한 재생한다.</summary>
+    /// <summary>테두리 맥박을 흐름 인디케이터 박자에 맞춰 무한 재생한다.</summary>
     public void Play()
     {
         if (_isPlaying)
@@ -61,54 +61,37 @@ public partial class PaymentProcessingRing : UserControl
         }
         _isPlaying = true;
 
-        // 1. 링 아크 — 온전한 폐곡선이므로 한 방향으로 계속 스크롤해도 끊김이 없다(정확히 둘레만큼
-        // 이동하면 다음 사이클 시작점이 이전과 완전히 동일해 seamless).
-        var dashAnim = new DoubleAnimation(0, -EllipseCircumference, TimeSpan.FromSeconds(OrbitCycleSeconds))
+        PulseGlow.BeginAnimation(OpacityProperty, Breath(GlowPeakOpacity));
+        PulseCore.BeginAnimation(OpacityProperty, Breath(CorePeakOpacity));
+    }
+
+    /// <summary>
+    /// 한 박자 동안 0 → (RiseStart~Peak, 서서히) 최고 → (Peak~박자 끝, 더 천천히) 0. 올라갈 때보다 내려갈 때를
+    /// 길게 둬 "숨 쉬듯" 부드럽게 보이게 한다. 박자 끝에서 0으로 돌아오므로 반복 이음새가 없다.
+    /// </summary>
+    private static DoubleAnimationUsingKeyFrames Breath(double peak)
+    {
+        var anim = new DoubleAnimationUsingKeyFrames
         {
+            Duration = TimeSpan.FromSeconds(BeatSeconds),
             RepeatBehavior = RepeatBehavior.Forever,
         };
-        OrbitGlowArc.BeginAnimation(Shape.StrokeDashOffsetProperty, dashAnim);
-        OrbitCoreArc.BeginAnimation(Shape.StrokeDashOffsetProperty, dashAnim);
-
-        // 2. 선두 헤드라이트 점 — 같은 타원을 매개변수화(위=0도, 시계방향)해 0~360도를 계속 순환.
-        var xFrames = new DoubleAnimationUsingKeyFrames
-        {
-            Duration = TimeSpan.FromSeconds(OrbitCycleSeconds),
-            RepeatBehavior = RepeatBehavior.Forever,
-        };
-        var yFrames = new DoubleAnimationUsingKeyFrames
-        {
-            Duration = TimeSpan.FromSeconds(OrbitCycleSeconds),
-            RepeatBehavior = RepeatBehavior.Forever,
-        };
-
-        const int numKeyFrames = 48;
-        for (int i = 0; i <= numKeyFrames; i++)
-        {
-            double progress = (double)i / numKeyFrames;
-            double angleDeg = 360.0 * progress;
-            double rad = angleDeg * Math.PI / 180.0;
-
-            // 위(0도, 12시 방향)에서 시작해 시계방향(오른쪽 먼저)으로 회전 — XAML Path의 A(sweep=1)
-            // 방향과 일치시킨다.
-            double x = EllipseCenterX + EllipseRadiusX * Math.Sin(rad) - (OrbitHeadLight.Width / 2);
-            double y = EllipseCenterY - EllipseRadiusY * Math.Cos(rad) - (OrbitHeadLight.Height / 2);
-
-            var keyTime = KeyTime.FromPercent(progress);
-            xFrames.KeyFrames.Add(new LinearDoubleKeyFrame(x, keyTime));
-            yFrames.KeyFrames.Add(new LinearDoubleKeyFrame(y, keyTime));
-        }
-        OrbitHeadLight.BeginAnimation(Canvas.LeftProperty, xFrames);
-        OrbitHeadLight.BeginAnimation(Canvas.TopProperty, yFrames);
+        anim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        anim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(RiseStartSeconds))));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(peak, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(PeakSeconds)),
+            new SineEase { EasingMode = EasingMode.EaseInOut }));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(BeatSeconds)),
+            new SineEase { EasingMode = EasingMode.EaseInOut }));
+        return anim;
     }
 
     /// <summary>애니메이션을 정지하고 리소스를 해제한다.</summary>
     public void Stop()
     {
         _isPlaying = false;
-        OrbitGlowArc.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
-        OrbitCoreArc.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
-        OrbitHeadLight.BeginAnimation(Canvas.LeftProperty, null);
-        OrbitHeadLight.BeginAnimation(Canvas.TopProperty, null);
+        PulseGlow.BeginAnimation(OpacityProperty, null);
+        PulseCore.BeginAnimation(OpacityProperty, null);
+        PulseGlow.Opacity = 0;
+        PulseCore.Opacity = 0;
     }
 }

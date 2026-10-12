@@ -4,64 +4,47 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
-             Width="300" Height="70"
-             d:DesignHeight="70" d:DesignWidth="300">
+             Width="440" Height="110"
+             d:DesignHeight="110" d:DesignWidth="440">
     <!--
-        2026-08-24 신설: 리더기(ReaderImage) "위쪽" 공중에 배치되는 신호 웨이브 인디케이터
-        (docs/payment_relay/images/_preview_crop/ChatGPT Image 2026년 8월 24일 오후 05_07_45.png의
-        "4. 거래중 - 신호 웨이브" 안 채택). 펄스 효과 제거(PaymentProcessingIndicator) 이후 대체할
-        "거래중" 표현으로, 좌우 대칭 점(안테나/스피커) + 동심 반원 호(신호가 퍼져나가는 모양) +
-        중앙 파형(zigzag)으로 구성한다. 순수 벡터(Path/Polyline/Ellipse)로만 그려 이미지 자산의
-        픽셀 정합 문제에서 자유롭다 — 새 이미지 파일을 추가하지 않는다.
-
-        좌표계(300x70, 중심 y=35):
-          - 좌측 점(안테나) 중심 (12,35), 우측 점 중심 (288,35) — 좌우 대칭.
-          - 좌측 반원 호 3겹은 좌측 점을 중심으로 반지름 8/16/24, "오른쪽으로 볼록"(열림은 왼쪽,
-            점 쪽) 하게 그려 신호가 오른쪽(파형 방향)으로 퍼져나가는 모양을 표현한다.
-          - 우측 반원 호 3겹은 우측 점을 중심으로 동일 반지름, 좌우 대칭으로 "왼쪽으로 볼록"하게
-            그린다.
-          - 중앙 파형은 두 신호가 만나는 지점을 표현하는 간단한 zigzag Polyline이다.
-        색상은 기존 팔레트(PaymentProcessingRing/PaymentProcessingIndicator에서 이미 쓰는 파란 계열
-        #3B82F6/#60A5FA/#93C5FD/#E0F2FE)로 통일했다.
+        Phase 42(2026-10-12): "카드 → 승인" 흐름 인디케이터. 이전 안(물결 점·왕복 빛 패킷)은 빈 공간의 장식이라
+        무엇을 처리 중인지 알려 주지 못했다(사용자 지적). 왼쪽 카드 아이콘에서 오른쪽 은행(승인 기관) 아이콘으로
+        빛 점이 한 방향으로 계속 흘러가고, 흐름이 닿을 때마다 은행 아이콘이 살짝 맥박친다 — "카드 정보를 보내
+        승인을 받는 중"으로 읽히게. 한 바퀴 1.0초: 0초 카드 3px 밀림 → 0~0.6초 점이 0.1초 간격으로 켜짐(0.07초에
+        켜지고 0.35초에 걸쳐 꺼져 꼬리가 생김 — 방향이 보이게) → 0.6초 은행 1.12배 맥박(0.3초) → 반복.
+        (리더기에서 출발해 위로 휘어 오르는 안도 시도했으나 사용자 확인에서 이 안이 낫다고 판단, 2026-10-12.)
+        아이콘은 이미지 자산 없이 도형으로 그리고, 점은 코드비하인드가 만든다.
+        클래스·파일 이름은 창과의 연결을 유지하려고 그대로 둔다(Play/Stop 인터페이스 동일).
     -->
-    <Canvas IsHitTestVisible="False" Width="300" Height="70" ClipToBounds="False">
+    <Canvas IsHitTestVisible="False" Width="440" Height="110">
+        <!-- 카드 아이콘 (68x46) -->
+        <Canvas Canvas.Left="24" Canvas.Top="32" Width="68" Height="46">
+            <Canvas.RenderTransform>
+                <TranslateTransform x:Name="CardNudge"/>
+            </Canvas.RenderTransform>
+            <Rectangle Width="68" Height="46" RadiusX="8" RadiusY="8"
+                       Fill="#EFF6FF" Stroke="#2563EB" StrokeThickness="3"/>
+            <Rectangle Canvas.Left="12" Canvas.Top="13" Width="16" Height="12" RadiusX="2" RadiusY="2"
+                       Fill="#F5B83D"/>
+            <Rectangle Canvas.Left="12" Canvas.Top="32" Width="32" Height="4" RadiusX="2" RadiusY="2"
+                       Fill="#93C5FD"/>
+        </Canvas>
 
-        <!-- ===== 좌측: 안테나 점 + 동심 반원 호 3겹(오른쪽으로 볼록, 신호가 파형 쪽으로 퍼짐) ===== -->
-        <Ellipse Canvas.Left="9" Canvas.Top="32" Width="6" Height="6" Fill="#60A5FA"/>
+        <!-- 점 흐름은 코드비하인드가 이 캔버스에 만든다 -->
+        <Canvas x:Name="Dots" Width="440" Height="110"/>
 
-        <Path x:Name="LeftArc1" Data="M 12,27 A 8,8 0 0 1 12,43"
-              Stroke="#E0F2FE" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-              Opacity="0"/>
-        <Path x:Name="LeftArc2" Data="M 12,19 A 16,16 0 0 1 12,51"
-              Stroke="#60A5FA" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-              Opacity="0"/>
-        <Path x:Name="LeftArc3" Data="M 12,11 A 24,24 0 0 1 12,59"
-              Stroke="#3B82F6" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-              Opacity="0"/>
-
-        <!-- ===== 우측: 안테나 점 + 동심 반원 호 3겹(왼쪽으로 볼록, 좌측과 좌우 대칭) ===== -->
-        <Ellipse Canvas.Left="285" Canvas.Top="32" Width="6" Height="6" Fill="#60A5FA"/>
-
-        <Path x:Name="RightArc1" Data="M 288,27 A 8,8 0 0 0 288,43"
-              Stroke="#E0F2FE" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-              Opacity="0"/>
-        <Path x:Name="RightArc2" Data="M 288,19 A 16,16 0 0 0 288,51"
-              Stroke="#60A5FA" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-              Opacity="0"/>
-        <Path x:Name="RightArc3" Data="M 288,11 A 24,24 0 0 0 288,59"
-              Stroke="#3B82F6" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-              Opacity="0"/>
-
-        <!-- ===== 중앙: 신호가 오가는 지점을 표현하는 간단한 파형(zigzag) ===== -->
-        <Polyline x:Name="Waveform"
-                  Points="106,35 124,35 132,19 140,51 148,21 156,35 194,35"
-                  Stroke="#3B82F6" StrokeThickness="2"
-                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                  Opacity="0.85" RenderTransformOrigin="0.5,0.5">
-            <Polyline.RenderTransform>
-                <ScaleTransform x:Name="WaveformScale" ScaleX="1" ScaleY="1"/>
-            </Polyline.RenderTransform>
-        </Polyline>
-
+        <!-- 은행(승인 기관) 아이콘 (68x58) — 흐름이 닿을 때 맥박 -->
+        <Canvas x:Name="BankIcon" Canvas.Left="348" Canvas.Top="26" Width="68" Height="58"
+                RenderTransformOrigin="0.5,0.5">
+            <Canvas.RenderTransform>
+                <ScaleTransform x:Name="BankScale" ScaleX="1" ScaleY="1"/>
+            </Canvas.RenderTransform>
+            <Path Data="M34,0 L68,17 L0,17 Z" Fill="#2563EB"/>
+            <Rectangle Canvas.Left="8"  Canvas.Top="21" Width="8" Height="25" Fill="#2563EB"/>
+            <Rectangle Canvas.Left="23" Canvas.Top="21" Width="8" Height="25" Fill="#2563EB"/>
+            <Rectangle Canvas.Left="38" Canvas.Top="21" Width="8" Height="25" Fill="#2563EB"/>
+            <Rectangle Canvas.Left="53" Canvas.Top="21" Width="8" Height="25" Fill="#2563EB"/>
+            <Rectangle Canvas.Left="0"  Canvas.Top="50" Width="68" Height="8" RadiusX="2" RadiusY="2" Fill="#2563EB"/>
+        </Canvas>
     </Canvas>
 </UserControl>

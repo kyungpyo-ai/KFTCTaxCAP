@@ -1,33 +1,79 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 
 namespace KFTCTaxCAP.Views.Controls;
 
 /// <summary>
-/// 결제 알림창(<see cref="PaymentNoticeWindow"/>) VanProcessing 상태에서 리더기(ReaderImage) 위쪽
-/// 공중에 표시되는 "신호 웨이브" 인디케이터. 좌우 대칭 안테나 점 + 동심 반원 호 3겹(신호가 퍼져나가는
-/// 모양, 안쪽 호가 먼저 나타났다 먼저 사라지고 바깥쪽 호일수록 늦게 나타나 늦게 사라지는 순차 페이드) +
-/// 중앙 파형(진폭이 은은하게 두근거리듯 변하는 정도의 절제된 스케일 애니메이션)으로 구성한다.
-///
-/// 2026-08-24 신설(펄스 효과 제거 후 대체 "거래중" 표현, 사용자 채택안 4번 "신호 웨이브").
+/// 결제 알림창(<see cref="PaymentNoticeWindow"/>) VanProcessing 상태에서 리더기 위쪽에 표시되는 "카드 → 승인"
+/// 흐름 인디케이터(Phase 42, 2026-10-12 — 이전 "신호 웨이브"·"왕복 빛 패킷"·"물결 점"을 대체). 카드 아이콘과
+/// 은행 아이콘 사이의 점들이 꼬리 달린 혜성처럼 왼쪽에서 오른쪽으로 끝없이 흐르고, 흐름이 닿을 때마다 은행
+/// 아이콘이 살짝 커졌다 돌아온다. 클래스·파일 이름은 창과의 연결을 유지하려고 그대로 둔다(<c>Play</c>/<c>Stop</c> 동일).
 /// </summary>
 public partial class PaymentSignalWaveIndicator : UserControl
 {
-    private const double ArcCycleSeconds = 1.8;
-    private const double ArcStaggerSeconds = 0.18;
-    private const double WaveformBreatheSeconds = 1.6;
+    private const int DotCount = 6;
+    private const double DotSize = 12;
+    private const double DotRestOpacity = 0.2;
 
+    // 점 중심: 카드 오른쪽 끝(92)과 은행 왼쪽 끝(348) 사이에 고르게, 아이콘 세로 중앙(y=55).
+    private const double FirstDotX = 130;
+    private const double DotSpacing = 36;
+    private const double DotY = 55;
+
+    // 타임라인(초). 한 바퀴 안에서 점은 Stagger 간격으로 차례로 켜진다.
+    // 2026-10-12 사용자 요청으로 1.4초 → 1.0초(전체 타이밍 약 0.7배). 속도는 렌더 부하와 무관하다(프레임 수 동일).
+    private const double CycleSeconds = 1.0;
+    private const double StaggerSeconds = 0.1;
+    private const double DotRiseSeconds = 0.07;  // 빠르게 켜짐 → 머리
+    private const double DotFallSeconds = 0.35;  // 천천히 꺼짐 → 꼬리
+    private const double BankPulseSeconds = 0.3;
+    private const double CardNudgeSeconds = 0.25;
+    private const double CardNudgePixels = 3;
+    private const double FadeInSeconds = 0.3;
+
+    private static readonly Brush DotBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)));
+
+    private readonly List<Ellipse> _dots = new();
     private bool _isPlaying;
 
     public PaymentSignalWaveIndicator()
     {
         InitializeComponent();
+        BuildDots();
     }
 
-    /// <summary>동심 호 순차 페이드 + 중앙 파형 은은한 진폭 변화를 동시에 무한 재생한다.</summary>
+    private static Brush Freeze(Brush brush)
+    {
+        brush.Freeze();
+        return brush;
+    }
+
+    private void BuildDots()
+    {
+        for (int i = 0; i < DotCount; i++)
+        {
+            var dot = new Ellipse
+            {
+                Width = DotSize,
+                Height = DotSize,
+                Fill = DotBrush,
+                Opacity = DotRestOpacity,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform(1, 1),
+            };
+            Canvas.SetLeft(dot, FirstDotX + i * DotSpacing - DotSize / 2);
+            Canvas.SetTop(dot, DotY - DotSize / 2);
+            Dots.Children.Add(dot);
+            _dots.Add(dot);
+        }
+    }
+
+    /// <summary>0.3초 페이드인과 함께 흐름을 무한 재생한다.</summary>
     public void Play()
     {
         if (_isPlaying)
@@ -36,57 +82,70 @@ public partial class PaymentSignalWaveIndicator : UserControl
         }
         _isPlaying = true;
 
-        // 동심 호 3겹 — 안쪽(반지름 작은) 호부터 먼저 나타났다 먼저 사라지고, 바깥쪽 호일수록
-        // BeginTime을 늦춰 "신호가 퍼져나가는" 느낌을 준다. 좌/우는 대칭이므로 같은 타이밍으로 동기화.
-        AnimateArc(LeftArc1, RightArc1, 0.9, 0);
-        AnimateArc(LeftArc2, RightArc2, 0.55, ArcStaggerSeconds);
-        AnimateArc(LeftArc3, RightArc3, 0.3, ArcStaggerSeconds * 2);
+        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(FadeInSeconds)));
 
-        // 중앙 파형 — 진폭이 미세하게 두근거리듯 변하는 정도로 절제된 세로 스케일 애니메이션
-        // (펄스처럼 과하지 않게, 0.85~1.15 범위).
-        var breathe = new DoubleAnimation(0.85, 1.15, TimeSpan.FromSeconds(WaveformBreatheSeconds))
+        CardNudge.BeginAnimation(TranslateTransform.XProperty,
+            Pulse(0, CardNudgePixels, 0, CardNudgeSeconds / 3, CardNudgeSeconds));
+
+        double peakAt = DotRiseSeconds;
+        double endAt = DotRiseSeconds + DotFallSeconds;
+        for (int i = 0; i < _dots.Count; i++)
         {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-        };
-        WaveformScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, breathe);
+            double begin = i * StaggerSeconds;
+            var dot = _dots[i];
+            dot.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty, Pulse(1.0, 1.35, begin, peakAt, endAt));
+            dot.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty, Pulse(1.0, 1.35, begin, peakAt, endAt));
+            dot.BeginAnimation(UIElement.OpacityProperty, Pulse(DotRestOpacity, 1.0, begin, peakAt, endAt));
+        }
+
+        // 마지막 점 다음 차례(0.6초)에 은행 아이콘이 맥박친다 — 흐름이 "도착"하는 느낌.
+        double arrive = _dots.Count * StaggerSeconds;
+        BankScale.BeginAnimation(ScaleTransform.ScaleXProperty, Pulse(1.0, 1.12, arrive, BankPulseSeconds / 2, BankPulseSeconds));
+        BankScale.BeginAnimation(ScaleTransform.ScaleYProperty, Pulse(1.0, 1.12, arrive, BankPulseSeconds / 2, BankPulseSeconds));
     }
 
-    private static void AnimateArc(Path left, Path right, double peakOpacity, double beginTimeSeconds)
+    /// <summary>
+    /// 한 바퀴(<see cref="CycleSeconds"/>) 동안 rest → (peakAt초) peak → (endAt초) rest → 바퀴 끝까지 대기를 반복한다.
+    /// 시작 시각만 늦춰 같은 모양을 반복하므로 요소끼리 박자가 어긋나지 않는다.
+    /// </summary>
+    private static DoubleAnimationUsingKeyFrames Pulse(double rest, double peak, double beginSeconds, double peakAt, double endAt)
     {
-        var anim = new DoubleAnimation(0, peakOpacity, TimeSpan.FromSeconds(ArcCycleSeconds))
+        var anim = new DoubleAnimationUsingKeyFrames
         {
-            AutoReverse = true,
+            Duration = TimeSpan.FromSeconds(CycleSeconds),
             RepeatBehavior = RepeatBehavior.Forever,
-            BeginTime = TimeSpan.FromSeconds(beginTimeSeconds),
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            BeginTime = TimeSpan.FromSeconds(beginSeconds),
         };
-        left.BeginAnimation(UIElement.OpacityProperty, anim);
-
-        // 좌/우가 동일 인스턴스를 공유하면 안 되므로 별도 애니메이션 객체를 사용한다(Freeze되지 않은
-        // 애니메이션은 여러 대상에 동시에 붙일 수 없음).
-        var animRight = anim.Clone();
-        right.BeginAnimation(UIElement.OpacityProperty, animRight);
+        anim.KeyFrames.Add(new LinearDoubleKeyFrame(rest, KeyTime.FromPercent(0.0)));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(peak, KeyTime.FromPercent(peakAt / CycleSeconds), new SineEase { EasingMode = EasingMode.EaseOut }));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(rest, KeyTime.FromPercent(endAt / CycleSeconds), new SineEase { EasingMode = EasingMode.EaseInOut }));
+        anim.KeyFrames.Add(new LinearDoubleKeyFrame(rest, KeyTime.FromPercent(1.0)));
+        return anim;
     }
 
-    /// <summary>애니메이션을 정지하고 리소스를 해제한다.</summary>
+    /// <summary>애니메이션을 정지하고 대기 상태로 되돌린다(숨김은 창이 즉시 처리).</summary>
     public void Stop()
     {
         _isPlaying = false;
-        LeftArc1.BeginAnimation(UIElement.OpacityProperty, null);
-        LeftArc2.BeginAnimation(UIElement.OpacityProperty, null);
-        LeftArc3.BeginAnimation(UIElement.OpacityProperty, null);
-        RightArc1.BeginAnimation(UIElement.OpacityProperty, null);
-        RightArc2.BeginAnimation(UIElement.OpacityProperty, null);
-        RightArc3.BeginAnimation(UIElement.OpacityProperty, null);
-        WaveformScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, null);
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 1;
 
-        LeftArc1.Opacity = 0;
-        LeftArc2.Opacity = 0;
-        LeftArc3.Opacity = 0;
-        RightArc1.Opacity = 0;
-        RightArc2.Opacity = 0;
-        RightArc3.Opacity = 0;
+        CardNudge.BeginAnimation(TranslateTransform.XProperty, null);
+        CardNudge.X = 0;
+
+        foreach (var dot in _dots)
+        {
+            var scale = (ScaleTransform)dot.RenderTransform;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            dot.BeginAnimation(UIElement.OpacityProperty, null);
+            scale.ScaleX = 1;
+            scale.ScaleY = 1;
+            dot.Opacity = DotRestOpacity;
+        }
+        BankScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        BankScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        BankScale.ScaleX = 1;
+        BankScale.ScaleY = 1;
     }
 }

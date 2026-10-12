@@ -14,7 +14,7 @@ public enum PaymentNoticeState
     /// <summary>MS(마그네틱, Fallback) 카드 리딩 요청 — "그림과 같이 카드를 긁어주세요." (BG_IMG_MS)</summary>
     FallbackCardRequest,
 
-    /// <summary>VAN 서버 통신 중 — "거래중입니다." (BG_IMG_PROCESSING). 이 상태에서는 취소가 막힌다
+    /// <summary>VAN 서버 통신 중 — "처리 중입니다." (BG_IMG_PROCESSING, 2026-10-12 이전 "거래중입니다."). 이 상태에서는 취소가 막힌다
     /// (development_plan.md P13-2 "취소 가능 구간" — 이 Phase 시각 데모 범위에서는 버튼 IsEnabled에만 반영).</summary>
     VanProcessing,
 

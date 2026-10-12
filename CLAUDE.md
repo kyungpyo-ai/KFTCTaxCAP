@@ -47,7 +47,14 @@ KioskSim은 범위 밖. 원본 캡처는 `docs/alert_dialog/screenshots/`(캡처
 `development_plan.md` Task 표에 근거 기록), 메인 세션은 Opus. Phase 38(알림창 컴포넌트)·39(기존 호출부 교체 — 앱 내
 `MessageBox.Show` 0건, 세 ViewModel `AlertRequested(AlertMessage)` 통합, 고정 문구 줄 폭 자동 검증) 완료(2026-10-02) — 5차 범위 종료.
 
-**Phase 번호는 다섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32·40(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~39(`docs/alert_dialog/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
+**6차 범위(결제 알림창 UI/UX 개선, Phase 41~): `docs/payment_alert_ui/PRD.md`가 요구사항 정본.** 5차에서 제외한
+`PaymentNoticeWindow`(카드 요청 IC/MS · 처리 중 · PIN 입력)의 시각 디자인을 현대화한다 — 흰 카드·테두리·그림자 창
+윤곽, 문구 위계(제목/주의 색 글자/영문), 처리 중 "카드 → 은행" 흐름 + 원판 테두리 맥박(1.0초 박자), 연파랑 PIN
+키패드, 모든 상태 공통 창 크기(576), "공통 요소 고정 + 나머지 넘기기" 상태 전환. 상태 체계·취소 게이팅·ESC 훅·일러스트
+자산은 바꾸지 않는다. 문서는 `PRD.md` → `ROADMAP.md`이고, 실행계획서 없이 사용자와 실화면 확인으로 확정해 그 결과를
+**PRD §7 표**에 기록했다(§2 제안·§3 유지 항목보다 우선). Phase 41·42 완료, 43은 실기 결제 흐름 E2E만 남음(2026-10-12).
+
+**Phase 번호는 여섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32·40(`docs/payment_relay/ROADMAP.md`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~39(`docs/alert_dialog/ROADMAP.md`), 6차 41~43(`docs/payment_alert_ui/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
 
 ## 원본 MFC 소스 (참고용, 이 저장소 밖)
 
