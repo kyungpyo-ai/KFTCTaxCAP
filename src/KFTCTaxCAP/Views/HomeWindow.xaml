@@ -53,10 +53,12 @@
                 <!-- 우측 버튼 2개 -->
             </Grid.ColumnDefinitions>
 
-            <!-- 좌측 로고 -->
+            <!-- 좌측 로고. 178px 원본을 54(컴팩트 44)로 3~4배 줄이므로 HighQuality(Fant) 축소를 쓴다 —
+                 기본(Linear)은 2배 넘게 줄이면 픽셀을 건너뛰어 곡선 가장자리가 계단처럼 깨진다(2026-10-12). -->
             <Image Grid.Column="0" Source="/Assets/Images/img_ci_mark.png"
                    Width="{StaticResource HomeLogoBoxSize}" Height="{StaticResource HomeLogoBoxSize}"
-                   Stretch="Uniform" VerticalAlignment="Center"/>
+                   Stretch="Uniform" VerticalAlignment="Center"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
 
             <!-- 좌측 텍스트 (줄 1: KFTCTaxCAP + Plus / 줄 2: 서브타이틀) -->
             <Grid Grid.Column="2" VerticalAlignment="Center">
