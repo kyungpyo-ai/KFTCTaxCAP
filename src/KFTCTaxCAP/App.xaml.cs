@@ -402,6 +402,15 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(SecureClearSelfTest.RunAll);
         }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--pin-encryption-test")
+        {
+            // 개발/회귀 검증용(docs/payment_relay/development_plan.md P44-4 완료 조건, 최종 산출물
+            // 아님): 902614 #51 SEED 암호화(SeedCipher RFC 4269 벡터, MASTKEY2.key 로드, 기존 시스템
+            // 실데이터 KAT, 운영 경로 왕복, 오류 경로)를 확인한다. 소켓·리더기 불필요. UI는 홈 화면을
+            // 그대로 띄운다.
+            StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
+            System.Threading.Tasks.Task.Run(PinEncryptionSelfTest.RunAll);
+        }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--memory-clear-test")
         {
             // 개발/회귀 검증용(docs/operations/development_plan.md P25-9 완료 조건, 최종 산출물

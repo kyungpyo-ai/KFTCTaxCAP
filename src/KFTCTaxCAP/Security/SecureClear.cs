@@ -81,4 +81,36 @@ internal static class SecureClear
                 buffer[i] = value;
         }
     }
+
+    /// <summary><see cref="Clear(byte[])"/>의 <c>int[]</c> 버전 — SEED 라운드키(Phase 44 P44-1)처럼
+    /// 정수 배열로 든 키 자재용. 패턴은 <see cref="OverwritePattern"/> 바이트를 4바이트 전체에 반복한다
+    /// (0x00000000 → 0xFFFFFFFF → 0x00000000).</summary>
+    [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
+    internal static void Clear(int[]? buffer)
+    {
+        if (buffer == null || buffer.Length == 0)
+            return;
+
+        for (int pass = 0; pass < OverwritePasses; pass++)
+        {
+            int value = OverwritePattern[pass] == 0x00 ? 0 : -1;
+            for (int i = 0; i < buffer.Length; i++)
+                buffer[i] = value;
+        }
+    }
+
+    /// <summary><see cref="Clear(int[])"/>의 <c>uint[]</c> 버전.</summary>
+    [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
+    internal static void Clear(uint[]? buffer)
+    {
+        if (buffer == null || buffer.Length == 0)
+            return;
+
+        for (int pass = 0; pass < OverwritePasses; pass++)
+        {
+            uint value = OverwritePattern[pass] == 0x00 ? 0u : uint.MaxValue;
+            for (int i = 0; i < buffer.Length; i++)
+                buffer[i] = value;
+        }
+    }
 }

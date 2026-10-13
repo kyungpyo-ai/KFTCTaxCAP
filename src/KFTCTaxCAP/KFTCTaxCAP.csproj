@@ -100,6 +100,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>KFTC_GIRO.dll</Link>
     </None>
+    <!-- Phase 44(P44-3): 902614 #51 SEED 암호화용 마스터키 파일. PinFieldEncoder가 실행 파일 옆에서 읽는다. -->
+    <None Include="..\..\vendor\KftcMasterKey\MASTKEY2.key">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>MASTKEY2.key</Link>
+    </None>
   </ItemGroup>
 
 </Project>

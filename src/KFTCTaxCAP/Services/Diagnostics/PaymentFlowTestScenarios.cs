@@ -72,6 +72,31 @@ internal static class PaymentFlowTestScenarios
         }
     }
 
+    /// <summary>
+    /// Phase 44 — #51은 SEED 암호문이라 평문 비교가 불가능하다. 실행 폴더의 MASTKEY2.key로 복호화해 기대 PIN과
+    /// 같은지, 형식(HEX 96 + 키버전 02 + 공백)이 맞는지 본다. <paramref name="field"/>는 Read() 결과(끝 공백 trim, 98자)
+    /// 또는 raw 100자 모두 받는다. 어떤 경우에도 PIN·키 값을 로그에 남기지 않는다.
+    /// </summary>
+    private static bool Field51DecryptsTo(string field, char[] expectedPin)
+    {
+        try
+        {
+            using (var key = KFTCTaxCAP.Security.MasterKeyFile.Load(
+                       Path.Combine(AppDomain.CurrentDomain.BaseDirectory, PinFieldEncoder.MasterKeyFileName), PinFieldEncoder.MasterKeyPassword))
+            {
+                bool formatOk = System.Text.RegularExpressions.Regex.IsMatch(field, "^[0-9A-F]{96}02 {0,2}$");
+                char[] back = PinFieldEncoder.DecryptForVerification(field, key);
+                bool same = new string(back) == new string(expectedPin);
+                KFTCTaxCAP.Security.SecureClear.Clear(back);
+                return formatOk && same;
+            }
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private static void Check(string name, bool condition)
     {
         if (condition)
@@ -359,7 +384,7 @@ internal static class PaymentFlowTestScenarios
         // Check 이름에 PIN 리터럴을 직접 적지 않는다(P18-5 완료 조건 "#51 값이 어떤 로그에도 나타나지
         // 않는다"는 이 테스트 자신의 로그에도 그대로 적용한다 — presenter.PinToFireSynchronously의
         // 값을 그대로 참조해 이름을 짓는다).
-        Check("902614: #51 = 화면에서 입력한 PIN 그대로(패딩 제거 후)", vanRelay.LastRequest.Read(51) == new string(presenter.PinToFireSynchronously));
+        Check("902614: #51 = 입력 PIN의 SEED 암호문(복호화하면 입력 PIN, 형식 일치)", Field51DecryptsTo(vanRelay.LastRequest.Read(51), presenter.PinToFireSynchronously));
 
         // PRD §4.10 — VAN 통신 중에는 PROCESSING 화면이 실제로 떠 있어야 한다. 실제 Presenter는 창이
         // 닫힌 뒤의 ChangeState를 "무시 + Warn 로그"로 처리하므로(Views/PaymentNoticePresenter), 호출
@@ -509,14 +534,14 @@ internal static class PaymentFlowTestScenarios
         // (PosField.Trim), trim된 값으로 단언하고, POSITION 612~711의 원본 바이트(PIN 4자리 + space
         // 96)는 raw ToBody()로 별도 확인한다. Check 이름에 PIN 리터럴을 직접 적지 않는다(P18-5 완료
         // 조건 "#51 값이 어떤 로그에도 나타나지 않는다"는 이 테스트 자신의 로그에도 그대로 적용한다).
-        Check("902614+PIN: #51 값 = 화면에서 입력한 PIN 그대로(패딩 제거 후)", request.Telegram.Read(51) == new string(presenter.PinToFireSynchronously));
+        Check("902614+PIN: #51 값 = 입력 PIN의 SEED 암호문(복호화하면 입력 PIN, 형식 일치)", Field51DecryptsTo(request.Telegram.Read(51), presenter.PinToFireSynchronously));
         Check("902614+PIN: #50(신용카드 승인 인증방식) 밀리지 않음(고정값 \"2\")", request.Telegram.Read(50) == "2");
         Check("902614+PIN: #53(EMV DATA) 밀리지 않음(길이 서브필드 \"0600\"으로 시작)", request.Telegram.Read(53).StartsWith("0600"));
 
         byte[] rawBody = request.Telegram.ToBody();
         string raw51 = System.Text.Encoding.ASCII.GetString(rawBody, 612, 100); // PIN은 ASCII 숫자라 CP949/ASCII 동일
-        Check("902614+PIN: raw POSITION 612~711 = 화면에서 입력한 PIN + space 96(hex 덤프 대응)",
-            raw51 == new string(presenter.PinToFireSynchronously) + new string(' ', 96));
+        Check("902614+PIN: raw POSITION 612~711 = 100자 SEED 암호문(HEX 96 + 키버전 02 + 공백 2, 복호화하면 입력 PIN)",
+            raw51.Length == 100 && Field51DecryptsTo(raw51, presenter.PinToFireSynchronously));
         string raw50 = System.Text.Encoding.ASCII.GetString(rawBody, 611, 1);
         string raw52to53Start = System.Text.Encoding.ASCII.GetString(rawBody, 712, 12); // #52(712,12)
         Check("902614+PIN: raw #50(POSITION 611) 밀리지 않음", raw50 == "2");
@@ -645,13 +670,18 @@ internal static class PaymentFlowTestScenarios
         byte[] rawBodyB = vanRelay.LastRequest!.Telegram.ToBody();
 
         string rawTextB = System.Text.Encoding.ASCII.GetString(rawBodyB);
-        Check("연속거래: 거래 B의 VAN 요청 원문에 거래 A의 PIN이 어디에도 없음(raw 바이트 전수 검사)",
-            !rawTextB.Contains(new string(pinA)));
-        Check("연속거래: 거래 B의 #51은 거래 B 자신의 PIN(정확한 위치)", requestB.Read(51) == new string(pinB));
+        // Phase 44 — #51(POSITION 612, 100자)은 HEX 암호문이라 10진 4자리가 우연히 들어 있을 수 있다(4자리 연속 숫자 확률이
+        // 높음). 평문 잔존 검사는 #51 영역을 공백으로 가린 나머지 본문에만 적용하고, #51은 복호화로 따로 확인한다.
+        string rawTextBWithout51 = rawTextB.Substring(0, 612) + new string(' ', 100) + rawTextB.Substring(712);
+        Check("연속거래: 거래 B의 VAN 요청 원문(#51 제외)에 거래 A의 PIN이 어디에도 없음(raw 바이트 전수 검사)",
+            !rawTextBWithout51.Contains(new string(pinA)));
+        Check("연속거래: 거래 B의 #51은 거래 B 자신의 PIN으로 복호화됨(A의 PIN으로는 복호화되지 않음)",
+            Field51DecryptsTo(requestB.Read(51), pinB) && !Field51DecryptsTo(requestB.Read(51), pinA));
 
         string rawTextA = System.Text.Encoding.ASCII.GetString(rawBodyA);
-        Check("연속거래: 거래 A의 VAN 요청 원문에 거래 B의 PIN이 없음(순서 반대 방향도 확인 — sanity)",
-            !rawTextA.Contains(new string(pinB)));
+        string rawTextAWithout51 = rawTextA.Substring(0, 612) + new string(' ', 100) + rawTextA.Substring(712);
+        Check("연속거래: 거래 A의 VAN 요청 원문(#51 제외)에 거래 B의 PIN이 없음(순서 반대 방향도 확인 — sanity)",
+            !rawTextAWithout51.Contains(new string(pinB)));
 
         Check("연속거래: 두 거래의 알림창 History가 각자 독립적으로 IcCardRequest로 시작함(이전 거래 상태 잔존 없음)",
             presenter.History.Count(h => h == "Show:IcCardRequest") == 2);
@@ -961,7 +991,7 @@ internal static class PaymentFlowTestScenarios
         Check("P26-1(실패): 실패 전 요청에 #46(카드정보)이 실제로 채워져 있었음(전제조건)",
             requestFailure.Telegram.Read(46) != "");
         Check("P26-1(실패): 실패 전 요청에 #51(PIN)이 실제로 채워져 있었음(전제조건)",
-            requestFailure.Telegram.Read(51) == new string(presenterF.PinToFireSynchronously));
+            Field51DecryptsTo(requestFailure.Telegram.Read(51), presenterF.PinToFireSynchronously));
 
         foreach (int fieldNumber in cardReadingFields)
         {

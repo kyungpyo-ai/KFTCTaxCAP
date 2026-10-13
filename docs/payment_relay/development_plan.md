@@ -9658,3 +9658,140 @@ P40-1+2 → P40-3+4 → P40-5+6(새 에이전트, 독립 작성) → P40-7 → P
 - **영수증 실출력은 미확인** — 가맹점 설정의 전표 인쇄가 꺼져 있어 출력이 생략됐다(로그 "전표 인쇄 사용 안 함"). `포인트 3개월` 등
   표기는 `--receipt-print-test self` 자가진단으로 확인.
 - 콤보 목록 선택은 자동화 도구로 드롭다운을 열 수 없어 사용자가 직접 골랐다(오히려 실제 마우스 조작 검증이 됐다).
+
+---
+
+# Phase 44 실행계획서 — 902614 `#51` 비밀번호 SEED 암호화
+
+> **근거**: `PRD.md` §16(방식 정본), §3.3.1-d(20261012판 SPEC 개정), §4.12·§4.13 · `ROADMAP.md` Phase 44 ·
+> 운영 PRD §1.4(로그 마스킹 재검토)·§4(메모리 클리어) · SPEC `spec/…(POS-원캡)_20261012.pdf` p.19
+
+**이 Phase가 끝나면**: `902614 #51`에 평문 PIN 대신 `HEX(rnd1)32 + HEX(rnd2)32 + HEX(enc)32 + "02" + 공백 2`가 실린다.
+마스터키는 실행 파일 옆 `MASTKEY2.key`에서 거래마다 읽고 즉시 지운다.
+
+## 착수 전 전제 (2026-10-13 확인)
+
+1. 방식은 Python(OpenSSL SEED)으로 먼저 검증했다 — 키 파일 복호화(패딩·ASN.1 정상, 키버전 2), 기존 시스템 실데이터
+   `FE7CC5A548A21DDA3986EF43888C5E42` `155D0C29C67A375AB04A768B11660640` `7E3BB137EF1A70F0B27BF182E88C257B` `02`
+   (비밀번호 `12`)를 PRD §16.2 식으로 복호화하면 `31 32 80 00…`, 같은 random으로 재생성하면 원본과 일치.
+2. 변환 지점은 `Services/Payment/PinFieldEncoder.ToTelegramValue(char[] pin) → char[]` 하나다. 호출부
+   `PaymentOrchestrator.FillCardApprovalFields`는 `request.Telegram.Write(51, …)`만 하며 바꾸지 않는다. 지금은 입력
+   배열을 그대로 돌려줘 호출부의 PIN 클리어가 반환값까지 덮었으나, 이제 **새 배열**을 돌려주므로 **반환 배열은
+   호출부가 `Write` 직후 지워야 한다**(P44-3에서 호출부 한 줄 try/finally만 허용).
+3. `FillCardApprovalFields`에서 던진 예외는 기존 경로로 `InternalError` 응답이 된다(`PaymentOrchestrator` 최상위 catch).
+4. `SecureClear`는 `byte[]`/`char[]`만 있다 — SEED 라운드키(`int[]`/`uint[]`)용 오버로드가 필요하다(같은 패턴으로 추가).
+5. net48에는 SEED가 없다. BouncyCastle C# `SEEDEngine.cs`(MIT, `bcgit/bc-csharp` master) 소스를 포팅한다 — SS0~SS3·KC
+   테이블과 `F`/`G`/키 스케줄을 그대로 옮기고, 파일 머리에 출처·라이선스를 남긴다. 패키지 참조는 추가하지 않는다.
+6. 기존 자가진단 `--payment-flow-test`(`PaymentFlowTestScenarios.cs`)에 "`#51` = 입력 PIN 그대로" 검사가 3곳(약 362·512·650행)
+   있다 — 암호화 후엔 실패하므로 "복호화하면 입력 PIN"으로 바꾼다.
+
+## 이 Phase에서 손대지 않는 것
+
+- `PaymentOrchestrator`는 `#51` 반환 배열 클리어 한 줄(전제 2) 외에 바꾸지 않는다. POS 응답 직전 `#51` 삭제(§4.13)·
+  `TelegramLogRedactor` 동작(미마스킹 유지)은 그대로다 — `TelegramLogRedactor`는 주석만 갱신.
+- 전문 스키마, KioskSim(응답 `#51`은 원캡이 지우므로 영향 없음).
+
+## Task 표
+
+| Task | 내용 | 담당 | 근거 |
+|---|---|---|---|
+| P44-1 | `Security/SeedCipher.cs` + `SecureClear` `int[]`/`uint[]` 오버로드 | `csharp-wpf-developer` (Sonnet) | 표준 테이블 포팅 — 명세 완결, 테스트 벡터로 판정 |
+| P44-2 | `Security/MasterKeyFile.cs` | `csharp-wpf-developer` (Sonnet) | PRD §16.1에 바이트 단위 명세 |
+| P44-3 | `PinFieldEncoder` 본문 교체 + 호출부 클리어 + csproj 키 복사 | `csharp-wpf-developer` (Sonnet) | PRD §16.2 식 그대로 |
+| P44-4 | `--pin-encryption-test` + `--payment-flow-test` 갱신 | `csharp-wpf-developer` (Sonnet) | 벡터·검사 목록이 아래에 확정 |
+| CP1 | 종합 검증 | `checkpoint-reviewer` | — |
+| P44-5 | 통합 검증 | Opus 직접 + 사용자 | 실 리더기·PIN |
+
+각 Task는 구현 → `dotnet build`(경고 0) → 해당 자가진단 실행 → 실패 시 수정의 사이클을 그 자리에서 돈다.
+
+## P44-1. SEED 블록 암호 (`Security/SeedCipher.cs`)
+
+- `internal sealed class SeedCipher : IDisposable` — 생성자 `SeedCipher(byte[] key)`(정확히 16바이트, 아니면
+  `ArgumentException`), `EncryptBlock(byte[] input, int inOff, byte[] output, int outOff)`, `DecryptBlock(...)`.
+  모드·패딩 없음(블록 하나). `Dispose`는 라운드키 배열을 `SecureClear`로 지운다. 라운드 중간값은 지역 정수라 대상 아님.
+- 입력 키 배열은 복사하지 않고 읽기만 한다(지우는 책임은 호출자).
+- 오버플로 검사(`checked`) 없이 동작해야 한다 — 프로젝트 기본(unchecked)에 의존한다는 주석을 남긴다.
+- **완료 조건**: RFC 4269 벡터 4종 암·복호화 일치(P44-4 자가진단이 판정).
+
+| 키 | 평문 | 암호문 |
+|---|---|---|
+| `00000000000000000000000000000000` | `000102030405060708090A0B0C0D0E0F` | `5EBAC6E0054E166819AFF1CC6D346CDB` |
+| `000102030405060708090A0B0C0D0E0F` | `00000000000000000000000000000000` | `C11F22F20140505084483597E4370F43` |
+| `4706480851E61BE85D74BFB3FD956185` | `83A2F8A288641FB9A4E9A5CC2F131C7D` | `EE54D13EBCAE706D226BC3142CD40D4A` |
+| `28DBC3BC49FFD87DCFA509B11D422BE7` | `B41E6BE2EBA84A148E2EED84593C5EC7` | `9B9B7BFCD1813CB95D0B3618F40F5122` |
+
+(4종 모두 OpenSSL로 확인함, 2026-10-13)
+
+## P44-2. 마스터키 파일 (`Security/MasterKeyFile.cs`)
+
+- `internal static MasterKey Load(string path, string password)`; `internal sealed class MasterKey : IDisposable { int Version; byte[] Key(16) }`
+  — `Dispose`가 `Key`를 지운다.
+- 절차(PRD §16.1): 파일 전체 읽기 → 최소 DER 파서(태그·길이, 단형/장형 길이 지원)로 `SEQUENCE{ SEQUENCE{ OID, SEQUENCE{ OCTET
+  STRING salt, INTEGER iter } }, OCTET STRING enc }` 추출 → OID가 `2A 83 1A 8C 9A 44 01 0F`(1.2.410.200004.1.15)인지 확인 →
+  `DK = SHA1(password(ASCII) ‖ salt)`, 이어 `DK = SHA1(DK)`를 총 iter회가 되도록 반복(즉 SHA1 적용 횟수 = iter) →
+  키 `DK[0..16)`, IV `SHA1(DK[16..20))[0..16)` → SEED-CBC 복호화(블록 단위 직접 구현, `enc` 길이는 16의 배수) →
+  PKCS#7 검증(1~16, 모든 패딩 바이트 동일) → 평문을 `SEQUENCE{ INTEGER version, OCTET STRING(16) key }`로 파싱.
+- 실패(파일 없음·DER 불일치·OID 불일치·패딩 오류·키 길이≠16·버전 0~99 밖)는 `InvalidOperationException`. 메시지에 키·DK·
+  평문·비밀번호를 넣지 않는다(원인 종류와 경로만).
+- 중간 버퍼(파일 바이트, DK, 해시 입력, IV, CBC 평문, salt 사본 등) 전부 `finally`에서 `SecureClear`.
+- `SHA1`은 `System.Security.Cryptography.SHA1.Create()`(net48) — `using`으로 정리.
+
+## P44-3. `#51` 생성 (`Services/Payment/PinFieldEncoder.cs`)
+
+- 상수: 키 파일명 `MASTKEY2.key`(경로 = `AppDomain.CurrentDomain.BaseDirectory`), 비밀번호 `kftc123!@`(PRD §16.1 — 기존
+  시스템과 같은 방식, 사용자 확정).
+- `ToTelegramValue(char[]? pin)`: 기존 검증(4자리 숫자) 유지 → 키 로드 → `RNGCryptoServiceProvider`로 rnd1·rnd2 각 16바이트 →
+  `internal static char[] Encrypt(char[] pin, MasterKey key, byte[] rnd1, byte[] rnd2)` 호출 → 반환. 키·random은 finally에서 정리.
+- `Encrypt`(결정적, 자가진단 KAT용으로 분리): `k1 = SEED(mk, rnd1)`, `k2 = SEED(k1, rnd2)`, `blk = PIN ASCII ‖ 0x80 ‖ 0x00…`(16),
+  `enc = SEED(k2, blk)` → 100자 `char[]` = HEX대문자 rnd1·rnd2·enc + `key.Version.ToString("D2")` + 공백 2.
+  PIN 길이는 1~15 허용(KAT가 2자리라서) — 운영 경로의 4자리 검증은 `ToTelegramValue`가 한다. k1·k2·blk·enc·`SeedCipher` 전부 정리.
+- `internal static char[] DecryptForVerification(string field, MasterKey key)` — 자가진단 전용 역연산(형식 검증 → k2 재유도 →
+  복호화 → 7816-4 패딩 제거 → PIN 문자 반환). 운영 경로에서 호출하지 않는다는 주석.
+- 클래스 주석의 "SEED 미정" 문구를 PRD §16 기준으로 갱신, "새 배열을 반환하므로 호출부가 지운다"를 명시.
+- `PaymentOrchestrator.FillCardApprovalFields`: `char[] pinField = PinFieldEncoder.ToTelegramValue(pin); try { Write(51, pinField); } finally { SecureClear.Clear(pinField); }`.
+- `KFTCTaxCAP.csproj`: `..\..\vendor\KftcMasterKey\MASTKEY2.key`를 `None` + `PreserveNewest` + `<Link>MASTKEY2.key</Link>`(DLL 두 개와 같은 블록, 주석 포함).
+- `TelegramLogRedactor`: `#51` 관련 주석을 "Phase 44로 SEED 암호문 — 미마스킹 유지(2026-10-13 재확정)"로 갱신(동작 무변경).
+
+## P44-4. 자가진단
+
+- `Services/Diagnostics/PinEncryptionSelfTest.cs` + `App.xaml.cs`에 `--pin-encryption-test`(기존 `--secure-clear-self-test`와 같은
+  형태: 홈 화면 + `Task.Run(RunAll)`, 결과는 `FileLogger`). 검사:
+  1. RFC 4269 벡터 4종 암호화·복호화.
+  2. 실행 폴더 `MASTKEY2.key` 로드 → `Version == 2`, `Key.Length == 16`(키 값은 로그 금지).
+  3. **KAT**: rnd1 `FE7CC5A548A21DDA3986EF43888C5E42`, rnd2 `155D0C29C67A375AB04A768B11660640`, PIN `"12"` →
+     `Encrypt` 결과 == `FE7CC5A548A21DDA3986EF43888C5E42155D0C29C67A375AB04A768B116606407E3BB137EF1A70F0B27BF182E88C257B02` + 공백 2.
+  4. `DecryptForVerification(KAT 필드) == "12"`.
+  5. 4자리 PIN 여러 개(`0000`, `1234`, `9999` 등)를 `ToTelegramValue`로 만들고 복호화 일치, 형식 `^[0-9A-F]{96}02  $`, 길이 100.
+  6. 같은 PIN 두 번 → 필드 전체와 암호화된값(65~96번째 자) 모두 다름.
+  7. 오류 경로: 없는 파일, 틀린 비밀번호(패딩 오류), 잘린 파일(앞 40바이트) → 각각 `InvalidOperationException`, 메시지에 비밀번호 문자열 없음.
+  - 테스트 PIN 리터럴(`12` 등)은 테스트 값이라 로그에 남겨도 된다. 단 마스터키·k1·k2는 남기지 않는다.
+- `PaymentFlowTestScenarios.cs`의 `#51` 검사 3곳: `Read(51) == PIN` → `DecryptForVerification(Read(51) 원문, 키) == PIN`
+  + 형식 검사. 검사 이름에 PIN 리터럴을 쓰지 않는 기존 규칙 유지. `Read()`가 끝 공백을 잘라내면 원문 100자를 직접 읽거나
+  형식 검사를 98자 기준으로 맞춘다.
+- **완료 조건**: Release 빌드로 `--pin-encryption-test`, `--payment-flow-test`, `--memory-clear-test` 전부 통과(로그로 확인).
+
+## 체크포인트 1 — `checkpoint-reviewer` (P44-1~P44-4 직후)
+
+중립 프롬프트로 diff 전체를 읽고 빌드·세 자가진단을 직접 재실행. 특히: SEED 포팅이 원본과 같은지(테이블 오타), 중간 버퍼
+누락 클리어, 예외 메시지·로그에 키/PIN 노출, `PaymentOrchestrator` 변경이 전제 2 범위인지.
+
+## P44-5. 통합 검증 (Opus + 사용자)
+
+실 리더기 + 실 PIN으로 결제창 902614 전송 → 로그의 요청 원문 `#51`(POSITION 612, 100자) 형식 확인, 같은 PIN 2회 값 상이,
+원문을 Python 검증 스크립트로 복호화해 입력 PIN 일치. 서버는 902614 미개발이라 스텁 또는 실서버 응답코드만 본다.
+
+## 열린 항목
+
+- 실서버 복호화 확인(서버 개발 후). SPEC 오기 정정(PRD §3.3.1-d).
+
+### 결과 (2026-10-13)
+
+- P44-1~P44-4: `csharp-wpf-developer`(Sonnet) 구현, Opus 리뷰(SEED 테이블 16진 리터럴 1,041개 원본과 해시 일치 확인, 비밀번호
+  리터럴 중복 → `PinFieldEncoder.MasterKeyPassword` 참조로 정리). Release 빌드 경고 0. `--pin-encryption-test` 26/26,
+  `--payment-flow-test` 193/193, `--memory-clear-test` 8/8.
+- 계획서와 달라진 점: `MasterKey`를 최상위 클래스로 둠, `DecryptForVerification`이 98자(Read의 끝 공백 trim)도 받음, 연속거래
+  평문 잔존 검사를 `#51` 영역 제외로 바꿈(HEX 암호문에 10진 4자리가 우연히 나올 수 있어서).
+- 체크포인트 1: 통과(High·Medium 0). L-1·L-2 수정, L-3(키 오류가 PIN 입력 후 드러남) 현행 유지 — 사용자 확정.
+- P44-5: 실 리더기 + PIN `1234` 2회. 로그 ② 원캡→VAN 원문(CP949 바이트 기준 POSITION 612, 100자)을 Python으로 독립 복호화 →
+  두 건 모두 `1234`, 형식 일치, 두 값 상이. ④ POS 응답 `#51`은 공백.
+

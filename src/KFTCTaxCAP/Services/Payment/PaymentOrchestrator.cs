@@ -353,8 +353,8 @@ internal sealed class PaymentOrchestrator
     /// <summary>
     /// 902614 — 카드리딩(원캡 담당 7필드 채움) → PIN 입력(Phase 18, <c>requiresPin: true</c>) → 중계.
     /// <c>#51</c>(암호화된 비밀번호 정보)은 화면 키패드로 수집된 PIN(P18-4가 만든 통로)을
-    /// <see cref="PinFieldEncoder.ToTelegramValue"/>로 변환해 채운다(P18-5) — SEED 암호화가 확정되면
-    /// 그 메서드 본문만 바뀐다.
+    /// <see cref="PinFieldEncoder.ToTelegramValue"/>로 변환해 채운다(P18-5) — Phase 44부터 SEED
+    /// 암호문(PRD §16).
     /// </summary>
     private async Task<PosResponseTelegram> HandleCardApprovalAsync(PosRequestTelegram request, string txId)
     {
@@ -440,7 +440,8 @@ internal sealed class PaymentOrchestrator
     /// <item><c>#51</c> 암호화된 비밀번호 정보(ANS100) = 화면 키패드로 수집된 PIN 4자리를
     ///   <see cref="PinFieldEncoder.ToTelegramValue"/>로 변환한 값(Phase 18 P18-5, SPEC SET 장소
     ///   표기 모순은 development_plan.md Phase 18 "착수 전 확인이 필요한 것" #3 참고 — 사용자 확정으로
-    ///   원캡 담당). <b>이 필드 값은 어떤 로그에도 남기지 않는다.</b></item>
+    ///   원캡 담당). Phase 44부터 SEED 암호문 100자(PRD §16) — 전문 원문 로그에는 그대로 남고(PRD §16.3),
+    ///   평문 PIN은 어떤 로그에도 남기지 않는다.</item>
     /// <item><c>#53</c> EMV DATA(ANS604) = <c>"0600"</c>(4자리 고정 길이 서브필드, 항상 이 값) +
     ///   <see cref="CardReadData.EmvEncodedData"/>(가변길이, "EMV 인코딩 데이터") — 나머지는 space로
     ///   채워 총 604바이트를 맞춘다(2026-08-27 사용자 확정). 이 필드 자체가 "4바이트 길이 서브필드 +
@@ -510,7 +511,16 @@ internal sealed class PaymentOrchestrator
 
         request.Telegram.Write(48, MapTransactionInputType(cardData.Wcc));
         request.Telegram.Write(50, "2"); // 신용카드 승인 인증방식 고정값(SPEC p.17)
-        request.Telegram.Write(51, PinFieldEncoder.ToTelegramValue(pin)); // 값 자체는 로그에 남기지 않는다
+        // ToTelegramValue는 새 배열(SEED 암호문)을 돌려주므로 입력 pin의 클리어로는 커버되지 않는다 — 직접 지운다.
+        char[] pinField = PinFieldEncoder.ToTelegramValue(pin);
+        try
+        {
+            request.Telegram.Write(51, pinField); // SEED 암호문 — 전문 원문 로그에는 그대로 남는다(PRD §16.3)
+        }
+        finally
+        {
+            SecureClear.Clear(pinField);
+        }
 
         // #53 EMV DATA = "0600"(4자리 고정 길이 서브필드) + EMV 인코딩 데이터.
         char[] emvData = new char[EmvDataSubfieldLengthPrefix.Length + cardData.EmvEncodedData.Length];
