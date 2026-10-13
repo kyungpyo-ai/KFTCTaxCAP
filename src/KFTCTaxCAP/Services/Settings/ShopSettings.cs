@@ -1,9 +1,10 @@
 namespace KFTCTaxCAP.Services.Settings;
 
 /// <summary>
-/// 가맹점 설정 화면(Phase 23, docs/operations/development_plan.md P23-1)이 다루는 옵션 9개
-/// (Phase 31, P31-1에서 전표 설정 3개 추가). 레지스트리의 반전 인코딩(AUTO_REBOOT/AUTO_UPDATE/
-/// KEYIN_DIM: ON→"0", OFF→"1")과 "0=미설정" 규칙(<see cref="CardReadTimeoutSeconds"/>)은
+/// 가맹점 설정 화면(Phase 23, docs/operations/development_plan.md P23-1)이 다루는 옵션 8개
+/// (Phase 31, P31-1에서 전표 설정 3개 추가, 2026-10-13 자동 리부팅 제거 — 레지스트리 AUTO_REBOOT 값은
+/// 읽지도 쓰지도 지우지도 않는다). 레지스트리의 반전 인코딩(AUTO_UPDATE/KEYIN_DIM:
+/// ON→"0", OFF→"1")과 "0=미설정" 규칙(<see cref="CardReadTimeoutSeconds"/>)은
 /// <see cref="ShopSettingsService"/> 안에서만 다루고, 이 모델은 화면에 그대로 보여줄 값만 담는다
 /// (docs/payment_relay/development_plan.md P7-1의 ReaderSettings와 동일한 패턴).
 /// </summary>
@@ -22,16 +23,13 @@ public sealed class ShopSettings
     /// </summary>
     public int CardReadTimeoutSeconds { get; set; } = 120;
 
-    /// <summary>자동 리부팅(PRD §2.5). 값 저장만 하고 실동작은 이번 범위 밖.</summary>
-    public bool AutoReboot { get; set; } = true;
-
     /// <summary>자동 업데이트(PRD §2.5). 값 저장만.</summary>
     public bool AutoUpdate { get; set; }
 
     /// <summary>결제 화면 잠금(PRD §2.5). 값 저장만.</summary>
     public bool KeyinDim { get; set; }
 
-    /// <summary>전표 인쇄 사용(PRD §2.8.2). ON="1"/OFF="0" — 같은 SERIALPORT 키의 AutoReboot 등과
+    /// <summary>전표 인쇄 사용(PRD §2.8.2). ON="1"/OFF="0" — 같은 SERIALPORT 키의 AutoUpdate 등과
     /// 달리 반전 인코딩이 아니다(인코딩은 <see cref="ShopSettingsService"/> 안에서만 다룬다).</summary>
     public bool SlipPrintEnabled { get; set; }
 

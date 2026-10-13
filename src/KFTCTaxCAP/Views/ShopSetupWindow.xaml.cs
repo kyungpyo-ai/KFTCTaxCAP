@@ -188,11 +188,12 @@ public partial class ShopSetupWindow : Window
     }
 
     // ===================== 필드 안내 info 팝오버 =====================
-    // 필드 9개(금융결제원 서버/키오스크 고유번호/카드입력 타임아웃/자동 리부팅/자동 업데이트/
-    // 결제 화면 잠금/전표 인쇄 사용/프린터 속도/프린터 포트번호, Phase 31에서 전표 설정 3개 추가)가
+    // 필드 8개(금융결제원 서버/키오스크 고유번호/카드입력 타임아웃/자동 업데이트/결제 화면 잠금/
+    // 전표 인쇄 사용/프린터 속도/프린터 포트번호, Phase 31에서 전표 설정 3개 추가, 2026-10-13 자동
+    // 리부팅 제거)가
     // 단일 Popup(FieldInfoPopup)을 공유한다 — ReaderSetupWindow.xaml.cs MultipadInfoButton_Click과
     // 동일 패턴(같은 버튼 재클릭 시 닫히고, 다른 버튼 클릭 시 PlacementTarget과 내용만 바뀐다).
-    // 문구 출처: ShopSetupDlg.cpp(원본 MFC) 5개 + PRD.md §2.3 근거 신규 1개(키오스크 고유번호,
+    // 문구 출처: ShopSetupDlg.cpp(원본 MFC) 4개 + PRD.md §2.3 근거 신규 1개(키오스크 고유번호,
     // development_plan.md P23-3 절 참고) + SlipSetupDlg.cpp(원본) 2개 + PRD.md §2.8.6 근거 신규 1개
     // (전표 인쇄 사용, development_plan.md P31-3 절 참고).
     // Popup의 PlacementTarget/IsOpen, TextBlock.Inlines 조작은 시각 요소 배치이며 ViewModel이 다룰
@@ -280,11 +281,6 @@ public partial class ShopSetupWindow : Window
             "카드 입력 대기 시간 (초 단위)",
             "· 권장값: 100초 / 0 입력 시 자동 100초 설정",
             "(이 화면은 0 입력 시 120초로 동작합니다)",
-        }),
-        "AutoReboot" => ("자동 리부팅", new[]
-        {
-            "일일 단위 KFTCTaxCAP 자동 리부팅 여부",
-            "· 기본값 : 사용",
         }),
         // 2026-09-02 Opus 리뷰(CP1) 개선권장 7 — 원본 문구는 그대로 두고, 실제 이 화면의 기본값
         // (ShopSettings.AutoUpdate 기본 false, PRD.md §2.5)이 다르다는 보충 문구를 덧붙였다

@@ -122,7 +122,7 @@ public partial class App : Application
         ShopSettings shopSettings = new ShopSettingsService().Load();
         FileLogger.Info(LogCategory.Settings,
             $"[설정] 가맹점(TCP/SERIALPORT): VAN_MODE={shopSettings.VanMode} KIOSK_ID=\"{shopSettings.KioskId}\" " +
-            $"CardReadTimeout={shopSettings.CardReadTimeoutSeconds}s AutoReboot={shopSettings.AutoReboot} " +
+            $"CardReadTimeout={shopSettings.CardReadTimeoutSeconds}s " +
             $"AutoUpdate={shopSettings.AutoUpdate} KeyinDim={shopSettings.KeyinDim}");
 
         string baseDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? AppDomain.CurrentDomain.BaseDirectory;

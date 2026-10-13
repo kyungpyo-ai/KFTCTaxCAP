@@ -12,15 +12,15 @@ namespace KFTCTaxCAP.Services.Settings;
 /// 안에서만 다룬다.
 ///
 /// <b>저장 위치가 두 하위 키에 걸쳐 있다</b>(2026-09-02 최종 확정) — <c>VAN_MODE</c>/<c>KIOSK_ID</c>는
-/// <c>TCP</c>, <c>TIMEOUT</c>/<c>AUTO_REBOOT</c>/<c>AUTO_UPDATE</c>/<c>KEYIN_DIM</c>은
+/// <c>TCP</c>, <c>TIMEOUT</c>/<c>AUTO_UPDATE</c>/<c>KEYIN_DIM</c>은
 /// <c>SERIALPORT</c>다. <c>KIOSK_ID</c>만 원본 MFC에 없던 신규 항목이라 VAN Mode와 같은 `TCP`로
 /// 모았다 — 코드 수정 시 이 매핑을 추측하지 말고 PRD.md §2.2~§2.5 표를 확인한다.
 ///
 /// <b>이 클래스 밖으로 새어 나가면 안 되는 것 4가지</b>(PRD §2.2/§2.4/§2.5/§2.8.2):
 /// <list type="bullet">
-/// <item>AUTO_REBOOT/AUTO_UPDATE/KEYIN_DIM의 반전 인코딩(ON→"0", OFF→"1"). <b>단, 같은
+/// <item>AUTO_UPDATE/KEYIN_DIM의 반전 인코딩(ON→"0", OFF→"1"). <b>단, 같은
 /// SERIALPORT 키의 PRINTER_CHECK(전표 인쇄 사용, Phase 31)는 반전이 아니다</b> — ON="1"/OFF="0"이
-/// 원본(SlipSetupDlg.cpp:517,563)부터 그렇다. 옆의 세 값을 복사해 반전으로 구현하면 틀린다.</item>
+/// 원본(SlipSetupDlg.cpp:517,563)부터 그렇다. 옆의 두 값을 복사해 반전으로 구현하면 틀린다.</item>
 /// <item><b>카드입력 타임아웃의 "0=미설정" 규칙</b> — 레지스트리 값이 <c>0</c>이거나 아예 없으면
 /// <see cref="Load"/>가 <c>120</c>을 돌려준다(2026-09-01 사용자 확정, PRD §2.4). 무제한이 아니다.
 /// <c>Save</c>는 이 변환을 하지 않는다 — 사용자가 입력한 값을 그대로 쓴다(다시 열었을 때 방금 입력한
@@ -81,7 +81,6 @@ public sealed class ShopSettingsService
         string? vanMode = null;
         string? kioskId = null;
         string? timeoutText = null;
-        string? autoReboot = null;
         string? autoUpdate = null;
         string? keyinDim = null;
         string? printerCheck = null;
@@ -101,7 +100,6 @@ public sealed class ShopSettingsService
             if (serialKey != null)
             {
                 timeoutText = serialKey.GetValue("TIMEOUT") as string;
-                autoReboot = serialKey.GetValue("AUTO_REBOOT") as string;
                 autoUpdate = serialKey.GetValue("AUTO_UPDATE") as string;
                 keyinDim = serialKey.GetValue("KEYIN_DIM") as string;
                 printerCheck = serialKey.GetValue("PRINTER_CHECK") as string;
@@ -119,7 +117,6 @@ public sealed class ShopSettingsService
             VanMode = ResolveVanMode(vanMode),
             KioskId = ResolveKioskId(kioskId),
             CardReadTimeoutSeconds = ResolveCardReadTimeoutSeconds(timeoutText),
-            AutoReboot = autoReboot != "1",
             AutoUpdate = autoUpdate == "0",
             KeyinDim = keyinDim == "0",
             // PRD §2.8.2 — "1"만 ON, 그 외(값 없음 포함)는 전부 OFF. 원본(:517)과 동일하게 WARN 없음.
@@ -152,11 +149,10 @@ public sealed class ShopSettingsService
 
         // 입력값을 그대로 쓴다 — 0은 0으로 저장한다(Load()에서만 120으로 해석한다).
         serialKey.SetValue("TIMEOUT", settings.CardReadTimeoutSeconds.ToString(), RegistryValueKind.String);
-        serialKey.SetValue("AUTO_REBOOT", settings.AutoReboot ? "0" : "1", RegistryValueKind.String);
         serialKey.SetValue("AUTO_UPDATE", settings.AutoUpdate ? "0" : "1", RegistryValueKind.String);
         serialKey.SetValue("KEYIN_DIM", settings.KeyinDim ? "0" : "1", RegistryValueKind.String);
 
-        // PRD §2.8.2 — PRINTER_CHECK는 ON="1"/OFF="0"(반전 아님, 위 세 값과 다름). 검증(범위 등)은
+        // PRD §2.8.2 — PRINTER_CHECK는 ON="1"/OFF="0"(반전 아님, 위 두 값과 다름). 검증(범위 등)은
         // ShopSetupViewModel 책임이고, 이 서비스는 받은 값을 그대로 쓴다(KioskId와 같은 분담).
         serialKey.SetValue("PRINTER_CHECK", settings.SlipPrintEnabled ? "1" : "0", RegistryValueKind.String);
         serialKey.SetValue("PRINTER_SPEED", settings.PrinterSpeed.ToString(), RegistryValueKind.String);

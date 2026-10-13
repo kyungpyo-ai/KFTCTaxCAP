@@ -61,9 +61,6 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     private string cardReadTimeoutSecondsText = string.Empty;
 
     [ObservableProperty]
-    private bool autoReboot = true;
-
-    [ObservableProperty]
     private bool autoUpdate;
 
     [ObservableProperty]
@@ -114,12 +111,11 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     internal const string DiscardChangesQuestion = "변경된 내용이 있습니다.\n저장하지 않고 종료하시겠습니까?";
 
     // 2026-09-02 Opus 리뷰(CP1) 개선권장 9 — ReaderSetupViewModel의 dirty-check 스냅샷 패턴
-    // (_snapshotReader1Port 등)과 동일하게, Load() 시점 값을 6개 필드 모두 따로 들고 있다가
+    // (_snapshotReader1Port 등)과 동일하게, Load() 시점 값을 필드마다 따로 들고 있다가
     // IsDirty()에서 현재 값과 비교한다.
     private string _snapshotVanModeSelection = string.Empty;
     private string _snapshotKioskId = string.Empty;
     private string _snapshotCardReadTimeoutSecondsText = string.Empty;
-    private bool _snapshotAutoReboot;
     private bool _snapshotAutoUpdate;
     private bool _snapshotKeyinDim;
 
@@ -167,7 +163,6 @@ public sealed partial class ShopSetupViewModel : ObservableObject
         VanModeSelection = ToDisplayValue(settings.VanMode);
         KioskId = settings.KioskId;
         CardReadTimeoutSecondsText = settings.CardReadTimeoutSeconds.ToString();
-        AutoReboot = settings.AutoReboot;
         AutoUpdate = settings.AutoUpdate;
         KeyinDim = settings.KeyinDim;
         SlipPrintEnabled = settings.SlipPrintEnabled;
@@ -177,7 +172,6 @@ public sealed partial class ShopSetupViewModel : ObservableObject
         _snapshotVanModeSelection = VanModeSelection;
         _snapshotKioskId = KioskId;
         _snapshotCardReadTimeoutSecondsText = CardReadTimeoutSecondsText;
-        _snapshotAutoReboot = AutoReboot;
         _snapshotAutoUpdate = AutoUpdate;
         _snapshotKeyinDim = KeyinDim;
         _snapshotSlipPrintEnabled = SlipPrintEnabled;
@@ -188,14 +182,13 @@ public sealed partial class ShopSetupViewModel : ObservableObject
     /// <summary>
     /// 2026-09-02 Opus 리뷰(CP1) 개선권장 9(사용자 확정) — 취소/창 닫기(X, Alt+F4) 흐름에서
     /// <c>ReaderSetupWindow</c>와 동일하게 "변경사항을 버리시겠습니까" 확인창을 띄우기 위해 필요하다.
-    /// 9개 필드 중 하나라도 <see cref="Load"/> 시점 스냅샷과 다르면 dirty(Phase 31, P31-2 — 전표
-    /// 설정 3개 추가).
+    /// 8개 필드 중 하나라도 <see cref="Load"/> 시점 스냅샷과 다르면 dirty(Phase 31, P31-2 — 전표
+    /// 설정 3개 추가, 2026-10-13 자동 리부팅 제거).
     /// </summary>
     public bool IsDirty() =>
         VanModeSelection != _snapshotVanModeSelection ||
         KioskId != _snapshotKioskId ||
         CardReadTimeoutSecondsText != _snapshotCardReadTimeoutSecondsText ||
-        AutoReboot != _snapshotAutoReboot ||
         AutoUpdate != _snapshotAutoUpdate ||
         KeyinDim != _snapshotKeyinDim ||
         SlipPrintEnabled != _snapshotSlipPrintEnabled ||
@@ -269,7 +262,6 @@ public sealed partial class ShopSetupViewModel : ObservableObject
             VanMode = ToStorageValue(VanModeSelection),
             KioskId = KioskId,
             CardReadTimeoutSeconds = timeoutSeconds,
-            AutoReboot = AutoReboot,
             AutoUpdate = AutoUpdate,
             KeyinDim = KeyinDim,
             SlipPrintEnabled = SlipPrintEnabled,
@@ -293,13 +285,13 @@ public sealed partial class ShopSetupViewModel : ObservableObject
         }
 
         // 2026-09-02 Opus 리뷰(CP1) 개선권장 4 — PRD.md §1.5가 "설정 저장"을 로그 경계로 명시한다.
-        // 여기 적는 값들(VAN Mode/타임아웃/키오스크ID/토글 3종)은 카드·PIN이 아니라 이미 §1.6.1이
+        // 여기 적는 값들(VAN Mode/타임아웃/키오스크ID/토글 2종)은 카드·PIN이 아니라 이미 §1.6.1이
         // 장애 봉투에 싣기로 확정한 값들이라(VAN Mode, KIOSK_ID) 그대로 로그에 남겨도 된다. 거래ID는
         // 이 맥락에 없으므로 null.
         FileLogger.Info(
             LogCategory.Settings,
             $"가맹점 설정 저장 — VAN_MODE={settings.VanMode}, KIOSK_ID='{settings.KioskId}', " +
-            $"TIMEOUT={settings.CardReadTimeoutSeconds}, AUTO_REBOOT={settings.AutoReboot}, " +
+            $"TIMEOUT={settings.CardReadTimeoutSeconds}, " +
             $"AUTO_UPDATE={settings.AutoUpdate}, KEYIN_DIM={settings.KeyinDim}, " +
             $"PRINTER_CHECK={settings.SlipPrintEnabled}, PRINTER_SPEED={settings.PrinterSpeed}, " +
             $"PRINTER='{settings.PrinterPort}'",

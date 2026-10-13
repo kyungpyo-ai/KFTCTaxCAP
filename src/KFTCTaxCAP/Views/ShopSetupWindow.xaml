@@ -244,6 +244,9 @@
                         Horizontal로 라벨 바로 옆에 토글을 붙였는데, DockPanel로 바꿔 라벨을
                         DockPanel.Dock="Left", 토글을 DockPanel.Dock="Right"에 배치해 열 폭
                         전체(Grid.Column의 "*") 기준 오른쪽 끝으로 밀었다.
+
+                        2026-10-13(사용자 지시) — 자동 리부팅 토글을 제거하고, 남은 자동 업데이트/결제
+                        화면 잠금을 1행 2열로 나란히 맞췄다(행이 하나라 RowDefinitions는 두지 않는다).
                     -->
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -251,10 +254,6 @@
                             <ColumnDefinition Width="18"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
 
                         <!--
                             2026-09-02 정정(사용자 피드백) — DockPanel(LastChildFill="False")의
@@ -265,16 +264,7 @@
                             마진은 이제 ToggleButton 쪽에 둬서 "라벨 …(간격)… 버튼 …(간격)… 토글"
                             순서가 되게 한다.
                         -->
-                        <DockPanel Grid.Row="0" Grid.Column="0" LastChildFill="False">
-                            <TextBlock DockPanel.Dock="Left" Text="자동 리부팅" Style="{StaticResource ReaderLabelTextStyle}" VerticalAlignment="Center"/>
-                            <Button x:Name="AutoRebootInfoButton" DockPanel.Dock="Right" Style="{StaticResource InfoButtonStyle}"
-                                    Margin="{StaticResource ReaderToggleInfoGapMargin}" VerticalAlignment="Center"
-                                    Tag="AutoReboot" Click="FieldInfoButton_Click"/>
-                            <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ModernToggleSwitchStyle}" VerticalAlignment="Center"
-                                          IsChecked="{Binding AutoReboot, Mode=TwoWay}"/>
-                        </DockPanel>
-
-                        <DockPanel Grid.Row="0" Grid.Column="2" LastChildFill="False">
+                        <DockPanel Grid.Column="0" LastChildFill="False">
                             <TextBlock DockPanel.Dock="Left" Text="자동 업데이트" Style="{StaticResource ReaderLabelTextStyle}" VerticalAlignment="Center"/>
                             <Button x:Name="AutoUpdateInfoButton" DockPanel.Dock="Right" Style="{StaticResource InfoButtonStyle}"
                                     Margin="{StaticResource ReaderToggleInfoGapMargin}" VerticalAlignment="Center"
@@ -283,7 +273,7 @@
                                           IsChecked="{Binding AutoUpdate, Mode=TwoWay}"/>
                         </DockPanel>
 
-                        <DockPanel Grid.Row="1" Grid.Column="0" LastChildFill="False" Margin="0,14,0,0">
+                        <DockPanel Grid.Column="2" LastChildFill="False">
                             <TextBlock DockPanel.Dock="Left" Text="결제 화면 잠금" Style="{StaticResource ReaderLabelTextStyle}" VerticalAlignment="Center"/>
                             <Button x:Name="KeyinDimInfoButton" DockPanel.Dock="Right" Style="{StaticResource InfoButtonStyle}"
                                     Margin="{StaticResource ReaderToggleInfoGapMargin}" VerticalAlignment="Center"
