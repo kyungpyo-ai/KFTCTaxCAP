@@ -31,6 +31,9 @@ public partial class HomeWindow : Window
     /// 필요 없지만, 결제 화면은 비모달(Show)이라 여러 번 클릭하면 인스턴스가 계속 쌓일 수 있다).</summary>
     private PaymentScreenWindow? _paymentScreenWindow;
 
+    /// <summary>결제 알림창 때문에 트레이로 내려갔는지(<see cref="MinimizeToTrayForPaymentNotice"/>) — 결제창을 닫을 때 복원 판단용.</summary>
+    private bool _hiddenForPaymentNotice;
+
     public HomeViewModel ViewModel { get; } = new();
 
     public HomeWindow()
@@ -191,7 +194,17 @@ public partial class HomeWindow : Window
         }
 
         var window = new PaymentScreenWindow(this);
-        window.Closed += (_, _) => _paymentScreenWindow = null;
+        window.Closed += (_, _) =>
+        {
+            _paymentScreenWindow = null;
+            // 2026-10-13 사용자 요청: 결제창에서 결제하면 결제 알림창이 홈 화면을 트레이로 내리는데
+            // (MinimizeToTrayForPaymentNotice), 결제창을 닫은 뒤에도 홈 화면이 내려가 있어 불편했다.
+            // 알림창 때문에 내려간 경우에만 복원한다 — 사용자가 직접 최소화한 경우는 그대로 둔다.
+            if (_hiddenForPaymentNotice)
+            {
+                RestoreFromTray();
+            }
+        };
         _paymentScreenWindow = window;
         window.Show();
     }
@@ -242,7 +255,11 @@ public partial class HomeWindow : Window
 
     // ===================== 최소화 / 종료 =====================
 
-    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => MinimizeToTray();
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        _hiddenForPaymentNotice = false;
+        MinimizeToTray();
+    }
 
     private void ExitButton_Click(object sender, RoutedEventArgs e) => ShutdownApp();
 
@@ -282,11 +299,13 @@ public partial class HomeWindow : Window
         if (IsVisible)
         {
             MinimizeToTray();
+            _hiddenForPaymentNotice = true;
         }
     }
 
     private void RestoreFromTray()
     {
+        _hiddenForPaymentNotice = false;
         Show();
         WindowState = WindowState.Normal;
         Activate();
