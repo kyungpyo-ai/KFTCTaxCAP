@@ -4,10 +4,9 @@ using System.Collections.Generic;
 namespace KFTCTaxCAP.KioskSim.Protocol
 {
     /// <summary>
-    /// 응답 전문 <c>#7 응답 코드</c>를 사람이 읽는 설명으로 풀어주는 표 (Phase 45, PRD §17.1/§17.4).
+    /// 응답 전문 <c>#7 응답 코드</c>를 사람이 읽는 설명으로 풀어주는 표.
     ///
-    /// 본 앱(KFTCTaxCAP)의 <c>PosResponseCodeCatalog</c>와 같은 분류·표·출처로 **따로 옮겨 적은 것**이다 —
-    /// P19-2와 같은 원칙대로 본 앱 코드를 참조/의존하지 않는다(코드 공유 0). 한쪽만 바뀌면 사람이 손으로 맞춰야 한다.
+    /// 전산설계서(SPEC) 응답코드 장을 옮겨 적은 참고용 사본이다 — SPEC이 바뀌면 이 표도 손으로 맞춰야 한다.
     /// KFTCVAN 승인 응답(<c>V</c> + 2자리)의 내용은 생성된 <see cref="KftcVanApprovalCodeTable"/>을 쓴다.
     /// 모르는 코드는 추측하지 않고 "정의되지 않은 코드"로 알린다. 문구는 SPEC 20261013판 3장 원문 그대로(‘ ’ 포함).
     /// </summary>

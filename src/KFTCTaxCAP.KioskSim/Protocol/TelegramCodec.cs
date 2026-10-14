@@ -4,7 +4,7 @@ using System.Text;
 namespace KFTCTaxCAP.KioskSim.Protocol
 {
     /// <summary>
-    /// 프레임 형식(업체 개발자가 이 소스에서 가장 먼저 찾아볼 자리 — Phase 19 실행계획서 P19-3):
+    /// 프레임 형식(연동 개발 시 이 소스에서 가장 먼저 볼 자리):
     ///
     ///   [길이 4자리 ASCII 숫자][본문 바이트]
     ///
@@ -14,12 +14,12 @@ namespace KFTCTaxCAP.KioskSim.Protocol
     ///   1바이트=1문자로 동일하므로 어느 인코딩으로 읽어도 같다(이 코덱은 CP949로 통일해서 읽고 쓴다).
     /// - 이 값은 SPEC 표의 "#0 전문 길이"와 같은 값이다. 다만 "#0 전문 길이"는 본문 밖의
     ///   프레임 헤더이므로 <see cref="TelegramSchema"/>/<see cref="TelegramField"/>에는 필드로
-    ///   등록돼 있지 않다(P17-2, P19-1 전제 1) — 이 코덱이 그 헤더 4바이트를 전담해서 다룬다.
+    ///   등록돼 있지 않다 — 이 코덱이 그 헤더 4바이트를 전담해서 다룬다.
     /// - 전문별 본문 길이는 고정이다: 501008=706바이트, 800000=500바이트, 902614=1500바이트.
     ///   즉 프레임 전체 길이는 각각 710/504/1504바이트가 된다.
     /// - 이 클래스는 "완성된 바이트 뭉치가 있을 때"의 프레임 구조 변환만 다룬다. TCP 소켓에서
     ///   나눠 들어오는 바이트를 누적해 완성된 프레임으로 모으는 일(부분 수신 처리)은 여기 범위가
-    ///   아니다 — 그건 Net/OneCapClient(P19-4)의 책임이다.
+    ///   아니다 — 그건 Net/OneCapClient의 책임이다.
     /// </summary>
     public static class TelegramCodec
     {
@@ -29,8 +29,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
         /// <summary>
         /// CP949(Windows-949) 인코딩. 길이 헤더는 숫자만 다루므로 사실상 ASCII와 동일하게
         /// 동작하지만, 본문과 같은 인코딩으로 통일해 두는 것이 프레임 전체를 한 번에 바이트로
-        /// 다룰 때 혼동이 없다. 본 앱 소스를 참조하지 않는다는 원칙(P19-2)에 따라 이 파일
-        /// 안에서 독립적으로 정의한다.
+        /// 다룰 때 혼동이 없다. 각 파일이 따로 읽혀도 이해되도록 이 파일 안에서 독립적으로 정의한다.
         /// </summary>
         private static readonly Encoding Cp949 = Encoding.GetEncoding(949);
 
@@ -90,7 +89,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
 
         /// <summary>
         /// 길이 헤더 4바이트(offset부터)를 읽어 본문 바이트 수를 반환한다. TCP 클라이언트가
-        /// "헤더까지는 왔는데 본문이 아직 다 안 왔다"를 판단할 때(P19-4) 이 값을 먼저 알아야
+        /// "헤더까지는 왔는데 본문이 아직 다 안 왔다"를 판단할 때 이 값을 먼저 알아야
         /// 하므로 Decode와 분리해 공개해 둔다.
         /// 헤더가 4자리 숫자가 아니면 예외를 던진다.
         /// </summary>
@@ -108,8 +107,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
 
             // int.TryParse(string)은 기본 스타일(NumberStyles.Integer)로 앞뒤 공백과 부호(+/-)를
             // 허용한다 — 이 프로토콜은 "4자리 모두 ASCII 숫자"만 유효한 고정길이 헤더이므로 그보다
-            // 엄격해야 한다(예: " 706"/"+706"이 int.TryParse로는 통과해버리는 문제가 있었다 —
-            // 체크포인트 1 리뷰에서 발견). 4문자 전부가 '0'~'9' 범위인지 먼저 직접 검사한다.
+            // 엄격해야 한다(예: " 706"/"+706"이 int.TryParse로는 통과해버린다). 4문자 전부가 '0'~'9' 범위인지 먼저 직접 검사한다.
             foreach (char c in lengthHeader)
             {
                 if (c < '0' || c > '9')

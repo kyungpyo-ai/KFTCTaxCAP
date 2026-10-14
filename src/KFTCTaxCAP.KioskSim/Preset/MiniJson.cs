@@ -7,7 +7,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
     /// <summary>
     /// <c>kiosksim.preset.json</c> 전용 최소 JSON 직렬화/역직렬화기.
     ///
-    /// 외부 NuGet 패키지 0개 원칙(development_plan.md Phase 19 확정 결정 7)에 따라 손으로 짰다.
+    /// 폐쇄망에서도 바로 빌드되도록 외부 NuGet 패키지를 쓰지 않는다는 원칙에 따라 손으로 짰다.
     /// 이 프로젝트가 다루는 JSON 구조는 정확히 "문자열 키를 가진 객체의 객체, 리프는 항상 문자열"
     /// 하나뿐이라 범용 JSON 파서를 끌어올 필요가 없다 — 그 구조 하나만 정확히 지원한다.
     /// </summary>

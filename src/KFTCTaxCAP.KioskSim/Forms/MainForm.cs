@@ -11,12 +11,10 @@ using KFTCTaxCAP.KioskSim.Protocol;
 namespace KFTCTaxCAP.KioskSim.Forms
 {
     /// <summary>
-    /// 메인 화면. 탭 구조를 쓴다(Phase 19 실행계획서 P19-5/P19-7): "전문 전송" 탭에 3전문 독립 버튼 +
-    /// 필드별 입력 그리드 + raw ASCII 미리보기 + 전송을 담고, "오류 주입" 탭에는 8종 오류 상황 버튼과
-    /// 각각의 기대 결과를 담는다(확정된 설계 결정 2번 — 정상 경로와 오류 주입을 탭으로 격리, 정상
-    /// 경로 코드는 이 탭에서도 재사용하지 않는다 — <see cref="Net.ErrorInjectionClient"/> 참고).
+    /// 메인 화면. 위쪽에 전문 선택 버튼(501008/800000/902614/999999), 가운데에 필드별 입력 그리드,
+    /// 아래쪽에 raw 미리보기·전송 버튼·응답 필드 분해 그리드를 둔다.
     ///
-    /// 이 클래스는 업체에 연동 샘플로도 전달된다(README.md 참고) — 코드를 읽는 사람이 SPEC을
+    /// 이 클래스는 연동 샘플로도 쓰인다(README.md 참고) — 코드를 읽는 사람이 SPEC을
     /// 몰라도 "필드 계약(누가 무엇을 채우는가)"을 알 수 있게 그리드/주석을 짰다.
     /// </summary>
     public class MainForm : Form
@@ -30,26 +28,22 @@ namespace KFTCTaxCAP.KioskSim.Forms
         private const int ColSetLocation = 5;
         private const int ColValue = 6;
 
-        // 응답 필드 분해 그리드(P19-6) 열 인덱스.
+        // 응답 필드 분해 그리드 열 인덱스.
         private const int RespColNumber = 0;
         private const int RespColName = 1;
         private const int RespColSetLocation = 2;
         private const int RespColRequestValue = 3;
         private const int RespColResponseValue = 4;
 
-        /// <summary>CP949(본 파일 안에서 독립 정의 — P19-2 원칙, 본 앱/다른 파일과 공유하지 않는다).</summary>
+        /// <summary>CP949(전문 인코딩). 이 파일 안에서 독립적으로 정의한다.</summary>
         private static readonly Encoding Cp949 = Encoding.GetEncoding(949);
-
-        private readonly TabControl _tabControl;
-        private readonly TabPage _sendTab;
-        private readonly TabPage _errorInjectionTab;
 
         private readonly Button _btnSelect501008;
         private readonly Button _btnSelect800000;
         private readonly Button _btnSelect902614;
 
-        /// <summary>"직전 거래 상태 조회"(999999, Phase 26 P26-5) 버튼 — 다른 3개 전문 버튼과 동일하게
-        /// 스키마 선택 + 그리드 채우기만 담당한다(2026-09-16 재설계, <see cref="SelectStatusInquirySchema"/>
+        /// <summary>"직전 거래 상태 조회"(999999) 버튼 — 다른 3개 전문 버튼과 동일하게
+        /// 스키마 선택 + 그리드 채우기만 담당한다(<see cref="SelectStatusInquirySchema"/>
         /// 참고). 실제 전송은 "전송" 버튼(<see cref="OnSendClickAsync"/>)이 한다.</summary>
         private readonly Button _btnStatusInquiry;
 
@@ -66,26 +60,18 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
         /// <summary>"직전 거래 상태 조회"(999999) 응답의 봉투 정보(#7/#14/#15/꼬리 길이)를 보여주는
         /// 라벨. 원거래 필드 분해는 기존 _responseGrid/_lblResponseCode/_responseTextBox를 그대로
-        /// 재사용한다(PRD §3.4.5 "기존 파서를 재사용" 검증).</summary>
+        /// 재사용한다(조회 응답도 기존 파서로 분해할 수 있음을 보여 준다).</summary>
         private readonly Label _lblStatusInquiryEnvelope;
 
         private readonly DataGridView _responseGrid;
         private readonly TextBox _responseTextBox;
-
-        // ---- 오류 주입 탭(P19-7) ----
-        /// <summary>시나리오 번호(1~8) → 결과를 보여줄 라벨. 버튼 클릭 시 이 라벨을 갱신한다.</summary>
-        private readonly Dictionary<int, Label> _errorScenarioResultLabels = new Dictionary<int, Label>();
-
-        /// <summary>시나리오 번호(1~8) → 실행 버튼. 실행 중에는 그 버튼만 비활성화한다(다른 시나리오는
-        /// 동시에 눌러도 무방하다 — 각자 독립된 소켓을 쓴다).</summary>
-        private readonly Dictionary<int, Button> _errorScenarioButtons = new Dictionary<int, Button>();
 
         /// <summary>현재 그리드에 떠 있는 전문 스키마(선택 전이면 null).</summary>
         private TelegramSchema? _currentSchema;
 
         /// <summary>
         /// 직전에 실제로 전송한 요청 본문(그리드가 그 뒤 편집되어도 흔들리지 않도록 전송 시점에
-        /// 스냅샷해 둔다) + 그 스키마. 응답 필드 분해 화면(P19-6)이 "요청값 vs 응답값"을 나란히
+        /// 스냅샷해 둔다) + 그 스키마. 응답 필드 분해 화면이 "요청값 vs 응답값"을 나란히
         /// 보여줄 때 이 스냅샷을 쓴다(전송 후 그리드를 사용자가 계속 만질 수 있으므로 현재 그리드
         /// 값을 다시 읽으면 안 된다).
         /// </summary>
@@ -94,10 +80,9 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
         /// <summary>
         /// "직전 거래 상태 조회"(999999) 버튼을 누른 시점의 <see cref="_lastRequestSchema"/>/
-        /// <see cref="_lastRequestBody"/> 스냅샷(2026-09-16 재설계). 조회 버튼도 다른 3개 전문
-        /// 버튼과 동일하게 그리드만 채우고 실제 전송은 "전송" 버튼이 담당하도록 통일하면서,
-        /// 조회 전문 전송 시 <see cref="OnSendClickAsync"/>가 <see cref="_lastRequestSchema"/>/
-        /// <see cref="_lastRequestBody"/>를 조회 전문(999999) 자신으로 덮어써 버린다 — 조회
+        /// <see cref="_lastRequestBody"/> 스냅샷. 조회 버튼도 다른 3개 전문 버튼과 동일하게
+        /// 그리드만 채우고 실제 전송은 "전송" 버튼이 담당하므로, 조회 전문 전송 시
+        /// <see cref="OnSendClickAsync"/>가 <see cref="_lastRequestSchema"/>/<see cref="_lastRequestBody"/>를 조회 전문(999999) 자신으로 덮어써 버린다 — 조회
         /// 응답을 원거래 스키마로 재분해할 때 "실제로 보냈던 원거래 요청값"과 비교하려면 그
         /// 값이 덮어써지기 전에 따로 보관해 둬야 한다(<see cref="ShowStatusInquiryResult"/> 참고).
         /// </summary>
@@ -115,7 +100,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
         /// <summary>그리드 셀 값 변경 이벤트가 "코드가 프로그램적으로 값을 채우는 중"에는 반응하지 않게 막는 플래그.</summary>
         private bool _suppressGridEvents;
 
-        // ---- 전문 간 필드 연쇄(Phase 40, 표는 Protocol/TelegramChainMap.cs) ----
+        // ---- 전문 간 필드 연쇄(표는 Protocol/TelegramChainMap.cs) ----
 
         /// <summary>연쇄로 채워진 값 셀의 배경색(회색 = 잠김, 흰색 = 직접 입력과 구분).</summary>
         private static readonly Color ChainedCellColor = Color.FromArgb(214, 232, 255);
@@ -150,7 +135,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
         public MainForm()
         {
-            Text = "KFTCTaxCAP 키오스크 시뮬레이터 — Phase 19";
+            Text = "KFTCTaxCAP 키오스크 시뮬레이터";
             Width = 1360;
             Height = 980;
             StartPosition = FormStartPosition.CenterScreen;
@@ -166,17 +151,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
-            _tabControl = new TabControl { Dock = DockStyle.Fill };
-            _sendTab = new TabPage("전문 전송");
-            _errorInjectionTab = new TabPage("오류 주입");
-            _tabControl.TabPages.Add(_sendTab);
-            _tabControl.TabPages.Add(_errorInjectionTab);
-            Controls.Add(_tabControl);
-
-            // ---- 오류 주입 탭(P19-7) ----
-            BuildErrorInjectionTab();
-
-            // ---- 전문 전송 탭 ----
+            // ---- 화면 구성 ----
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 56, Padding = new Padding(8) };
             _btnSelect501008 = new Button { Text = "501008\n국고 상세 고지내역 조회", Width = 220, Height = 40, Left = 8, Top = 8 };
             _btnSelect800000 = new Button { Text = "800000\n카드 정보 조회", Width = 220, Height = 40, Left = 236, Top = 8 };
@@ -362,9 +337,9 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
             // 순서: Fill(그리드)을 먼저 추가하고 Top/Bottom을 나중에 추가해야 Top/Bottom이
             // 자기 영역을 먼저 차지하고 그리드가 남는 공간을 채운다(위 bottomPanel과 동일한 이유).
-            _sendTab.Controls.Add(_grid);
-            _sendTab.Controls.Add(bottomPanel);
-            _sendTab.Controls.Add(topPanel);
+            Controls.Add(_grid);
+            Controls.Add(bottomPanel);
+            Controls.Add(topPanel);
 
             // ---- 이벤트 연결 ----
             _btnSelect501008.Click += (s, e) => SelectSchema(TelegramSchemas.Notice501008);
@@ -388,239 +363,6 @@ namespace KFTCTaxCAP.KioskSim.Forms
             _grid.CellEndEdit += Grid_CellEndEdit;
             _grid.CellParsing += Grid_CellParsing;
             _grid.DataError += Grid_DataError;
-        }
-
-        /// <summary>
-        /// "오류 주입" 탭 구성(Phase 19 실행계획서 P19-7). 8개 시나리오를 위→아래로 나열한다.
-        /// 각 행: [실행 버튼] [기대 결과(정적 텍스트, 실행 전에도 보임)] [실제 결과(실행 후 갱신)].
-        /// 업체가 자기 서버를 만들 때 그대로 체크리스트로 쓸 수 있도록 "기대 결과"를 코드에 박아
-        /// 항상 화면에 보이게 한다(development_plan.md P19-7 요구사항).
-        /// </summary>
-        private void BuildErrorInjectionTab()
-        {
-            var headerLabel = new Label
-            {
-                // 2026-09-17 사용자 지적(5차, 근본 원인) — Label.AutoSize 기본값이 true라서, 아래
-                // Height=54를 명시해도 실제로는 텍스트 내용에 맞춰 그보다 더 크게(또는 줄바꿈 방식에
-                // 따라 다르게) 스스로 재계산해 버린다. 그 결과 이 라벨이 자기 선언 높이보다 실제로
-                // 더 많은 공간을 차지하면서, 바로 아래 Dock=Fill인 scenarioScrollHost와 겹쳐 1번
-                // 시나리오 행 위쪽이 가려지는 게 진짜 원인이었다(스크롤 컨테이너를 세 가지 다른
-                // 방식으로 바꿔도 동일하게 재현된 이유 — 스크롤 로직과 무관한 문제였다). AutoSize를
-                // 명시적으로 꺼서 선언한 Height를 그대로 지키게 한다.
-                AutoSize = false,
-                Dock = DockStyle.Top,
-                Height = 54,
-                Padding = new Padding(8),
-                Font = new Font("맑은 고딕", 9F, FontStyle.Bold),
-                Text = "이 탭은 잘못된 프로토콜/네트워크 상황을 일부러 만들어 본 앱(KFTCTaxCAP)의 방어 동작을 " +
-                       "확인한다. Net/ErrorInjectionClient.cs가 로우레벨 TCP 소켓으로 직접 구현했다(정상 " +
-                       "경로 OneCapClient는 재사용하지 않는다 — 완성된 프레임만 다루도록 설계돼 있어 여기 " +
-                       "맞지 않는다).",
-            };
-            // 2026-09-17 사용자 지적(2~5차) — Panel.AutoScroll 기반 시도를 네 가지 다른 조합
-            // (Dock=Top+AutoSize / 수동 Location+AutoSize / Dock=Fill+MinimumSize / 수동
-            // Location+명시적 Size)으로 바꿔봤지만 전부 동일하게 1번 행 위쪽이 잘렸다 — 심지어
-            // 창을 최대화해 콘텐츠가 표시 영역보다 작아지는 경우에도 재현됐다(스크롤 자체가 필요
-            // 없어야 하는 상황인데도 잘림). 원인이 WinForms의 AutoScroll 내부 계산 자체에 있는
-            // 것으로 보여, AutoScroll을 아예 쓰지 않고 VScrollBar를 직접 붙여 스크롤 위치를
-            // scenarioPanel.Top에 수동으로 대입하는 방식으로 바꾼다 — 애매한 자동 계산에 기대지
-            // 않는 가장 확실한 방법이다.
-            var scenarioScrollHost = new Panel { Dock = DockStyle.Fill };
-
-            // 2026-09-17 사용자 지적(6차, 근본 원인) — headerLabel(Dock=Top)을 scenarioScrollHost
-            // (Dock=Fill)보다 먼저 Controls에 추가했더니 1번 행이 계속 가려졌다. AutoSize=false로
-            // 바꿔도(5차) 소용없었던 이유가 이거였다 — WinForms Dock 레이아웃은 Controls 컬렉션에
-            // **나중에** 추가된 컨트롤을 먼저 도킹시킨다(z-order 최상단이 우선). Dock=Fill을
-            // 나중에 추가하면 Dock=Fill이 자신을 부모 전체로 채운 뒤에야 Dock=Top이 그 위에 다시
-            // 얹혀 잘리는 문제가 생긴다 — 그래서 Dock=Fill(scenarioScrollHost)을 먼저 추가하고
-            // Dock=Top(headerLabel)을 나중에 추가해야 Top이 진짜로 위쪽 공간을 먼저 차지한다.
-            _errorInjectionTab.Controls.Add(scenarioScrollHost);
-            _errorInjectionTab.Controls.Add(headerLabel);
-
-            var scenarioVScroll = new VScrollBar { Dock = DockStyle.Right };
-            scenarioScrollHost.Controls.Add(scenarioVScroll);
-
-            var scenarioPanel = new TableLayoutPanel
-            {
-                Location = new Point(0, 0),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                ColumnCount = 3,
-                RowCount = 10,
-                Padding = new Padding(8),
-            };
-            scenarioScrollHost.Controls.Add(scenarioPanel);
-            scenarioPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
-            scenarioPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 480));
-            scenarioPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            for (int i = 0; i < 10; i++)
-                scenarioPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
-
-            AddErrorScenarioRow(scenarioPanel, 0, 1, "1. 선언 길이 ≠ 실제 본문 길이",
-                "501008(정상 706바이트)을 길이 헤더 \"0700\"으로 선언하고 딱 그만큼(700바이트)만 보낸다.\n" +
-                "기대: #7 응답 코드 = E40(길이 불일치).",
-                () => ErrorInjectionClient.Scenario1_DeclaredLengthMismatch());
-
-            AddErrorScenarioRow(scenarioPanel, 1, 2, "2. 알 수 없는 거래 구분 코드(#4)",
-                "501008 프레이밍은 정상이되 #4(거래 구분 코드)에 존재하지 않는 \"999900\"을 넣어 보낸다.\n" +
-                "기대: #7 응답 코드 = E41(알 수 없는 거래구분).",
-                () => ErrorInjectionClient.Scenario2_UnknownTransactionType());
-
-            AddErrorScenarioRow(scenarioPanel, 2, 3, "3. 길이 필드가 숫자가 아님",
-                "길이 헤더 4바이트에 \"abcd\"를 넣고 아무 본문이나 뒤에 붙여 보낸다.\n" +
-                "기대: #7 응답 코드 = E43(전문 형식 오류)을 회신한 뒤 그 연결을 닫는다(Phase 27 P27-8-f).",
-                () => ErrorInjectionClient.Scenario3_NonNumericLengthHeader());
-
-            AddErrorScenarioRow(scenarioPanel, 3, 4, "4. 본문을 나눠 보내기",
-                "정상 501008 프레임(710바이트)을 100바이트씩 조각내 조각 사이에 짧은 지연을 두고 보낸다.\n" +
-                "기대: 서버 프레이머가 부분 수신을 누적해 정상 응답한다.",
-                () => ErrorInjectionClient.Scenario4_ChunkedSend());
-
-            AddErrorScenarioRow(scenarioPanel, 4, 5, "5. 응답 전 연결 강제 종료",
-                "정상 501008 요청을 보낸 직후 응답을 기다리지 않고 소켓을 바로 닫는다. 이어서 자동으로\n" +
-                "정상 501008을 하나 더 보낸다. 기대: 서버가 죽지 않고 다음 요청을 정상 처리한다.",
-                () => ErrorInjectionClient.Scenario5_AbortBeforeResponse());
-
-            AddErrorScenarioRow(scenarioPanel, 5, 6, "6. 응답을 읽지 않고 붙들기",
-                "정상 501008 요청을 보내고 연결은 열어 둔 채 응답을 7초간 절대 Read하지 않다가 닫는다.\n" +
-                "이어서 자동으로 정상 501008을 하나 더 보낸다. 기대: 서버 송신 타임아웃(5초, " +
-                "PosSocketServer.SendTimeoutMilliseconds)이 지나도 그 뒤 요청은 막히지 않는다.",
-                () => ErrorInjectionClient.Scenario6_HoldResponseUnread());
-
-            AddErrorScenarioRow(scenarioPanel, 6, 7, "7. 연속 2건 즉시 전송",
-                "501008 두 개를 서로 다른 연결로 거의 동시에 보낸다.\n" +
-                "기대: 단일 워커 큐가 직렬화해서 둘 다 정상 응답한다.",
-                () => ErrorInjectionClient.Scenario7_ConcurrentRequests());
-
-            AddErrorScenarioRow(scenarioPanel, 7, 8, "8. 버퍼 상한 초과",
-                "길이 헤더에 \"9999\"를 선언하고 그 뒤로 완성되지 않는 쓰레기 바이트를 64KB(65536바이트)\n" +
-                "넘게 계속 보낸다. 기대: 서버가 버퍼 상한을 넘기면 연결을 닫는다.",
-                () => ErrorInjectionClient.Scenario8_BufferOverflowAttempt());
-
-            AddErrorScenarioRow(scenarioPanel, 8, 9, "9. 조회 응답 유실 → 재연결 복구(999999, Phase 26)",
-                "정상 501008을 보내 성공(#9 확보) → 같은 #9로 조회(999999) 요청을 보내고 응답을 한 바이트도\n" +
-                "읽지 않고 즉시 연결을 끊는다 → 재연결해 같은 조회를 다시 보낸다. 기대: #7=\"000\", #14=\"501008\",\n" +
-                "꼬리가 ①의 501008 응답 원문과 바이트 단위로 일치(이 Phase의 존재 이유 재현).",
-                () => ErrorInjectionClient.Scenario9_InquiryResponseLossRecovery());
-
-            AddErrorScenarioRow(scenarioPanel, 9, 10, "10. 본문 16바이트 미만(#4 식별 불가)",
-                "길이 헤더는 정상(프레이밍은 안 깨짐)이되 본문을 10바이트만 보내 #4(거래 구분 코드)조차\n" +
-                "읽지 못하게 한다. 기대: #7=E42, #4=\"000000\"(placeholder) 응답을 회신하고 연결은 유지한다 —\n" +
-                "이어서 같은 연결로 보낸 정상 501008 요청도 정상 처리된다(Phase 27 P27-8-f).",
-                () => ErrorInjectionClient.Scenario10_TooShortBodyMissingTransactionType());
-
-            // scenarioPanel의 실제 필요 높이 — 폭은 컬럼 정의(Absolute 220+480, 나머지는 Percent라
-            // 실제 렌더 폭은 부모 폭에 따라 달라지지만 최초 폭은 이 정도면 충분하다 — Anchor에 Right가
-            // 걸려 있어 창 크기가 바뀌면 그에 맞춰 늘어난다) 높이는 RowStyles(전부 Absolute) 합산 +
-            // 패딩으로 정확히 계산한다.
-            int totalRowsHeight = 0;
-            foreach (RowStyle rowStyle in scenarioPanel.RowStyles)
-                totalRowsHeight += (int)rowStyle.Height;
-            int requiredHeight = scenarioPanel.Padding.Top + scenarioPanel.Padding.Bottom + totalRowsHeight;
-            scenarioPanel.Size = new Size(1300, requiredHeight);
-
-            // VScrollBar 수동 배선 — scenarioPanel.Top에 음수값을 직접 대입해 스크롤한다. 뷰포트
-            // 높이(scenarioScrollHost.ClientSize.Height)는 창이 리사이즈될 때마다 바뀌므로, 스크롤
-            // 가능 범위(Maximum)도 그때마다 다시 계산한다.
-            void UpdateScrollRange()
-            {
-                int viewportHeight = scenarioScrollHost.ClientSize.Height;
-                int overflow = Math.Max(0, requiredHeight - viewportHeight);
-                scenarioVScroll.Minimum = 0;
-                scenarioVScroll.SmallChange = 30;
-                scenarioVScroll.LargeChange = Math.Max(1, viewportHeight);
-                // VScrollBar.Maximum은 "스크롤 가능한 마지막 값 + LargeChange - 1"이어야 실제로
-                // overflow까지 도달한다(WinForms ScrollBar의 잘 알려진 관례).
-                scenarioVScroll.Maximum = overflow + scenarioVScroll.LargeChange - 1;
-                scenarioVScroll.Enabled = overflow > 0;
-                if (scenarioVScroll.Value > overflow)
-                    scenarioVScroll.Value = overflow;
-                scenarioPanel.Top = -scenarioVScroll.Value;
-            }
-
-            scenarioVScroll.Scroll += (s, e) => scenarioPanel.Top = -e.NewValue;
-            scenarioScrollHost.Resize += (s, e) => UpdateScrollRange();
-            scenarioScrollHost.MouseWheel += (s, e) =>
-            {
-                int step = (e.Delta / 120) * scenarioVScroll.SmallChange;
-                int newValue = scenarioVScroll.Value - step;
-                newValue = Math.Max(scenarioVScroll.Minimum, Math.Min(scenarioVScroll.Maximum - scenarioVScroll.LargeChange + 1, newValue));
-                scenarioVScroll.Value = newValue;
-                scenarioPanel.Top = -newValue;
-            };
-            UpdateScrollRange();
-        }
-
-        /// <summary>오류 주입 탭 한 행(버튼 + 기대 결과 + 실제 결과 라벨)을 만들어 테이블에 추가한다.</summary>
-        private void AddErrorScenarioRow(TableLayoutPanel panel, int row, int scenarioNumber, string title,
-            string expectedText, Func<string> runScenario)
-        {
-            var button = new Button
-            {
-                Text = title,
-                Dock = DockStyle.Fill,
-                Margin = new Padding(4),
-            };
-
-            var expectedLabel = new Label
-            {
-                Text = "기대 결과: " + expectedText,
-                Dock = DockStyle.Fill,
-                Margin = new Padding(4),
-                AutoSize = false,
-            };
-
-            var resultLabel = new Label
-            {
-                Text = "(아직 실행하지 않음)",
-                Dock = DockStyle.Fill,
-                Margin = new Padding(4),
-                AutoSize = false,
-                ForeColor = Color.Gray,
-            };
-
-            button.Click += async (s, e) => await RunErrorScenarioAsync(scenarioNumber, runScenario);
-
-            panel.Controls.Add(button, 0, row);
-            panel.Controls.Add(expectedLabel, 1, row);
-            panel.Controls.Add(resultLabel, 2, row);
-
-            _errorScenarioButtons[scenarioNumber] = button;
-            _errorScenarioResultLabels[scenarioNumber] = resultLabel;
-        }
-
-        /// <summary>
-        /// 시나리오 하나를 백그라운드 스레드에서 실행하고(UI 스레드를 막지 않는다 — 6/7번은 수 초
-        /// 걸린다) 결과를 그 행의 결과 라벨에 반영한다. 실행 중에는 그 버튼만 비활성화한다.
-        /// </summary>
-        private async System.Threading.Tasks.Task RunErrorScenarioAsync(int scenarioNumber, Func<string> runScenario)
-        {
-            var button = _errorScenarioButtons[scenarioNumber];
-            var resultLabel = _errorScenarioResultLabels[scenarioNumber];
-
-            button.Enabled = false;
-            resultLabel.Text = "실행 중…";
-            resultLabel.ForeColor = Color.DarkBlue;
-
-            try
-            {
-                string result = await System.Threading.Tasks.Task.Run(runScenario);
-                resultLabel.Text = result;
-                // 모든 시나리오 메서드는 문제 있는 경로(기대와 다름/불일치/오류)에서 예외 없이
-                // "확인 필요"라는 문구를 반드시 포함하도록 통일돼 있다(ErrorInjectionClient.cs
-                // 전수 확인). 예전에는 "불일치"만 찾아 시나리오 3의 타임아웃 분기("기대와 다름 …
-                // 확인 필요"에는 "불일치"가 없다)가 초록(정상)으로 잘못 표시됐다(2026-08-31 검증에서
-                // 발견 — 낮음, 검증 도구의 오탐).
-                resultLabel.ForeColor = result.Contains("확인 필요") ? Color.DarkRed : Color.DarkGreen;
-            }
-            catch (Exception ex)
-            {
-                resultLabel.Text = $"[예외] {ex.GetType().Name}: {ex.Message}";
-                resultLabel.ForeColor = Color.DarkRed;
-            }
-            finally
-            {
-                button.Enabled = true;
-            }
         }
 
         /// <summary>세 전문 전부의 kiosk 편집 가능 필드 값을 프리셋/코드 기본값으로 초기화한다.</summary>
@@ -667,10 +409,10 @@ namespace KFTCTaxCAP.KioskSim.Forms
                 foreach (var field in schema.Fields.OrderBy(f => f.Number))
                 {
                     // AlwaysBlank 필드(FILLER/예비 정보 FIELD, #5 상태 코드 등)는 SetLocation이
-                    // Kiosk여도 편집을 막는다 — 정의된 유효값이 없어 편집 가능하게 열어두면 업체가
+                    // Kiosk여도 편집을 막는다 — 정의된 유효값이 없어 편집 가능하게 열어두면
                     // 무엇을 넣어야 하는지 헷갈리고 잘못된 값을 실수로 채워 보낼 위험만 커진다
-                    // (2026-08-28 사용자 확정, TelegramField.AlwaysBlank 문서 참고).
-                    // ZeroFilled 필드(서버 요구 2026-10-07 — kiosk·원캡이 안 채우는 N 필드는 0 채움)도 편집을 막고,
+                    // (TelegramField.AlwaysBlank 문서 참고).
+                    // ZeroFilled 필드(서버 요구 — kiosk·원캡이 안 채우는 N 필드는 0 채움)도 편집을 막고,
                     // 값 칸에 0(필드 길이만큼)을 그대로 보여준다 — 보이는 값이 곧 전송되는 값이다.
                     bool editable = field.SetLocation == TelegramSetLocation.Kiosk && !field.AlwaysBlank && !field.ZeroFilled;
                     string valueCellText = field.ZeroFilled
@@ -981,7 +723,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
                 return;
             }
 
-            // 응답 필드 분해(P19-6)가 "지금 그리드 값"이 아니라 "실제로 보낸 값"과 비교해야 하므로
+            // 응답 필드 분해가 "지금 그리드 값"이 아니라 "실제로 보낸 값"과 비교해야 하므로
             // 전송 시점의 요청 본문을 스냅샷해 둔다(전송 후에도 사용자가 그리드를 계속 편집할 수 있음).
             _lastRequestBody = buffer.ToBytes();
             _lastRequestSchema = _currentSchema;
@@ -1031,11 +773,9 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
         /// <summary>
         /// 버튼 활성/비활성만 담당한다. <c>sending=false</c>일 때 상태 라벨을 "대기 중."으로
-        /// 덮어쓰지 않는다 — 예전에는 여기서 무조건 덮어써서, <see cref="OnSendClickAsync"/>가
-        /// 직전에 <see cref="ShowResult"/>로 남긴 실패 원인 메시지(연결 거부/타임아웃 등)가
-        /// finally 블록에서 곧바로 지워지는 결함이 있었다(2026-08-31 검증에서 발견 — H-1).
-        /// 특히 <see cref="ShowResult"/>가 응답 본문이 없을 때 "위 상태 메시지 참고"라고
-        /// 안내하는데 그 메시지 자체가 사라지면 사용자가 실패 원인을 확인할 방법이 없었다.
+        /// 덮어쓰지 않는다 — <see cref="OnSendClickAsync"/>가 직전에 <see cref="ShowResult"/>로
+        /// 남긴 실패 원인 메시지(연결 거부/타임아웃 등)가 finally 블록에서 지워지면 안 되기 때문이다
+        /// (<see cref="ShowResult"/>는 응답 본문이 없을 때 "위 상태 메시지 참고"라고 안내한다).
         /// </summary>
         private void SetSendingState(bool sending, string txType)
         {
@@ -1084,8 +824,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
             // "직전 거래 상태 조회"(999999)는 응답 구조가 다르다(공통부 70 + #14/#15 + 가변 원거래
             // 원문) — 다른 3전문과 같은 고정 스키마 분해(ShowFieldDecomposition)를 바로 쓸 수 없어
-            // 전용 파서(ShowStatusInquiryResult)로 분기한다(2026-09-16, 조회 버튼도 "전송" 버튼으로
-            // 통일하면서 여기서 분기가 필요해졌다 — 예전에는 조회 전용 클릭 핸들러가 직접 처리했다).
+            // 전용 파서(ShowStatusInquiryResult)로 분기한다.
             if (_lastRequestSchema.TxType == TelegramSchemas.StatusInquiryTransactionType)
             {
                 ShowStatusInquiryResult(result.ResponseBody);
@@ -1267,7 +1006,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
         /// <summary>
         /// 응답 본문을 요청과 같은 스키마로 분해해 그리드에 나란히 채우고, <c>#7 응답 코드</c>를
         /// 해설하고, 902614 응답의 <c>#51</c>은 값 자체를 절대 화면에 찍지 않고 마스킹 문구로만
-        /// 보여준다(Phase 19 실행계획서 P19-6, PRD §8.4).
+        /// 보여준다(PIN 관련 값은 화면에 찍지 않는다).
         /// </summary>
         private void ShowFieldDecomposition(TelegramSchema schema, byte[] requestBody, byte[] responseBody)
         {
@@ -1277,11 +1016,9 @@ namespace KFTCTaxCAP.KioskSim.Forms
             {
                 // TelegramBuffer(schema, body) 생성자가 곧 예외를 던질 상황이므로, 필드 그리드
                 // 분해는 여기서 포기한다(예외를 그대로 밖으로 던지지 않는다). 다만 E41(알 수 없는
-                // 거래구분) 응답은 공통부 70바이트만 오는 게 정상이라(PosUnknownTransactionErrorResponse,
-                // 본 앱 쪽 문서로만 확인 — 소스 참조 없음) 이 분기를 가장 자주 타는 것이 바로 그
-                // 케이스다. #7(POSITION=20, 길이=3)은 3전문 공통부에 공유되는 고정 위치이므로,
-                // 본문이 그 위치까지만 있어도 스키마 없이 직접 읽어 보여준다(2026-08-31 검증에서
-                // "E41 응답에서 #7이 아예 안 보인다"는 결함으로 발견 — M-1). 70바이트에도 못 미치는
+                // 거래구분) 등 원캡 오류 응답은 공통부 70바이트만 오는 게 정상이라 이 분기를 가장
+                // 자주 타는 것이 바로 그 케이스다. #7(POSITION=20, 길이=3)은 3전문 공통부에 공유되는
+                // 고정 위치이므로, 본문이 그 위치까지만 있어도 스키마 없이 직접 읽어 보여준다. 70바이트에도 못 미치는
                 // 비정상 응답은 그마저도 안 되므로 그 사실을 그대로 알린다.
                 const int responseCodePosition = 20;
                 const int responseCodeLength = 3;
@@ -1316,7 +1053,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
                 if (isMaskedPinField)
                 {
-                    // PRD §8.4 / Phase 18 H-1·H-2: #51(암호화된 비밀번호 정보)은 값 자체를
+                    // #51(암호화된 비밀번호 정보)은 값 자체를
                     // 화면(과 로그)에 절대 노출하지 않는다. 길이만으로 정상/경고를 판단한다.
                     string rawMasked = respBuffer.Read(field.Number); // 문자 계열이라 TrimEnd(' ')된 실값(또는 빈 문자열).
                     int byteLength = Cp949.GetByteCount(rawMasked);
@@ -1361,7 +1098,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
             string responseCode = respBuffer.Read(7);
             _lblResponseCode.Text = $"#7 응답 코드: \"{responseCode}\" — {ResponseCodeCatalog.Describe(responseCode)}";
 
-            // Phase 45(PRD §17.4) — 800000이고 #7 = M01이면 API 세부 응답코드(#27)도 풀어 붙인다.
+            // 800000이고 #7 = M01이면 API 세부 응답코드(#27)도 풀어 붙인다.
             if (schema.TxType == "800000" && responseCode.Trim() == "M01")
             {
                 string detailCode = respBuffer.Read(ResponseCodeCatalog.CardInfoDetailFieldNumber).Trim();
@@ -1377,7 +1114,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
                 string rawPin = respBuffer.Read(51);
                 _lblField51Warning.Text = Cp949.GetByteCount(rawPin) == 0
                     ? "#51(암호화된 비밀번호 정보): 정상(공백)"
-                    : $"#51(암호화된 비밀번호 정보): 경고 — 길이 {Cp949.GetByteCount(rawPin)}의 값이 실려 있음(값은 표시하지 않음, PRD §8.4 위반 정황)";
+                    : $"#51(암호화된 비밀번호 정보): 경고 — 길이 {Cp949.GetByteCount(rawPin)}의 값이 실려 있음(값은 표시하지 않음 — 응답에는 실리지 않아야 함)";
                 _lblField51Warning.ForeColor = Cp949.GetByteCount(rawPin) == 0 ? Color.DarkGreen : Color.DarkRed;
             }
             else
@@ -1387,14 +1124,11 @@ namespace KFTCTaxCAP.KioskSim.Forms
         }
 
         /// <summary>
-        /// "직전 거래 상태 조회"(999999) 버튼 핸들러(2026-09-16 재설계). 다른 3개 전문 버튼
+        /// "직전 거래 상태 조회"(999999) 버튼 핸들러. 다른 3개 전문 버튼
         /// (<see cref="SelectSchema"/>)과 동일하게 스키마 전환 + 그리드 채우기만 하고, 실제 전송은
-        /// "전송" 버튼(<see cref="OnSendClickAsync"/>)에 맡긴다 — 예전에는 이 버튼을 누르면 그
-        /// 자리에서 바로 소켓 전송까지 해버려서, "조회 버튼을 누른 뒤 전송 버튼을 누르면 무엇이
-        /// 나가는가"가 다른 버튼들과 다르게 동작해 혼란을 줬다(사용자 지적 — 전송 버튼을 누르면
-        /// 직전에 선택한 그 전문이 나가야 다른 버튼과 방식이 일치한다).
+        /// "전송" 버튼(<see cref="OnSendClickAsync"/>)에 맡긴다.
         ///
-        /// #9(요청기관 전문 관리 번호)는 원캡이 이 값으로 원거래를 찾으므로(PRD §3.4.9), 편의상
+        /// #9(요청기관 전문 관리 번호)는 원캡이 이 값으로 원거래를 찾으므로, 편의상
         /// 직전 실제 거래(<see cref="_lastRequestSchema"/>/<see cref="_lastRequestBody"/>)에 썼던
         /// 값을 그대로 미리 채워 둔다 — 가장 흔한 시나리오(방금 보낸 거래를 그대로 조회)를 한 번에
         /// 되도록 하되, 그리드는 여전히 편집 가능하므로 사용자가 값을 바꿔 "원거래 불일치"(E07)
@@ -1455,13 +1189,12 @@ namespace KFTCTaxCAP.KioskSim.Forms
         /// 조회 응답(고정부 80바이트 + 가변 꼬리)을 분해해 보여준다. 고정부는 #7/#14/#15만 봉투
         /// 라벨(<see cref="_lblStatusInquiryEnvelope"/>)로 보여주고, 꼬리(원거래 응답 원문)가 있으면
         /// #14 값으로 원거래 스키마를 찾아 <see cref="ShowFieldDecomposition"/>을 그대로 재사용해
-        /// 기존 필드 분해 그리드/코드 해설/#51 마스킹을 그대로 활용한다(PRD §3.4.5 검증).
+        /// 기존 필드 분해 그리드/코드 해설/#51 마스킹을 그대로 활용한다.
         ///
-        /// 2026-09-15 재확인 — 봉투의 #7은 "조회 자체가 성공(직전 거래를 찾음)"만 뜻한다(찾으면
+        /// 봉투의 #7은 "조회 자체가 성공(직전 거래를 찾음)"만 뜻한다(찾으면
         /// 고정 "000", 못 찾으면 "E07"). 원거래가 실제로 승인/거절이었는지는 이 #7과 무관하며, 아래
         /// 필드 분해 그리드가 꼬리를 원거래 스키마로 다시 파싱해 보여주는 "그 스키마 자신의 #7"에서
-        /// 확인해야 한다 — 봉투의 #7과 꼬리 안의 #7은 서로 다른 값일 수 있다(더 이상 relay하지
-        /// 않으므로).
+        /// 확인해야 한다 — 봉투의 #7과 꼬리 안의 #7은 서로 다른 값일 수 있다.
         /// </summary>
         private void ShowStatusInquiryResult(byte[] responseBody)
         {
@@ -1483,7 +1216,7 @@ namespace KFTCTaxCAP.KioskSim.Forms
             int.TryParse(originalLengthRaw, out int originalLength);
             int tailLength = responseBody.Length - 80;
 
-            // 2026-09-15 재확인 — 이 #7은 "조회 자체 성공 여부"일 뿐 원거래 승인/거절과 무관하다
+            // 이 #7은 "조회 자체 성공 여부"일 뿐 원거래 승인/거절과 무관하다
             // (클래스 요약 참고). 아래 라벨 문구도 그 의미로 고정한다.
             _lblStatusInquiryEnvelope.Text =
                 $"[조회 응답 고정부] #7 응답 코드=\"{code7}\"(조회 자체 성공 여부 — {(code7 == "000" ? "매칭됨" : "매칭 안 됨")}) / " +
@@ -1522,10 +1255,9 @@ namespace KFTCTaxCAP.KioskSim.Forms
                 return;
             }
 
-            // PRD §3.4.5 "POS는 기존 파서를 재사용하면 된다" 검증 — 원거래와 같은 스키마이면 조회
-            // 버튼을 누르던 시점에 스냅샷해 둔 원거래 요청 본문(_priorTransactionBody, 2026-09-16
-            // 재설계 — 조회 전문 전송 시 _lastRequestBody는 이미 999999 자신으로 덮어써진 뒤라
-            // 여기선 쓸 수 없다)을 나란히 놓고 기존 ShowFieldDecomposition을 그대로 재사용한다
+            // 키오스크는 기존 파서를 재사용하면 된다 — 원거래와 같은 스키마이면 조회 버튼을
+            // 누르던 시점에 스냅샷해 둔 원거래 요청 본문(_priorTransactionBody — 조회 전문 전송 시
+            // _lastRequestBody는 이미 999999 자신으로 덮어써진 뒤라 여기선 쓸 수 없다)을 나란히 놓고 기존 ShowFieldDecomposition을 그대로 재사용한다
             // (파서를 새로 만들지 않는다).
             byte[] requestForDiff = _priorTransactionSchema != null
                 && _priorTransactionSchema.TxType == originalSchema.TxType

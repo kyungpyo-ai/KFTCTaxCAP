@@ -7,14 +7,12 @@ using KFTCTaxCAP.KioskSim.Protocol;
 namespace KFTCTaxCAP.KioskSim.Preset
 {
     /// <summary>
-    /// 실행 파일 옆 <c>kiosksim.preset.json</c> 파일을 읽고 쓴다(Phase 19 실행계획서 P19-5,
-    /// 확정된 설계 결정 3번 — 프리셋 방식).
+    /// 실행 파일 옆 <c>kiosksim.preset.json</c> 파일을 읽고 쓴다(입력값 프리셋).
     ///
     /// 저장 구조는 "전문 타입 → 필드 번호 → 값" 2단계 맵이다. <b>필드 POSITION이 아니라 번호를
-    /// 키로 쓴다</b> — SPEC이 바뀌어 POSITION이 옮겨져도 프리셋 파일이 깨지지 않게 하기 위함이다
-    /// (development_plan.md 원문 지시).
+    /// 키로 쓴다</b> — SPEC이 바뀌어 POSITION이 옮겨져도 프리셋 파일이 깨지지 않게 하기 위함이다.
     ///
-    /// 외부 NuGet 패키지 0개 원칙(development_plan.md 확정 결정 7)에 따라 JSON을 손으로 직렬화/
+    /// 외부 NuGet 패키지를 쓰지 않는다는 원칙에 따라 JSON을 손으로 직렬화/
     /// 역직렬화한다 — 구조가 "문자열 키 2단계 객체, 리프는 항상 문자열"로 아주 단순해서 범용
     /// JSON 파서보다 이 파일 하나로 충분하다. 다만 겹따옴표/역슬래시/제어문자 이스케이프와 유니코드
     /// 이스케이프(\uXXXX) 정도는 최소한으로 지원해, 한글 값(예: 징수 기관명)이 깨지지 않게 했다.
@@ -30,8 +28,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
         /// <summary>
         /// <see cref="Load"/> 결과. 파일이 없거나 손상됐어도 예외로 죽지 않고, 그 사실을
         /// 호출부가 알 수 있게 <see cref="FileExisted"/>/<see cref="ParsedOk"/>/<see cref="Warning"/>로
-        /// 알려준다(development_plan.md P19-5 지시: "파일이 손상됐으면 예외로 죽이지 말고 빈 값으로
-        /// 폴백하되 그 사실을 호출부가 알 수 있게").
+        /// 알려준다(손상된 파일은 빈 값으로 폴백하되 그 사실은 숨기지 않는다).
         /// </summary>
         public sealed class LoadResult
         {
@@ -119,7 +116,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
 
         /// <summary>
         /// 현재 필드 값들을 프리셋 파일에 덮어쓴다. "현재 값을 프리셋으로 저장" 버튼 전용
-        /// (자동 저장 없음 — 확정된 설계 결정 3번).
+        /// (자동 저장 없음).
         /// </summary>
         public static void Save(Dictionary<string, Dictionary<int, string>> values)
         {
@@ -128,7 +125,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
 
             // 연쇄 필드(앞 전문 응답에서 오는 값, Protocol/TelegramChainMap.cs)는 저장하지 않는다 —
             // 저장하면 다음 실행 때 "앞 응답 없이 미리 들어 있는 더미 값"이 되어, 이 값이 앞 전문
-            // 응답에서 와야 한다는 사실이 가려진다(PRD §14.2·§14.5).
+            // 응답에서 와야 한다는 사실이 가려진다.
             var toSave = new Dictionary<string, Dictionary<int, string>>();
             foreach (var txEntry in values)
             {
@@ -147,12 +144,9 @@ namespace KFTCTaxCAP.KioskSim.Preset
 
         // --------------------------------------------------------------
         // 코드 기본값 — 프리셋 파일이 없거나 그 필드가 파일에 없을 때 쓰는 값.
-        // tools/spec_client.ps1(Phase 17/18 실장비 왕복 검증 완료)이 실제로 SET하는 값을
-        // 필드 번호 기준으로 그대로 옮겼다. spec_client.ps1이 값을 SET하지 않고 건너뛴 필드
-        // (Set-Field의 "빈 값이면 건너뛴다" 규칙과 동일)는 여기서도 빈 문자열로 둔다 — 빈
+        // 실장비 왕복 검증에 쓴 테스트 값이다. 값이 없는 필드는 빈 문자열로 둔다 — 빈
         // 문자열은 화면에서 "이 필드는 안 쓴다"는 의도로 해석되어 TelegramBuffer.Write를
-        // 호출하지 않고 space로 남긴다(스키마 초기화 규칙과 spec_client의 실제 검증 동작이
-        // 정확히 일치).
+        // 호출하지 않고 space로 남긴다(스키마 초기화 규칙과 같다).
         // --------------------------------------------------------------
 
         private static readonly Random DefaultRandom = new Random();
@@ -195,7 +189,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
                         case 3: return "0200";
                         case 4: return "800000";
                         case 6: return "G";
-                        // #11/#12는 kiosk가 채우지 않는 공백 필드(SPEC 2026-09-22 개정) — 기본값 없음.
+                        // #11/#12는 kiosk가 채우지 않는 필드(0 고정, 편집 불가) — 기본값 없음.
                         // #15/#16은 연쇄 필드(501008 응답에서 옴) — 기본값 없음(빈 칸으로 시작).
                         default: return string.Empty;
                     }
@@ -209,7 +203,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
                         case 4: return "902614";
                         case 6: return "G";
                         // #11/#12, #14~#16, #18~#31, #33/#34, #36/#37은 연쇄 필드(501008/800000 응답에서
-                        // 옴, Protocol/TelegramChainMap.cs) — 기본값 없음(빈 칸으로 시작, PRD §14.2).
+                        // 옴, Protocol/TelegramChainMap.cs) — 기본값 없음(빈 칸으로 시작).
                         case 32: return DateTime.Now.ToString("yyyyMMdd");
                         case 35: return "01012345678"; // 연락 전화 번호 — 실제로는 납부자가 입력하는 값(테스트 값)
                         case 39: return "O";
@@ -235,7 +229,7 @@ namespace KFTCTaxCAP.KioskSim.Preset
         /// <summary>
         /// 프리셋 파일 값이 있으면 그 값, 없으면 코드 기본값(우선순위: 프리셋 &gt; 코드 기본값).
         /// 단 연쇄 필드(<see cref="TelegramChainMap.IsChainTarget"/>)는 항상 빈 칸이다 — 예전 프리셋
-        /// 파일에 값이 남아 있어도 읽지 않는다(PRD §14.5).
+        /// 파일에 값이 남아 있어도 읽지 않는다.
         /// </summary>
         public static string Resolve(LoadResult loaded, string txType, int fieldNumber)
         {
@@ -255,11 +249,8 @@ namespace KFTCTaxCAP.KioskSim.Preset
             var result = new Dictionary<int, string>();
             foreach (var field in schema.Fields)
             {
-                // AlwaysBlank 필드(그리드에서 편집이 잠긴 필드, 2026-08-28 확정)는 애초에 값을
-                // 가질 일이 없으므로 여기서도 제외한다 — 예전에는 이 필드까지 포함해 놓고
-                // (기본값이 항상 빈 문자열이라 실질적 동작 차이는 없었지만) "저장/보관은 되는데
-                // 화면에는 절대 안 보이는" 죽은 값이 프리셋 파일에 계속 쌓일 수 있었다
-                // (2026-08-31 검증에서 발견 — 낮음).
+                // AlwaysBlank 필드(그리드에서 편집이 잠긴 필드)는 애초에 값을 가질 일이 없으므로
+                // 여기서도 제외한다 — 화면에 안 보이는 죽은 값이 프리셋 파일에 쌓이지 않게 한다.
                 if (field.SetLocation != TelegramSetLocation.Kiosk || field.AlwaysBlank || field.ZeroFilled)
                     continue; // ZeroFilled(서버 요구 0 고정)도 사용자가 값을 갖지 않는다.
                 result[field.Number] = Resolve(loaded, schema.TxType, field.Number);

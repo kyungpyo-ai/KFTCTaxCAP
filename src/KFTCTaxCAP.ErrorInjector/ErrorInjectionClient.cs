@@ -1,16 +1,19 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using KFTCTaxCAP.KioskSim.Net;
 using KFTCTaxCAP.KioskSim.Protocol;
 
-namespace KFTCTaxCAP.KioskSim.Net
+namespace KFTCTaxCAP.ErrorInjector
 {
     /// <summary>
-    /// "오류 주입" 탭 전용 로우레벨 TCP 클라이언트(Phase 19 실행계획서 P19-7).
+    /// 오류 주입 도구 전용 로우레벨 TCP 클라이언트(Phase 19 실행계획서 P19-7). 원래 KioskSim의
+    /// "오류 주입" 탭이었으나, KioskSim을 업체 전달용으로 정리하면서(2026-10-14) 내부 도구로 분리했다.
     ///
     /// <see cref="OneCapClient"/>는 "정상적으로 완성된 프레임을 보내고 정상적으로 완성된 프레임을
     /// 받는다"는 전제로 설계돼 있어(길이 헤더 검증·부분 수신 누적 등) 여기서 재사용할 수 없다 —
@@ -38,14 +41,33 @@ namespace KFTCTaxCAP.KioskSim.Net
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// #4="501008"만 채운, 나머지는 전부 space(스키마 초기화 규칙)인 최소한의 501008 요청 본문.
-        /// P19-4 검증 때 쓴 것과 같은 방식 — 업무적으로 유효한 값을 넣는 것이 목적이 아니라 "정상
-        /// 프레이밍 왕복"을 확인하는 것이 목적이므로 이 정도로 충분하다.
+        /// 형식상 정상인 501008 요청 본문 — 공통부 고정값 + 테스트 전자납부번호 + 서버가 0을 요구하는
+        /// N 필드(<see cref="TelegramField.ZeroFilled"/>)를 채운다. 업무적으로 유효할 필요는 없다(서버가
+        /// "납부번호 틀림" 같은 업무 응답을 주면 충분하다).
+        ///
+        /// 2026-10-14 변경: 예전에는 #4만 채운 전부 공백 본문을 썼는데, VAN OT 연결(2026-10-12) 이후로는
+        /// 서버가 그 본문을 받지 않아 FNAISCRDVAN이 nRet=-1(D02)로 실패하고 원캡이 장애 알림(ALERT) 로그까지
+        /// 남겼다. 시나리오 판정에는 영향이 없었지만 테스트마다 가짜 장애가 쌓이므로 정상 형식으로 바꿨다.
         /// </summary>
-        private static byte[] BuildMinimal501008Body()
+        private static byte[] BuildMinimal501008Body(string? managementNumber = null)
         {
             var buffer = new TelegramBuffer(TelegramSchemas.Notice501008);
+            foreach (var field in TelegramSchemas.Notice501008.Fields)
+            {
+                if (field.ZeroFilled)
+                    buffer.Write(field.Number, field.FixedValue);
+            }
+            buffer.Write(1, "IGN");
+            buffer.Write(2, "095");
+            buffer.Write(3, "0200");
             buffer.Write(4, "501008");
+            buffer.Write(6, "G");
+            buffer.Write(8, DateTime.Now.ToString("yyMMddHHmmss"));
+            // #9가 공백이면 VAN DLL이 nRet=-1로 실패한다(2026-10-14 OT 실측) — 항상 채운다.
+            buffer.Write(9, managementNumber ?? NewManagementNumber());
+            buffer.Write(11, "01");
+            buffer.Write(12, "1234567");
+            buffer.Write(14, "1234567890123456789");
             return buffer.ToBytes();
         }
 
@@ -53,6 +75,13 @@ namespace KFTCTaxCAP.KioskSim.Net
         private static byte[] BuildValid501008Frame() => TelegramCodec.Encode(BuildMinimal501008Body());
 
         private static readonly Random StatusInquiryScenarioRandom = new Random();
+
+        /// <summary>실제 운영과 같은 형식("0EC0"+8자리 난수)의 요청기관 전문 관리 번호(#9).</summary>
+        private static string NewManagementNumber()
+        {
+            lock (StatusInquiryScenarioRandom)
+                return "0EC0" + StatusInquiryScenarioRandom.Next(10_000_000, 99_999_999);
+        }
 
         /// <summary>
         /// <see cref="Scenario9_InquiryResponseLossRecovery"/> 전용 — #9(요청기관 전문 관리 번호)에
@@ -65,11 +94,8 @@ namespace KFTCTaxCAP.KioskSim.Net
         /// </summary>
         private static byte[] BuildValid501008FrameWithManagementNumber(out string managementNumber)
         {
-            managementNumber = "0EC0" + StatusInquiryScenarioRandom.Next(10_000_000, 99_999_999);
-            var buffer = new TelegramBuffer(TelegramSchemas.Notice501008);
-            buffer.Write(4, "501008");
-            buffer.Write(9, managementNumber);
-            return TelegramCodec.Encode(buffer.ToBytes());
+            managementNumber = NewManagementNumber();
+            return TelegramCodec.Encode(BuildMinimal501008Body(managementNumber));
         }
 
         /// <summary>
@@ -648,21 +674,31 @@ namespace KFTCTaxCAP.KioskSim.Net
                     totalSent += junkChunk.Length;
                 }
 
-                // 여기까지 예외 없이 다 보내졌다면, 서버가 연결을 안 끊고 계속 받아준 것 — 응답을
-                // 기다려 본다(응답이 온다면 그 자체가 이상 상황).
+                // 2026-10-14 판정 변경(OT 실측): Phase 27 이후 서버는 형식 오류에 응답을 회신한 뒤 닫는다.
+                // "9999" 헤더는 숫자라 9999바이트의 'Z'가 프레임 하나로 완성돼 E41이 먼저 오고, 이어지는
+                // "ZZZZ" 비숫자 헤더에서 E43 회신 후 연결이 닫힌다. 그래서 "응답이 오면 불일치"가 아니라
+                // "응답을 다 읽은 뒤 서버가 연결을 닫으면 일치"로 판정한다. (길이 헤더 최대값이 9999라 64KB
+                // 버퍼 상한은 정상 프레이밍으로는 도달할 수 없다 — 이 시나리오는 사실상 "쓰레기 연속 수신 시
+                // 연결 종료"를 확인한다.)
                 stream.ReadTimeout = ShortResponseTimeoutMilliseconds;
-                var probe = new byte[1];
-                int read = stream.Read(probe, 0, 1);
-                return $"[결과] {stopwatch.Elapsed.TotalSeconds:F2}초. {totalSent}바이트를 전부 보냈는데도 연결이 끊기지 " +
-                       $"않음(Read 결과={read}) — 기대(버퍼 상한 초과 시 연결 종료)와 불일치! 본 앱 결함 여부 확인 필요.";
+                var drained = new MemoryStream();
+                var chunk = new byte[4096];
+                int n;
+                while ((n = stream.Read(chunk, 0, chunk.Length)) > 0)
+                    drained.Write(chunk, 0, n);
+                string received = Cp949.GetString(drained.ToArray());
+                string codes = string.Join(",", new[] { "E40", "E41", "E42", "E43" }.Where(c => received.Contains(c)));
+                return $"[결과] {stopwatch.Elapsed.TotalSeconds:F2}초. {totalSent}바이트를 보낸 뒤 응답 {drained.Length}바이트" +
+                       $"(코드: {(codes.Length > 0 ? codes : "없음")})를 받고 서버가 연결을 닫음 — 기대와 일치.";
             }
             catch (Exception ex)
             {
-                // 쓰기 도중(상대가 이미 닫아서) 또는 읽기 도중 예외가 나는 것이 "연결이 끊겼다"는 관찰이다.
+                // 쓰기/읽기 도중 예외 — 서버가 연결을 닫았다는 관찰이다. 단 읽기 타임아웃은 "닫지 않음"이다.
+                if (ex is IOException { InnerException: SocketException { SocketErrorCode: SocketError.TimedOut } })
+                    return $"[결과] {stopwatch.Elapsed.TotalSeconds:F2}초. {totalSent}바이트를 보낸 뒤 서버가 연결을 닫지 않음" +
+                           "(읽기 타임아웃) — 기대(연결 종료)와 불일치! 본 앱 결함 여부 확인 필요.";
                 return $"[결과] {stopwatch.Elapsed.TotalSeconds:F2}초. 총 {totalSent}바이트를 보낸 시점에 연결이 끊김 " +
-                       $"({ex.GetType().Name}: {ex.Message}) — 응답 없이 연결이 종료됐으므로 기대(서버가 연결을 닫는다)와 " +
-                       "관찰 결과는 일치한다(정확한 트리거 지점은 위 구현 메모 참고 — 버퍼 64KB 초과가 아니라 더 " +
-                       "이른 시점의 비숫자 길이 헤더 예외일 가능성이 높음).";
+                       $"({ex.GetType().Name}: {ex.Message}) — 기대(서버가 연결을 닫는다)와 일치.";
             }
             finally
             {

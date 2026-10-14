@@ -6,7 +6,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
     /// <summary>
     /// 전문 본문(고정 길이 바이트 배열)을 필드 단위로 읽고 쓰는 버퍼.
     ///
-    /// Phase 19 실행계획서(docs/payment_relay/development_plan.md) P19-3: 규칙은 SPEC 원문 그대로다.
+    /// 규칙은 SPEC 원문 그대로다.
     /// - 전체를 space(0x20)로 초기화한 뒤 시작한다(SPEC 공통부 표 하단 각주: "체크 없는 필드는
     ///   space로 채워서 총 길이로 전문 생성").
     /// - 표현이 <see cref="TelegramRepresentation.N"/>(숫자)인 필드는 우측 정렬 + 앞을 '0'으로 채운다.
@@ -18,8 +18,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
     {
         /// <summary>
         /// CP949(한글 EUC 계열, Windows-949) 인코딩. .NET Framework/코어 공통으로 코드페이지
-        /// 번호(949)로 얻는다 — 본 앱 PosMessageEncoding.cs와 같은 방식이지만 이 프로젝트는
-        /// 본 앱 소스를 참조하지 않는다는 원칙(P19-2)에 따라 이 파일 안에서 독립적으로 정의한다.
+        /// 번호(949)로 얻는다. 각 파일이 따로 읽혀도 이해되도록 이 파일 안에서 독립적으로 정의한다.
         /// </summary>
         private static readonly Encoding Cp949 = Encoding.GetEncoding(949);
 
@@ -44,7 +43,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
 
         /// <summary>
         /// 이미 받은(또는 이미 만들어진) 본문 바이트를 그대로 감싸 읽기용 버퍼를 만든다.
-        /// Phase 19 실행계획서 P19-6: 응답 화면이 원캡 응답 본문을 이 스키마로 분해해 보여줄 때 쓴다
+        /// 응답 화면이 원캡 응답 본문을 이 스키마로 분해해 보여줄 때 쓴다
         /// (요청은 <see cref="TelegramBuffer(TelegramSchema)"/> + <see cref="Write"/>로 새로 만들지만,
         /// 응답은 이미 완성된 바이트를 "읽기만" 하면 되므로 별도 생성자를 둔다). 본문 길이가
         /// 스키마 총 길이와 다르면 즉시 예외를 던진다 — 응답이 다른 전문이거나 길이가 깨진 것을

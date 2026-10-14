@@ -10,8 +10,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
     /// 생성자가 <b>자기 검증(self-validating)</b>을 수행한다: 필드들의 POSITION이 0부터
     /// 빈틈·겹침 없이 이어지고, 마지막 필드의 끝이 전문 총 길이와 정확히 일치해야 한다.
     /// 어긋나면 생성 시점(즉, 이 클래스를 참조하는 순간 static 초기화 시점)에 바로 예외가
-    /// 발생한다 — 업체가 필드를 잘못 고쳐도 실행 즉시 알 수 있게 하기 위함이다
-    /// (Phase 19 실행계획서 P19-2 완료 조건).
+    /// 발생한다 — 필드를 잘못 고쳐도 실행 즉시 알 수 있게 하기 위함이다.
     /// </summary>
     public sealed class TelegramSchema
     {
@@ -86,7 +85,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
             throw new KeyNotFoundException($"{TxType} 전문에 #{number} 필드가 없다.");
         }
 
-        /// <summary>SET 장소가 kiosk가 아닌 필드만 뽑는다(P19-2 완료 조건 3번, P19-5의 "회색 비활성" 판정에도 재사용).</summary>
+        /// <summary>SET 장소가 kiosk가 아닌 필드만 뽑는다(화면의 "회색 비활성" 판정에 쓴다).</summary>
         public IEnumerable<TelegramField> NonKioskFields()
             => Fields.Where(f => f.SetLocation != TelegramSetLocation.Kiosk).OrderBy(f => f.Number);
     }
@@ -94,12 +93,8 @@ namespace KFTCTaxCAP.KioskSim.Protocol
     /// <summary>
     /// 3전문(501008/800000/902614)의 필드 테이블 정의.
     ///
-    /// Phase 19 실행계획서 P19-2: 본 앱(KFTCTaxCAP)의 Protocol/Pos/Schemas는 이 파일을
-    /// 작성하는 동안 한 번도 열어보지 않았다 — SPEC 원문
-    /// (docs/payment_relay/spec/국세 베리어프리 키오스크용 전산설계서(POS-원캡)_20260826.pdf)을
-    /// 처음부터 다시 읽고 손으로 옮겨 적었다. 대조는 이 파일을 완성한 뒤 별도로 수행했고, 그
-    /// 결과(및 이 과정에서 실제로 잡아낸 오타 1건)는 development_plan.md의 P19-2 항목에
-    /// 기록되어 있다.
+    /// SPEC 원문(국세 베리어프리 키오스크용 전산설계서(POS-원캡), 2026-10-13판 기준)을 손으로 옮겨
+    /// 적은 참고용 사본이다. SPEC 원문이 정본이며, 어긋나면 SPEC을 우선한다.
     ///
     /// 공통부(#1~#13, POSITION 0~70)는 3전문 모두 POSITION·길이·표현은 완전히 동일하지만,
     /// <b>SET 장소(누가 채우는가)는 전문마다 다르다</b> — SPEC이 이 표를 전문마다 통째로 다시
@@ -134,11 +129,10 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "(800000의 #5는 kiosk 열이 체크되어 있지 않아 다르다 — 전문마다 SET 장소가 다르다는 " +
                     "것을 보여주는 실제 사례. 902614는 kiosk 열이 체크되어 있으나 동일하게 공백으로 " +
                     "충분하다 — 이 필드 자체가 요청 시 채울 필요가 없는 필드이기 때문, 바로 아래 참고). " +
-                    "**요청 시에는 채우지 않아도 된다 — 공백으로 보내면 충분하다(2026-08-28 사용자 확인). " +
-                    "전송 화면에서도 편집을 막아 둔다(값을 넣을 수 없게 잠금).**", alwaysBlank: true, zeroFilled: true),
+                    "**kiosk가 값을 정하지 않는 필드다 — 서버 요구로 \"000\"을 채워 보낸다. " +
+                    "전송 화면에서는 편집을 막아 둔다.**", alwaysBlank: true, zeroFilled: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
-                    "SPEC 표 3열 모두 체크. 요청 시 \"G\". tools/spec_client.ps1도 공통부에서 무조건 " +
-                    "\"G\"를 SET하고 실장비 왕복에 성공했다."),
+                    "SPEC 표 3열 모두 체크. 요청 시 \"G\"(실장비 왕복 확인된 값)."),
                 new TelegramField(7, "응답 코드", TelegramRepresentation.AN, 3, 20, TelegramSetLocation.InternetGiro,
                     "요청 전문에서는 SPACE(SPEC #7 설명). SPEC 표는 디지털예산+인터넷지로 열만 체크, " +
                     "kiosk 열은 체크되어 있지 않다."),
@@ -154,8 +148,8 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                 new TelegramField(12, "지로 이용기관 지로번호", TelegramRepresentation.N, 7, 61, TelegramSetLocation.Kiosk,
                     "SPEC 표는 디지털예산+kiosk 열 체크."),
                 new TelegramField(13, "FILLER", TelegramRepresentation.N, 2, 68, TelegramSetLocation.Kiosk,
-                    "SPEC 표 3열 모두 체크. 요청 시 kiosk가 space로 채운다. 전송 화면에서는 편집을 " +
-                    "막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true, zeroFilled: true),
+                    "SPEC 표 3열 모두 체크. FILLER라 정의된 값이 없다 — 서버 요구로 \"00\"을 채워 보낸다. " +
+                    "전송 화면에서는 편집을 막아 둔다.", alwaysBlank: true, zeroFilled: true),
 
                 // 조회정보부(#14~56, p.7~8).
                 new TelegramField(14, "전자납부번호", TelegramRepresentation.AN, 19, 70, TelegramSetLocation.Kiosk,
@@ -243,45 +237,38 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "\"800000\" 고정."),
                 new TelegramField(5, "상태 코드", TelegramRepresentation.N, 3, 16, TelegramSetLocation.InternetGiro,
                     "SPEC 표는 인터넷지로+VAN 열만 체크, kiosk 열은 체크되어 있지 않다(501008/902614와 다름 " +
-                    "— 다만 501008/902614도 이 필드는 요청 시 채울 필요가 없어(공백으로 충분, 2026-08-28 " +
-                    "사용자 확인) 실질적인 요청 값 관점에서는 3전문 모두 결과가 같다).", zeroFilled: true),
+                    "— 다만 요청 값 관점에서는 3전문 모두 \"000\"을 채워 보내므로 결과가 같다).", zeroFilled: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
-                    "**정정(2026-08-28)**: SPEC 표(p.12)는 이 행에서 인터넷지로+**kiosk** 열이 체크되어 " +
-                    "있다(VAN 열이 아니다 — 초기 전사와 `pos-onecap-spec-expert` 재확인 둘 다 kiosk 열을 " +
-                    "놓치고 InternetGiro로 잘못 분류했었다. 처음엔 사용자 지적을 받고도 저해상도로 다시 " +
-                    "보다가 VAN 열로 착각해 재차 정정할 뻔했으나, 사용자가 하이라이트로 표시해 준 캡처로 " +
-                    "kiosk 열이 맞음을 최종 확인했다). 요청 시 \"G\"(spec_client.ps1도 3전문 공통으로 채워 " +
-                    "실장비 왕복 성공)."),
+                    "SPEC 표는 이 행에서 인터넷지로+**kiosk** 열이 체크되어 있다(VAN 열과 헷갈리기 쉬우니 " +
+                    "주의). 요청 시 \"G\"(실장비 왕복 확인된 값)."),
                 new TelegramField(7, "응답 코드", TelegramRepresentation.AN, 3, 20, TelegramSetLocation.InternetGiro,
                     "요청 시 SPACE. SPEC 표는 인터넷지로 열만 체크."),
                 new TelegramField(8, "전송 일시", TelegramRepresentation.N, 12, 23, TelegramSetLocation.Kiosk,
-                    "**정정(2026-08-28)**: SPEC 표(p.12)는 이 행에서도 인터넷지로+**kiosk** 열이 체크되어 " +
-                    "있다(#5 상태 코드는 인터넷지로+VAN이라 #6/#8과 다르다 — 한 표 안에서도 행마다 두 번째 " +
-                    "체크 열이 VAN/kiosk로 갈린다는 게 이번에 확인된 사실). 초기 전사와 " +
-                    "`pos-onecap-spec-expert` 재확인 둘 다 이 kiosk 열을 놓쳤다. 요청 시 " +
-                    "YYMMDDhhmmss(spec_client.ps1도 3전문 공통으로 채워 실장비 왕복 성공)."),
+                    "SPEC 표는 이 행에서도 인터넷지로+**kiosk** 열이 체크되어 있다(#5 상태 코드는 " +
+                    "인터넷지로+VAN이라 #6/#8과 다르다 — 한 표 안에서도 행마다 두 번째 체크 열이 VAN/kiosk로 " +
+                    "갈린다). 요청 시 YYMMDDhhmmss."),
                 new TelegramField(9, "은행/센터 전문 관리 번호", TelegramRepresentation.AN, 12, 35, TelegramSetLocation.Kiosk,
                     "SPEC 표는 kiosk 열만 체크."),
                 new TelegramField(10, "이용기관/센터 전문 관리 번호", TelegramRepresentation.AN, 12, 47, TelegramSetLocation.Kiosk,
                     "SPEC 표에 SET 장소 체크가 전혀 없다(공란) — 공통부 규칙(체크 없는 필드는 kiosk가 " +
-                    "space로 채움)에 따라 Kiosk로 분류했다. 전송 화면에서는 편집을 막아 둔다(현재 정의된 " +
-                    "실제 값이 없다, 2026-08-28 확정 — 필요해지면 다시 편집 가능하게 바꾼다).", alwaysBlank: true),
+                    "space로 채움)에 따라 Kiosk로 분류했다. 현재 정의된 실제 값이 없어 전송 화면에서는 편집을 " +
+                    "막아 둔다.", alwaysBlank: true),
                 new TelegramField(11, "이용기관 발행기관 분류코드", TelegramRepresentation.N, 2, 59, TelegramSetLocation.Kiosk,
-                    "SPEC 2026-09-22 개정에서 SET 장소 표시가 삭제됐다 — kiosk가 채우지 않는 필드(space). " +
-                    "이용기관은 #2로 식별되므로 필요 없다. 전송 화면에서는 편집을 막아 둔다(2026-10-06).", alwaysBlank: true, zeroFilled: true),
+                    "SPEC 표에 SET 장소 표시가 없다 — kiosk가 값을 정하지 않는 필드다(이용기관은 #2로 " +
+                    "식별된다). 서버 요구로 \"00\"을 채워 보내며 전송 화면에서는 편집을 막아 둔다.", alwaysBlank: true, zeroFilled: true),
                 new TelegramField(12, "이용기관 지로 번호", TelegramRepresentation.N, 7, 61, TelegramSetLocation.Kiosk,
-                    "SPEC 2026-09-22 개정에서 SET 장소 표시가 삭제됐다 — kiosk가 채우지 않는 필드(space). " +
-                    "#11과 같은 이유로 편집을 막아 둔다(2026-10-06).", alwaysBlank: true, zeroFilled: true),
+                    "SPEC 표에 SET 장소 표시가 없다 — #11과 같은 이유로 \"0000000\"을 채워 보내며 " +
+                    "편집을 막아 둔다.", alwaysBlank: true, zeroFilled: true),
                 new TelegramField(13, "FILLER (응답 코드 구분)", TelegramRepresentation.N, 2, 68, TelegramSetLocation.Kiosk,
-                    "SPEC 표에 SET 장소 체크가 전혀 없다(공란) — #10과 같은 이유로 Kiosk로 분류. 전송 " +
-                    "화면에서는 편집을 막아 둔다(FILLER라 정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true, zeroFilled: true),
+                    "SPEC 표에 SET 장소 체크가 전혀 없다(공란) — #10과 같은 이유로 Kiosk로 분류. FILLER라 " +
+                    "정의된 값이 없어 서버 요구로 \"00\"을 채워 보내며 편집을 막아 둔다.", alwaysBlank: true, zeroFilled: true),
 
                 // 정보부(#14~27, p.12).
-                // SPEC 20260930(p.13~14) 개정: #14 "BIN" AN8 → "마스킹 카드번호" AN19. 뒤따르는 #15~#28
-                // POSITION이 +11 밀리고 #28 예비 정보 FIELD가 216→205로 줄어 총 길이 500 유지.
+                // 참고: 2026-09-30판 SPEC부터 #14가 "BIN"(AN8)에서 "마스킹 카드번호"(AN19)로 바뀌었다.
+                // 그 이전 판을 보고 있다면 #15~#28 POSITION이 11씩 다르다.
                 new TelegramField(14, "마스킹 카드번호", TelegramRepresentation.AN, 19, 70, TelegramSetLocation.OneCap,
                     "카드 리딩 결과에서 나오는 카드번호 중 구분자(D/=) 앞의 숫자·'*' 부분(리더기가 이미 " +
-                    "9~12번째·마지막 자리를 마스킹, 앞 8자리 BIN은 마스킹 제외 — SPEC 20260930 p.14). 원캡이 " +
+                    "9~12번째·마지막 자리를 마스킹, 앞 8자리 BIN은 마스킹 제외 — SPEC 항목설명). 원캡이 " +
                     "왼쪽 정렬 + 공백 채움으로 넣는다. SPEC 표에서 \"원캡\" 열만 체크되어 있다 — " +
                     "kiosk가 채우지 않는 유일한 요청-입력 필드(#14~16 중)."),
                 new TelegramField(15, "납부세액", TelegramRepresentation.N, 15, 89, TelegramSetLocation.Kiosk),
@@ -299,16 +286,12 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "형식은 #22와 동일."),
                 new TelegramField(24, "납부대행 수수료 금액", TelegramRepresentation.N, 12, 261, TelegramSetLocation.InternetGiro, zeroFilled: true),
                 new TelegramField(25, "합계금액", TelegramRepresentation.N, 12, 273, TelegramSetLocation.InternetGiro, zeroFilled: true),
-                // #26 신규 추가(SPEC 20260831 개정) — 뒤따르는 #27/#28은 이 삽입으로 번호·POSITION이
-                // 한 칸씩 밀렸다(20260826판에서는 #26/#27이었음). 본 앱(Protocol/Pos/Schemas/
-                // CardInfoInquirySchema.cs)과 독립적으로 SPEC PDF를 다시 옮겨 적었다(P19-2 원칙 유지).
                 new TelegramField(26, "납부대행 수수료율", TelegramRepresentation.N, 4, 285, TelegramSetLocation.InternetGiro,
-                    "SPEC 20260831 개정판 신규 필드 — 인터넷지로 열만 체크(응답 전용, kiosk/원캡/VAN 전부 공란). " +
-                    "소수점 2자리 기준(0050 = 0.5%, SPEC 20260930 p.14).", zeroFilled: true),
+                    "인터넷지로 열만 체크(응답 전용, kiosk/원캡/VAN 전부 공란). " +
+                    "소수점 2자리 기준(0050 = 0.5%, SPEC 항목설명).", zeroFilled: true),
                 new TelegramField(27, "API 세부 응답코드", TelegramRepresentation.AN, 6, 289, TelegramSetLocation.InternetGiro),
                 new TelegramField(28, "예비 정보 FIELD", TelegramRepresentation.AN, 205, 295, TelegramSetLocation.InternetGiro,
-                    "SPEC 표(20260930 p.13)는 인터넷지로 열이 체크되어 있다 — 응답 전용. #26 신규 삽입으로 " +
-                    "220→216, #14 확장(AN8→AN19)으로 다시 216→205로 축소(총 길이 500 유지)."),
+                    "SPEC 표는 인터넷지로 열이 체크되어 있다 — 응답 전용."),
             };
             return fields;
         }
@@ -318,13 +301,11 @@ namespace KFTCTaxCAP.KioskSim.Protocol
         //
         // 납부정보부(#14~#54) 중 카드 하드웨어 관련 필드(#43/44/45/46/48/50/53)는 원캡이 채운다
         // (SPEC 표에서 "원캡" 열이 체크됨). #51(암호화된 비밀번호 정보)은 SPEC 표 자체는 kiosk
-        // 열을 체크해 두었지만, Phase 18 실장비 검증에서 PIN은 kiosk가 평문으로 다루지 않고
-        // 리더기 핀패드→원캡이 암호화해 채우는 것으로 확정되었다 — 이 저장소는 그 결정을 따라
-        // SPEC 표의 체크와 다르게 OneCap으로 분류한다(아래 필드 주석에 근거 상세, SPEC과 다르게
-        // 분류한 유일한 필드).
+        // 열을 체크해 두었던 적이 있으나, PIN은 kiosk가 평문으로 다루지 않고 원캡이 입력받아
+        // 암호화해 채운다 — 원캡(OneCap)으로 분류한다(아래 필드 주석 참고).
         // #52(선불카드 잔액)는 인터넷지로 응답 전용(승인 후 돌아오는 잔액 정보)이라 kiosk도
         // 원캡도 아니다 — "kiosk가 아닌 필드" 목록에는 들어가지만 카드 하드웨어 관련 8개 필드와는
-        // 성격이 다르므로 구분해서 기록한다(development_plan.md P19-2 항목 참고).
+        // 성격이 다르므로 구분해서 기록한다.
         // ------------------------------------------------------------------
         private static List<TelegramField> BuildCardApproval902614Fields()
         {
@@ -341,12 +322,11 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "\"902614\" 고정."),
                 new TelegramField(5, "상태 코드", TelegramRepresentation.N, 3, 16, TelegramSetLocation.Kiosk,
                     "SPEC 표는 인터넷지로+kiosk 열 체크(800000과 달리 kiosk 열도 체크되어 있다 — 직접 대조로 " +
-                    "확인). **다만 요청 시에는 채우지 않아도 되는 필드다 — 공백으로 보내면 충분하다" +
-                    "(2026-08-28 사용자 확인). 전송 화면에서도 편집을 막아 둔다(값을 넣을 수 없게 잠금).**",
+                    "확인). **다만 kiosk가 값을 정하지 않는 필드다 — 서버 요구로 \"000\"을 채워 보낸다. " +
+                    "전송 화면에서는 편집을 막아 둔다.**",
                     alwaysBlank: true, zeroFilled: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
-                    "SPEC 표는 인터넷지로+kiosk 열 체크. 요청 시 \"G\"(tools/spec_client.ps1에서 실장비 " +
-                    "왕복 확인된 값)."),
+                    "SPEC 표는 인터넷지로+kiosk 열 체크. 요청 시 \"G\"(실장비 왕복 확인된 값)."),
                 new TelegramField(7, "응답 코드", TelegramRepresentation.AN, 3, 20, TelegramSetLocation.InternetGiro,
                     "요청 시 SPACE. SPEC 표는 인터넷지로 열만 체크."),
                 new TelegramField(8, "전송 일시", TelegramRepresentation.N, 12, 23, TelegramSetLocation.Kiosk,
@@ -368,8 +348,8 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                 new TelegramField(16, "납부 순번", TelegramRepresentation.AN, 3, 102, TelegramSetLocation.Kiosk),
                 new TelegramField(17, "예비 정보 FIELD", TelegramRepresentation.AN, 8, 105, TelegramSetLocation.Kiosk,
                     "SPEC 표에 SET 장소 체크가 없다 — 미사용 예비 필드. 공통부 규칙(체크 없는 필드는 kiosk가 " +
-                    "space로 채움)에 따라 Kiosk로 분류했다. 전송 화면에서는 편집을 막아 둔다(FILLER류라 " +
-                    "정의된 값이 없다, 2026-08-28 확정).", alwaysBlank: true),
+                    "space로 채움)에 따라 Kiosk로 분류했다. FILLER류라 정의된 값이 없어 " +
+                    "전송 화면에서는 편집을 막아 둔다.", alwaysBlank: true),
                 new TelegramField(18, "징수 과목 코드(세목 코드)", TelegramRepresentation.N, 7, 113, TelegramSetLocation.Kiosk),
                 new TelegramField(19, "징수관 계좌번호", TelegramRepresentation.AN, 6, 120, TelegramSetLocation.Kiosk),
                 new TelegramField(20, "징수 기관명", TelegramRepresentation.AHN, 20, 126, TelegramSetLocation.Kiosk),
@@ -396,11 +376,11 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                     "SPEC 표에 SET 장소 체크가 없다 — 카드 소유주가 납부자와 다른 경우에 대비한 선택 입력으로 " +
                     "보이며, 공통부 규칙에 따라 Kiosk로 분류(체크 없으면 kiosk가 space 또는 값 채움)."),
                 new TelegramField(39, "납부 이용 시스템", TelegramRepresentation.AN, 1, 332, TelegramSetLocation.Kiosk,
-                    "고정값 \"O\"(SPEC 표에는 별도 설명 없음, spec_client.ps1에서 확인된 값)."),
+                    "고정값 \"O\"(SPEC 표에는 별도 설명 없음, 실장비 왕복 확인된 값)."),
                 new TelegramField(40, "기 납부 이용 시스템", TelegramRepresentation.AN, 1, 333, TelegramSetLocation.InternetGiro,
                     "SPEC 표에서 \"인터넷지로\" 열만 체크됨 — 과거(기존) 납부 채널을 응답으로 알려주는 필드로 보인다."),
                 new TelegramField(41, "납부 형태 구분", TelegramRepresentation.AN, 1, 334, TelegramSetLocation.Kiosk,
-                    "베리어프리 조회납부는 \"Q\"(spec_client.ps1에서 확인된 값)."),
+                    "베리어프리 조회납부는 \"Q\"(실장비 왕복 확인된 값)."),
                 new TelegramField(42, "키오스크 고유번호", TelegramRepresentation.AN, 20, 335, TelegramSetLocation.Kiosk),
                 new TelegramField(43, "보안단말기 인증번호", TelegramRepresentation.ANS, 32, 355, TelegramSetLocation.OneCap,
                     "리더기(보안단말기)가 만들어내는 인증번호. 원캡이 ReaderSerial.dll로 리딩해 채운다."),
@@ -409,31 +389,26 @@ namespace KFTCTaxCAP.KioskSim.Protocol
                 new TelegramField(46, "암호화된 카드정보", TelegramRepresentation.AN, 196, 407, TelegramSetLocation.OneCap),
                 new TelegramField(47, "예비 정보 FIELD", TelegramRepresentation.AN, 6, 603, TelegramSetLocation.Kiosk,
                     "SPEC 표에 SET 장소 체크가 없다 — 미사용 예비 필드. 전송 화면에서는 편집을 막아 " +
-                    "둔다(2026-08-28 확정).", alwaysBlank: true),
+                    "둔다.", alwaysBlank: true),
                 new TelegramField(48, "거래 입력 유형 (IC 전문 전용)", TelegramRepresentation.AN, 1, 609, TelegramSetLocation.OneCap,
-                    "과거 정리에서 kiosk로 잘못 읽었던 전례가 있는 필드(development_plan.md 기록) — SPEC 표를 다시 " +
-                    "확인한 결과 \"원캡\" 열만 체크되어 있다. IC 카드 리딩 결과에 따라 원캡이 채운다."),
+                    "SPEC 표에서 \"원캡\" 열만 체크되어 있다(kiosk로 잘못 읽기 쉬우니 주의). IC 카드 리딩 " +
+                    "결과에 따라 원캡이 채운다."),
                 new TelegramField(49, "납부카드 구분", TelegramRepresentation.AN, 1, 610, TelegramSetLocation.Kiosk,
-                    "0: 개인카드(spec_client.ps1에서 확인된 값)."),
+                    "0: 개인카드(실장비 왕복 확인된 값)."),
                 new TelegramField(50, "신용카드 승인 인증방식", TelegramRepresentation.AN, 1, 611, TelegramSetLocation.OneCap),
                 new TelegramField(51, "암호화된 비밀번호 정보", TelegramRepresentation.ANS, 100, 612, TelegramSetLocation.OneCap,
-                    "**SPEC 표 원문은 이 필드를 \"kiosk\" 열로 체크해 두었으나, Phase 18에서 PIN은 kiosk가 " +
-                    "평문으로 취급하지 않고 알림창 화면 키패드(터치+물리 키보드, 리더기 핀패드가 아니다 — " +
-                    "Pinpad_SendCommand 계열은 Phase 18 범위 밖으로 명시적으로 제외됨)로 입력받아 원캡이 " +
-                    "암호화해 채우는 것으로 확정됐다(development_plan.md Phase 18 실행계획서, PIN 보안 " +
-                    "요구사항). 이 스키마는 SPEC 체크보다 그 실측/보안 결정을 우선해 OneCap으로 분류한다 " +
-                    "— SPEC과 다르게 분류한 유일한 필드다.**"),
+                    "**kiosk는 이 필드를 채우지 않는다.** PIN은 kiosk가 평문으로 다루지 않고, 원캡이 자기 " +
+                    "화면의 키패드로 입력받아 SEED로 암호화해 채운다(SPEC 원캡 SET). kiosk는 공백으로 보낸다."),
                 new TelegramField(52, "선불카드 잔액", TelegramRepresentation.AN, 12, 712, TelegramSetLocation.InternetGiro,
                     "승인 후 응답으로 돌아오는 선불카드 잔여 잔액 — 요청 입력이 아니라 응답 전용 필드다. 카드 " +
                     "하드웨어 리딩 필드(#43~50)와는 성격이 다르다(SPEC 표에서 \"인터넷지로\" 열만 체크)."),
                 new TelegramField(53, "EMV DATA", TelegramRepresentation.ANS, 604, 724, TelegramSetLocation.OneCap,
                     "SPEC 표는 \"인터넷지로\"와 \"원캡\" 두 열이 동시에 체크되어 있다 — EMV 원본 데이터는 IC 카드 " +
                     "리더기가 만들어 원캡이 채워 넣고(요청), 인터넷지로/VAN은 승인 처리를 위해 그 값을 그대로 " +
-                    "중계·소비하는 것으로 해석해 OneCap을 대표값으로 선택했다(Phase 18에서 kiosk가 아님이 확정된 " +
-                    "8개 필드 중 하나)."),
+                    "중계·소비하는 것으로 해석해 OneCap을 대표값으로 선택했다(원캡이 채우는 8개 필드 중 하나)."),
                 new TelegramField(54, "예비 정보 FIELD", TelegramRepresentation.AN, 172, 1328, TelegramSetLocation.Kiosk,
                     "SPEC 표에 SET 장소 체크가 없다 — 미사용 예비 필드. 전송 화면에서는 편집을 막아 " +
-                    "둔다(2026-08-28 확정).", alwaysBlank: true),
+                    "둔다.", alwaysBlank: true),
             };
             return fields;
         }
@@ -464,15 +439,9 @@ namespace KFTCTaxCAP.KioskSim.Protocol
         }
 
         // ------------------------------------------------------------------
-        // 마. 거래 상태 조회 전문 (999999, Phase 26 신규) — SPEC 원문에는 없는 전문이다. POS↔원캡
-        // 구간 전용이며(VAN/인터넷지로/디지털예산으로 나가지 않는다), 응답을 받지 못한 원거래
-        // (501008/800000/902614)의 결과를 원캡이 직접 보관했다가 되돌려주는 봉투 역할만 한다.
-        // 근거: docs/payment_relay/PRD.md §3.4(단일 정본, SPEC PDF에는 없음).
-        //
-        // 본체 앱(KFTCTaxCAP)의 Protocol/Pos/Schemas/TransactionStatusInquirySchema.cs가 같은
-        // 계약을 담고 있지만, 이 프로젝트는 본체 소스를 참조하지 않는다는 원칙(P19-2)에 따라 값만
-        // 그대로 옮겨 적었다 — 상수를 공유하지 않으므로 <see cref="StatusInquiryTransactionType"/>이
-        // 바뀌면(발주처 채번 확정 시) 양쪽 파일을 함께 고쳐야 실제 소켓 통신이 유지된다.
+        // 마. 직전 거래 조회 전문 (999999) — SPEC 2-마. POS↔원캡 구간 전용이며(VAN/인터넷지로/
+        // 디지털예산으로 나가지 않는다), 응답을 받지 못한 원거래(501008/800000/902614)의 결과를
+        // 원캡이 직접 보관했다가 되돌려주는 봉투 역할만 한다.
         //
         // 요청은 공통부(#1~#13)만으로 70바이트, 개별부 없음 — 조회 대상은 #9(요청기관 전문 관리
         // 번호)에 원거래 값을 그대로 재사용해 식별한다(별도 조회 키 필드가 필요 없다). 응답
@@ -480,24 +449,21 @@ namespace KFTCTaxCAP.KioskSim.Protocol
         // 80바이트다. 그 뒤에 이어 붙는 원거래 응답 원문(가변, 결과 있음일 때만)은 이 프로젝트의
         // TelegramSchema가 고정 길이 전제라 표현할 수 없으므로 스키마 밖에서(호출부가 직접
         // 바이트를 슬라이스해) 다룬다 — 잘라낸 뒤에는 원거래 거래구분 코드(#14 값)로
-        // <see cref="ByTxType"/>을 다시 호출해 기존 3종 스키마로 그대로 파싱한다(PRD §3.4.5 "POS는
-        // 기존 파서를 재사용하면 된다").
+        // <see cref="ByTxType"/>을 다시 호출해 기존 3종 스키마로 그대로 파싱한다(키오스크는 기존
+        // 파서를 재사용하면 된다).
         //
-        // 2026-09-15 재확인(PRD §3.4.9) — 본체 앱의 PaymentOrchestrator.HandleStatusInquiry는 이
-        // 요청에서 실제로 읽는(값을 검증하는) 필드가 #4(라우팅 판별)와 #9(원거래 매칭 키) 둘뿐이다.
+        // 원캡이 이 요청에서 실제로 읽는(값을 검증하는) 필드는 #4(라우팅 판별)와 #9(원거래 매칭 키)
+        // 둘뿐이다.
         // 나머지 순수 업무값 필드(#1/#2/#5/#6/#8/#10/#11/#12/#13)는 요청 바이트를 그대로 응답에
         // 복사만 할 뿐 값을 해석·검증하지 않는다 — 그래서 이 필드들은 AlwaysBlank로 표시해 그리드
         // 편집을 막고 공백(0x20)으로 보낸다(70바이트 프레이밍 자체는 유지해야 하므로 자리는 있어야
         // 하지만 값의 의미는 없다). 단 #3(전문 종별 코드)은 예외다 — "요청/응답 구분"을 나타내는
-        // 프로토콜 골격 필드라 값 검증 여부와 무관하게 다른 3전문처럼 요청 시 "0200"을 채운다
-        // (2026-09-15 재수정 — 요청엔 없고 응답에만 있으면 비대칭이라는 지적, 아래 #3 필드 주석
-        // 참고). 아래 필드 목록의 AlwaysBlank 표시는 이 구분(#3/#4/#9 제외 나머지)을 그대로 따른다.
+        // 프로토콜 골격 필드라 값 검증 여부와 무관하게 다른 3전문처럼 요청 시 "0200"을 채운다.
+        // 아래 필드 목록의 AlwaysBlank 표시는 이 구분(#3/#4/#9 제외 나머지)을 그대로 따른다.
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// #4 거래 구분 코드 — 상태 조회 전용 신규 코드, <b>발주처 미채번(임시값)</b>. 본체 앱의
-        /// <c>TransactionStatusInquirySchema.FixedTransactionType</c>과 반드시 같은 값이어야 실제
-        /// 소켓 통신이 성립한다(PRD §3.4.8, 확정되면 이 상수만 교체).
+        /// #4 거래 구분 코드 — 직전 거래 조회 전용 코드 <c>999999</c>(SPEC 2-마).
         /// </summary>
         public const string StatusInquiryTransactionType = "999999";
 
@@ -512,43 +478,41 @@ namespace KFTCTaxCAP.KioskSim.Protocol
             return new List<TelegramField>
             {
                 new TelegramField(1, "업무 구분", TelegramRepresentation.A, 3, 0, TelegramSetLocation.Kiosk,
-                    "원캡이 값을 읽지 않는다(§3.4.9 재확인) — 공백으로 보낸다.", alwaysBlank: true),
+                    "원캡이 값을 읽지 않는다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(2, "요청기관 코드", TelegramRepresentation.N, 3, 3, TelegramSetLocation.Kiosk,
-                    "원캡이 값을 읽지 않는다(§3.4.9 재확인) — 공백으로 보낸다.", alwaysBlank: true),
+                    "원캡이 값을 읽지 않는다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(3, "전문 종별 코드", TelegramRepresentation.N, 4, 6, TelegramSetLocation.Kiosk,
-                    "원캡이 요청 값을 검증하진 않지만(§3.4.9 재확인) \"요청/응답 구분\"을 나타내는 " +
-                    "프로토콜 골격 필드라 다른 3전문과 동일하게 요청 시 \"0200\"을 채운다(2026-09-15 " +
-                    "재수정 — 요청엔 없고 응답에만 있으면 비대칭이라는 지적). 응답 시에는 원캡이 " +
+                    "원캡이 요청 값을 검증하진 않지만 \"요청/응답 구분\"을 나타내는 프로토콜 골격 " +
+                    "필드라 다른 3전문과 동일하게 요청 시 \"0200\"을 채운다. 응답 시에는 원캡이 " +
                     "\"0210\"으로 채운다."),
                 new TelegramField(4, "거래 구분 코드", TelegramRepresentation.N, 6, 10, TelegramSetLocation.Kiosk,
-                    $"필수 — 원캡이 이 값으로 조회 요청임을 판별한다(라우팅). 상태 조회 전용 신규 코드, " +
-                    $"발주처 미채번 — 임시값 \"{StatusInquiryTransactionType}\"."),
+                    $"필수 — 원캡이 이 값으로 조회 요청임을 판별한다(라우팅). \"{StatusInquiryTransactionType}\" 고정."),
                 new TelegramField(5, "상태 코드", TelegramRepresentation.N, 3, 16, TelegramSetLocation.Kiosk,
                     "기존 3전문과 동일하게 요청 시 채우지 않아도 된다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(6, "송·수신 FLAG", TelegramRepresentation.AN, 1, 19, TelegramSetLocation.Kiosk,
-                    "원캡이 값을 읽지 않는다(§3.4.9 재확인) — 공백으로 보낸다.", alwaysBlank: true),
+                    "원캡이 값을 읽지 않는다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(7, "응답 코드", TelegramRepresentation.AN, 3, 20, TelegramSetLocation.OneCap,
                     "요청 시 SPACE. \"이 조회 요청 자체가 성공했는가\"만 나타낸다 — 직전 거래를 찾았으면 " +
-                    "\"000\"(고정), 못 찾았으면 E07(불일치/기록없음). 2026-09-15 재수정 — 원거래 응답의 " +
-                    "#7을 그대로 relay하지 않는다(원거래 승인/거절은 이 값과 무관, #16을 파싱해서만 " +
-                    "판단한다 — PRD §3.4.5/§3.4.6)."),
+                    "\"000\"(고정), 못 찾았으면 E07(불일치/기록없음). 원거래 응답의 " +
+                    "#7을 그대로 전달하지 않는다(원거래 승인/거절은 이 값과 무관 — 뒤에 붙은 원거래 " +
+                    "응답 원문을 파싱해서 판단한다)."),
                 new TelegramField(8, "전송 일시", TelegramRepresentation.N, 12, 23, TelegramSetLocation.Kiosk,
-                    "원캡이 값을 읽지 않는다(§3.4.9 재확인) — 공백으로 보낸다.", alwaysBlank: true),
+                    "원캡이 값을 읽지 않는다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(9, "요청기관 전문 관리 번호", TelegramRepresentation.AN, 12, 35, TelegramSetLocation.Kiosk,
                     "필수 — 원거래(501008/800000/902614)에 실제로 보냈던 값을 그대로 재사용한다. 원캡이 이 " +
-                    "값으로 원거래를 찾는다(PRD §3.4.3/§3.4.4/§3.4.9). 새로 채번하지 않는다."),
+                    "값으로 원거래를 찾는다. 새로 채번하지 않는다."),
                 new TelegramField(10, "이용기관/센터 전문 관리 번호", TelegramRepresentation.AN, 12, 47, TelegramSetLocation.Kiosk,
                     "기존 3전문 요청과 동일하게 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(11, "지로 이용기관 분류코드", TelegramRepresentation.N, 2, 59, TelegramSetLocation.Kiosk,
-                    "원캡이 값을 읽지 않는다(§3.4.9 재확인) — 공백으로 보낸다.", alwaysBlank: true),
+                    "원캡이 값을 읽지 않는다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(12, "지로 이용기관 지로번호", TelegramRepresentation.N, 7, 61, TelegramSetLocation.Kiosk,
-                    "원캡이 값을 읽지 않는다(§3.4.9 재확인) — 공백으로 보낸다.", alwaysBlank: true),
+                    "원캡이 값을 읽지 않는다 — 공백으로 보낸다.", alwaysBlank: true),
                 new TelegramField(13, "FILLER", TelegramRepresentation.N, 2, 68, TelegramSetLocation.Kiosk,
                     "요청 시 kiosk가 space로 채운다.", alwaysBlank: true),
             };
         }
 
-        /// <summary>거래 상태 조회 요청 전문(999999, Phase 26 신규). 총 길이 70바이트, 개별부 없음.</summary>
+        /// <summary>직전 거래 조회 요청 전문(999999). 총 길이 70바이트, 개별부 없음.</summary>
         public static readonly TelegramSchema StatusInquiryRequest =
             new TelegramSchema(StatusInquiryTransactionType, 70, BuildStatusInquiryCommonFields());
 
@@ -565,7 +529,7 @@ namespace KFTCTaxCAP.KioskSim.Protocol
         }
 
         /// <summary>
-        /// 거래 상태 조회 응답 고정부(999999, Phase 26 신규). 총 길이 80바이트 — 뒤따르는 원거래
+        /// 직전 거래 조회 응답 고정부(999999). 총 길이 80바이트 — 뒤따르는 원거래
         /// 응답 원문(가변)은 이 스키마 밖에서(호출부가 직접 바이트를 슬라이스해) 다룬다.
         /// </summary>
         public static readonly TelegramSchema StatusInquiryResponseFixedPart =

@@ -9,8 +9,8 @@ using KFTCTaxCAP.KioskSim.Protocol;
 namespace KFTCTaxCAP.KioskSim.Net
 {
     /// <summary>
-    /// 결과 종류. 호출부(P19-5/P19-6 화면)가 "실패"로 뭉뚱그리지 않고 원인을 구분해서
-    /// 사용자에게 보여줄 수 있도록 나눈다(Phase 19 실행계획서 P19-4).
+    /// 결과 종류. 호출부(화면)가 "실패"로 뭉뚱그리지 않고 원인을 구분해서
+    /// 사용자에게 보여줄 수 있도록 나눈다.
     /// </summary>
     public enum OneCapClientResultKind
     {
@@ -20,7 +20,7 @@ namespace KFTCTaxCAP.KioskSim.Net
         /// <summary>수신 타임아웃(180초) 안에 응답이 다 오지 않았다.</summary>
         Timeout,
 
-        /// <summary>연결 자체가 거부됐다 — 본 앱(KFTCTaxCAP)이 켜져 있지 않을 때 발생한다.
+        /// <summary>연결 자체가 거부됐다 — 원캡(KFTCTaxCAP)이 켜져 있지 않을 때 발생한다.
         /// 타임아웃과 달리 즉시(수 초 이내) 알 수 있다.</summary>
         ConnectionRefused,
 
@@ -34,8 +34,8 @@ namespace KFTCTaxCAP.KioskSim.Net
 
     /// <summary>
     /// <see cref="OneCapClient.SendAsync"/>의 결과. 성공 여부만 bool로 뭉개지 않고
-    /// <see cref="Kind"/>로 4가지 실패 원인을 구분한다 — "실패"로 뭉뚱그리면 본 앱을 안 띄운
-    /// 것인지 응답이 안 온 것인지 알 수 없다(Phase 19 실행계획서 P19-4 지적 사항).
+    /// <see cref="Kind"/>로 4가지 실패 원인을 구분한다 — "실패"로 뭉뚱그리면 원캡을 안 띄운
+    /// 것인지 응답이 안 온 것인지 알 수 없다.
     /// </summary>
     public sealed class OneCapClientResult
     {
@@ -89,7 +89,7 @@ namespace KFTCTaxCAP.KioskSim.Net
                 elapsed,
                 null,
                 $"응답 수신 타임아웃({elapsed.TotalSeconds:F1}초 경과, 기준 {OneCapClient.ReceiveTimeoutMilliseconds / 1000}초) — " +
-                "본 앱은 연결됐지만 응답이 시간 안에 오지 않았다.");
+                "원캡에 연결됐지만 응답이 시간 안에 오지 않았다.");
 
         public static OneCapClientResult ConnectionRefused(Exception error, TimeSpan elapsed)
             => new OneCapClientResult(
@@ -99,7 +99,7 @@ namespace KFTCTaxCAP.KioskSim.Net
                 elapsed,
                 error,
                 $"연결 거부됨({elapsed.TotalSeconds:F1}초) — {OneCapClient.Host}:{OneCapClient.Port}에 연결할 수 없다. " +
-                "본 앱(KFTCTaxCAP)이 실행 중인지 확인하라.");
+                "원캡(KFTCTaxCAP)이 실행 중인지 확인하라.");
 
         public static OneCapClientResult ConnectionClosed(string reason, Exception? error, TimeSpan elapsed)
             => new OneCapClientResult(
@@ -121,14 +121,14 @@ namespace KFTCTaxCAP.KioskSim.Net
     }
 
     /// <summary>
-    /// KFTCTaxCAP(본 앱)과 통신하는 TCP 클라이언트.
+    /// 원캡(KFTCTaxCAP)과 통신하는 TCP 클라이언트.
     ///
-    /// **한 번의 요청·응답이 곧 한 번의 연결이다**(Phase 19 실행계획서 P19-4, ROADMAP 확정) —
+    /// **한 번의 요청·응답이 곧 한 번의 연결이다** —
     /// 연결 → <see cref="TelegramCodec"/>로 만든 프레임 전송 → 응답 수신 → 연결 닫기를 매 전문마다
     /// 반복한다. 지속 연결(keep-alive)은 쓰지 않는다.
     ///
     /// **부분 수신 누적을 반드시 구현한다** — TCP는 스트림이라 1500바이트 응답이 한 번의
-    /// <see cref="NetworkStream.Read"/> 호출로 다 오는 것이 보장되지 않는다(업체가 가장 자주
+    /// <see cref="NetworkStream.Read"/> 호출로 다 오는 것이 보장되지 않는다(연동 시 가장 자주
     /// 틀리는 지점). 그래서 이 클래스는
     ///   1) 길이 헤더 4바이트가 다 모일 때까지 반복해서 Read를 호출해 누적하고,
     ///   2) <see cref="TelegramCodec.ReadLengthHeader"/>로 본문 길이를 알아낸 뒤,
@@ -136,21 +136,21 @@ namespace KFTCTaxCAP.KioskSim.Net
     /// 한 번의 Read가 몇 바이트를 줄지는 알 수 없다는 전제로 짰다(1바이트씩만 줄 수도 있다).
     ///
     /// 이 클래스는 순수 네트워킹 계층이다 — WinForms/WPF 등 UI 프레임워크를 전혀 모른다.
-    /// UI 스레드로 결과를 되돌리는 것(Control.Invoke 등)은 호출부(P19-5/6)의 책임이다.
+    /// UI 스레드로 결과를 되돌리는 것(Control.Invoke 등)은 호출부의 책임이다.
     /// </summary>
     public static class OneCapClient
     {
-        /// <summary>본 앱 소켓 서버 주소. 로드맵/실행계획서 전제대로 루프백 고정.</summary>
+        /// <summary>원캡 소켓 서버 주소. 루프백 고정(같은 PC에서만 접속).</summary>
         public const string Host = "127.0.0.1";
 
-        /// <summary>본 앱 소켓 서버 포트(<c>Services/Pos/PosSocketServer</c>).</summary>
+        /// <summary>원캡 소켓 서버 포트.</summary>
         public const int Port = 8002;
 
         /// <summary>
-        /// 수신 타임아웃(밀리초). 180초 고정 — Phase 18 실장비 검증에서 PIN 입력을 포함한
-        /// 902614 응답이 150.1초 걸린 실측이 있어, 여유를 두고 180초로 잡았다(실행계획서 결정 5).
+        /// 수신 타임아웃(밀리초). 180초 고정 — 실장비 검증에서 카드 리딩·PIN 입력을 포함한
+        /// 902614 응답이 150초 남짓 걸린 실측이 있어, 여유를 두고 180초로 잡았다.
         /// 이 값은 연결 후 "응답을 기다리는" 구간에만 적용된다. 연결 자체가 거부되는 경우
-        /// (본 앱 미구동)는 이 타임아웃과 무관하게 즉시 실패한다.
+        /// (원캡 미구동)는 이 타임아웃과 무관하게 즉시 실패한다.
         /// </summary>
         public const int ReceiveTimeoutMilliseconds = 180_000;
 
@@ -186,7 +186,7 @@ namespace KFTCTaxCAP.KioskSim.Net
             {
                 using (var client = new TcpClient())
                 {
-                    // 1) 연결. 본 앱이 꺼져 있으면 여기서 즉시(수 초 이내) SocketException이
+                    // 1) 연결. 원캡이 꺼져 있으면 여기서 즉시(수 초 이내) SocketException이
                     //    발생한다 — 응답 타임아웃(180초)과는 완전히 별개의 실패라 먼저 구분해서 잡는다.
                     try
                     {

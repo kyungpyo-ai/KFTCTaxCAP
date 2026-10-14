@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!--
+      내부 전용 오류 주입 도구(업체에 전달하지 않는다). 원래 KioskSim의 "오류 주입" 탭이었으나 KioskSim을
+      업체 전달용으로 정리하면서(2026-10-14) 분리했다. 잘못된 프레이밍/네트워크 상황을 일부러 만들어 본 앱
+      소켓 서버(PosSocketServer/PosMessageFramer)의 방어 동작을 회귀 검증한다.
+      전문 정의·코덱·정상 경로 클라이언트는 KioskSim 소스를 링크 컴파일해 그대로 쓴다(사본을 두지 않는다).
+      KioskSim → 이 도구 방향의 참조는 없으므로 KioskSim 폴더는 여전히 단독 빌드된다.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\KFTCTaxCAP.KioskSim\Protocol\*.cs" Link="Linked\Protocol\%(Filename)%(Extension)" />
+    <Compile Include="..\KFTCTaxCAP.KioskSim\Net\OneCapClient.cs" Link="Linked\Net\OneCapClient.cs" />
+  </ItemGroup>
+
+</Project>
