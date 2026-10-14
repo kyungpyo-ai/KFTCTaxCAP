@@ -458,17 +458,46 @@
                                      ContentTemplate="{StaticResource TelegramTabRequestContentTemplate}"/>
                 </DockPanel>
 
-                <!-- ===================== 우측: 응답(읽기전용, 초록 테두리 카드) ===================== -->
+                <!-- ===================== 우측: 응답(읽기전용 카드) ===================== -->
                 <!-- DataContext를 선택된 탭으로 직접 맞춘다 — 더 이상 탭 콘텐츠 템플릿 안에 있지 않으므로
-                     (위 주석 참고) 응답 바인딩(HasResponse/ResponseRows 등)이 자동으로 이어지지 않는다. -->
-                <Border Grid.Column="2" BorderBrush="{StaticResource UpdateHoverTextBrush}" BorderThickness="1.5"
+                     (위 주석 참고) 응답 바인딩(HasResponse/ResponseRows 등)이 자동으로 이어지지 않는다.
+                     Phase 45(2026-10-14 사용자 확정) — 카드 테두리와 "응답 정보" 앞 세로줄은 배지 색조를 따른다:
+                     성공(StatusBadgeIsPositive) 초록, 실패(StatusBadgeIsError) 빨강, 그 외(미전송·전송 중) 일반색. -->
+                <Border Grid.Column="2" BorderThickness="1.5"
                         CornerRadius="16" Background="{StaticResource CardBgBrush}" Padding="18"
                         DataContext="{Binding ElementName=TelegramTabControl, Path=SelectedItem}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusBadgeIsPositive}" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource UpdateHoverTextBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusBadgeIsError}" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource ResultErrorTextBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <DockPanel>
                         <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
                             <StackPanel Orientation="Horizontal">
                                 <Border Width="{StaticResource ReaderSectionBarWidth}" Height="{StaticResource ReaderSectionBarHeight}"
-                                        Background="{StaticResource UpdateHoverTextBrush}" CornerRadius="2" VerticalAlignment="Center"/>
+                                        CornerRadius="2" VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{StaticResource Blue500Brush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusBadgeIsPositive}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource UpdateHoverTextBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusBadgeIsError}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource ResultErrorTextBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                </Border>
                                 <TextBlock Text="응답 정보" FontWeight="Bold" FontSize="14" Margin="8,0,0,0"
                                            Foreground="{StaticResource CardTitleTextBrush}"/>
                             </StackPanel>
@@ -503,6 +532,58 @@
                                 </TextBlock>
                             </Border>
                         </Grid>
+
+                        <!-- Phase 45(PRD §17.2) 응답코드 해설띠 — 헤더 아래 고정(목록과 함께 스크롤되지 않음). 응답 파싱에 성공했을 때만 보인다.
+                             #7 행 자체에는 해설을 붙이지 않는다(전문 원문 값만 보여준다). -->
+                        <Border DockPanel.Dock="Top" CornerRadius="10" Padding="12,10" Margin="0,0,0,10"
+                                Visibility="{Binding HasResponseCodeBand, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{StaticResource ResultErrorBgBrush}"/>
+                                    <Setter Property="TextElement.Foreground" Value="{StaticResource ResultErrorTextBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ResponseCodeBand.IsSuccess}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource UpdateHoverBgBrush}"/>
+                                            <Setter Property="TextElement.Foreground" Value="{StaticResource UpdateHoverTextBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" FontSize="16" FontWeight="Bold" VerticalAlignment="Top" Margin="0,0,10,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="!"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ResponseCodeBand.IsSuccess}" Value="True">
+                                                    <Setter Property="Text" Value="&#x2713;"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding ResponseCodeBand.Headline}" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding ResponseCodeBand.Detail}" FontSize="12" FontWeight="Normal" TextWrapping="Wrap" Margin="0,2,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ResponseCodeBand.Detail}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding ResponseCodeBand.SourceLabel}" FontSize="11" Margin="0,2,0,0"
+                                               Foreground="{StaticResource TblEmptyTextBrush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
 
                         <Grid>
                             <TextBlock Text="아직 전송하지 않았습니다.&#x0a;좌측 '전송' 버튼을 누르면 응답이 여기에 채워집니다."

@@ -1360,6 +1360,16 @@ namespace KFTCTaxCAP.KioskSim.Forms
 
             string responseCode = respBuffer.Read(7);
             _lblResponseCode.Text = $"#7 응답 코드: \"{responseCode}\" — {ResponseCodeCatalog.Describe(responseCode)}";
+
+            // Phase 45(PRD §17.4) — 800000이고 #7 = M01이면 API 세부 응답코드(#27)도 풀어 붙인다.
+            if (schema.TxType == "800000" && responseCode.Trim() == "M01")
+            {
+                string detailCode = respBuffer.Read(ResponseCodeCatalog.CardInfoDetailFieldNumber).Trim();
+                _lblResponseCode.Text += detailCode.Length == 0
+                    ? " / 세부 코드 없음"
+                    : $" / 세부 {detailCode} · {ResponseCodeCatalog.DescribeCardInfoDetail(detailCode) ?? "정의되지 않은 코드"}";
+            }
+
             _lblResponseCode.ForeColor = responseCode.Trim() == "000" ? Color.DarkGreen : Color.DarkRed;
 
             if (isCardApproval)

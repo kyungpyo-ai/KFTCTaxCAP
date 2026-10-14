@@ -9795,3 +9795,223 @@ P40-1+2 → P40-3+4 → P40-5+6(새 에이전트, 독립 작성) → P40-7 → P
 - P44-5: 실 리더기 + PIN `1234` 2회. 로그 ② 원캡→VAN 원문(CP949 바이트 기준 POSITION 612, 100자)을 Python으로 독립 복호화 →
   두 건 모두 `1234`, 형식 일치, 두 값 상이. ④ POS 응답 `#51`은 공백.
 
+
+---
+
+# Phase 45 실행계획서 — 응답코드 해설 (결제창·로그·키오스크 시뮬레이터)
+
+> **근거**: `PRD.md` §17(정본), §3.3.1-e(20261013판 SPEC) · `ROADMAP.md` Phase 45 · SPEC `spec/…(POS-원캡)_20261013.pdf`
+> 3장(p.23~27) · `spec/(별첨1)응답코드표_20240131.pdf` + `…_추출.tsv` · 운영 PRD §1.3-b(로그 5슬롯 포맷, 바꾸지 않음)
+
+**메인 세션 = Opus.** **이 Phase가 끝나면**: 결제창 응답 패널에 배지("정상"/"거절 V51")와 해설띠가 나오고, 로그의 코드
+설명 줄이 서버·VAN 코드까지 풀며(800000 `M01`은 세부 코드 줄 추가), KioskSim 라벨도 같은 표로 푼다.
+
+## 착수 전 전제 (2026-10-14 확인)
+
+1. **P45-1은 끝났다**(Opus 직접): 별첨1 474개를 pdfplumber 표 추출 + 레이아웃 텍스트 두 방식으로 교차 확인해
+   `spec/(별첨1)응답코드표_20240131_추출.tsv`로 저장했고, `scripts/gen_van_code_table.py`가 `Protocol/Pos/KftcVanApprovalCodeTable.cs`
+   (본 앱, file-scoped namespace)와 `KioskSim/Protocol/KftcVanApprovalCodeTable.cs`를 생성한다(`Entries`: 2자리 → 내용,
+   `StringComparer.Ordinal`, `Count = 474`). **생성 파일은 손으로 고치지 않는다.**
+2. 결제창 응답 결과는 `PaymentTelegramTabViewModel`의 전송 메서드(약 520~580행)에서 `PosTelegram.FromBytes` 성공 후 `#7`을 읽어
+   `TelegramOutcome`을 정한다. 배지는 같은 클래스의 상태 갱신 메서드(약 225~250행, `StatusBadgeText`/`StatusBadgeIsPositive`/
+   `StatusBadgeIsError`)가 정한다. `_transportOverride`(자가진단 주입점)가 이미 있다. `TransactionTypeCode` 속성(`_schema`)이 있다.
+3. 로그 설명 줄은 `FileLogSink.BuildCodeNoteBytes(code)` → `LogCodeCatalog.Describe(code)`. 호출부는 이 한 곳뿐이다.
+   `LogRecord`는 `(timestamp, level, category, code, transactionId, message)` 불변 클래스이고 `new LogRecord(` 호출은 4곳.
+4. "거래 확정" 로그는 `PaymentOrchestrator` 약 201행 `FileLogger.Info(LogCategory.Payment, "…거래 확정", response.Read(ResultCodeFieldNumber), txId)`
+   한 곳이다. 요청 거래구분은 `request.TransactionTypeCode`.
+5. KioskSim 라벨은 `MainForm.cs` 약 1292·1362행 두 곳, 해설은 `KioskSim/Protocol/ResponseCodeCatalog.Describe`.
+6. **빌드는 Release로 한다** — Debug `KFTCTaxCAP.exe`가 사용자 세션에서 실행 중일 수 있다(잠금). 실행 중인 프로세스를 죽이지 않는다.
+
+## 이 Phase에서 손대지 않는 것
+
+- POS 응답 전문, relay 값, `PosResultCodeMapper`(코드 생성), `FaultAlertJudge`(판정 대상), `TelegramOutcome` 판정(`#7 == "000"`).
+- 로그 5슬롯 포맷·파싱 정규식(`LogLineRenderer`), 결제 알림창, 리더기 설정 화면 키다운로드.
+- 응답 필드 목록의 `#7` 행 — **해설을 붙이지 않는다**(PRD §17.2).
+
+## Task 표
+
+| Task | 내용 | 담당 | 근거 |
+|---|---|---|---|
+| P45-1 | 별첨1 추출·생성 스크립트·생성 표 | Opus 직접 (완료) | PDF 대조가 필요한 데이터 작업 — 위임 시 옮겨 적기 오류 위험 |
+| P45-2 | `PosResponseCodeCatalog` | `csharp-wpf-developer` (Sonnet) | 표·분류 규칙이 아래에 완결 |
+| P45-3 | 로그 설명 줄 확장 | `csharp-wpf-developer` (Sonnet) | 형식이 PRD §17.3에 완결 |
+| P45-4 | 결제창 배지·해설띠 + 시연 모드 | `csharp-wpf-developer` (Sonnet) | 수치·색 토큰이 PRD §17.2에 완결, 시각 판단은 P45-7에서 Opus·사용자가 |
+| P45-5 | KioskSim 해설 확장 | `csharp-wpf-developer` (Sonnet) | P45-2 표를 옮겨 적기 |
+| P45-6 | `--response-code-test` | `csharp-wpf-developer` (Sonnet) | 검사 목록 확정 |
+| CP1 | 종합 검증 | `checkpoint-reviewer` | — |
+| P45-7 | 실화면 확인 | Opus 직접 + 사용자 | 시각 확인 |
+
+위임 묶음: P45-2~P45-6을 **한 번에** 위임한다(같은 카탈로그를 중심으로 얽혀 있어 나누면 맥락을 다시 읽는 비용이 크다).
+위임 프롬프트에 넣을 문서: 이 실행계획서 Phase 45 절, `PRD.md` §17·§3.3.1-e. 각 Task는 구현 → Release 빌드(경고 0) → 해당
+검사 → 실패 시 수정을 그 자리에서 돈다. Opus는 Task별 diff를 직접 읽고 핵심 명령 1개(`--response-code-test`)를 재실행한다.
+
+## P45-2. 응답코드 카탈로그 (`Protocol/Pos/PosResponseCodeCatalog.cs`)
+
+```csharp
+internal enum PosResponseCodeSource { Common, InternetGiro, ServerUnknown, KftcVanRelay, KftcVanApproval, OneCap, OneCapReader, OneCapVanDll, Unknown }
+
+internal sealed class PosResponseCodeInfo   // 불변
+{
+    string Code;            // Trim 결과. null/공백이면 ""
+    string? Description;    // null = 정의되지 않은 코드
+    PosResponseCodeSource Source;
+    bool IsKnown => Description != null;
+    bool IsSuccess => Code == "000";           // V00은 성공이 아니다
+    string DisplayCode => Code.Length == 0 ? "(빈 값)" : Code;
+    string DisplayDescription => Description ?? "정의되지 않은 코드";
+    string SourceLabel;     // 아래 표
+}
+
+internal static class PosResponseCodeCatalog
+{
+    internal const string SuccessCode = "000";
+    internal const int CardInfoDetailFieldNumber = 27;
+    internal static PosResponseCodeInfo Describe(string? code);
+    internal static bool HasCardInfoDetail(string? transactionTypeCode, string? responseCode); // "800000" && Trim == "M01"
+    internal static string? DescribeCardInfoDetail(string? detailCode);  // Trim 후 조회, 없으면 null. 공백 처리는 호출자
+}
+```
+
+- **분류 규칙**(Trim 후, 대소문자 구분 `Ordinal`): `^\d{3}$` → 공통 표에 있으면 `Common`, 인터넷지로 표에 있으면 `InternetGiro`,
+  아니면 `ServerUnknown` / `^[MN][0-9A-Z]{2}$` → `KftcVanRelay` / `^V[0-9A-Z]{2}$` → `KftcVanApproval`, 내용은
+  `KftcVanApprovalCodeTable.Entries[code.Substring(1)]` / `^E\d{2}$` → `OneCap` / `^R\d{2}$` → `OneCapReader` /
+  `^D\d{2}$` → `OneCapVanDll` / 그 외(빈 값 포함) → `Unknown`.
+- **출처 표시**: Common "공통 응답", InternetGiro "인터넷지로 응답", ServerUnknown "서버 응답", KftcVanRelay "KFTCVAN 중계 응답",
+  KftcVanApproval "KFTCVAN 승인 응답 (별첨1)", OneCap "원캡 응답", OneCapReader "원캡 응답 · 리더기", OneCapVanDll "원캡 응답 · VAN DLL",
+  Unknown "출처를 알 수 없음".
+- **표(문구는 SPEC 원문 그대로, 비고 열은 넣지 않는다)**:
+  - 공통 8: `000` 정상 / `030` 전문 오류 (FORMAT ERROR) / `031` 전문 전송 일자 오류 / `091` Time-Over / `092` 서비스 시간 아님 /
+    `093` 시스템 오류 / `094` 해당 기관 사정으로 조회 불가 / `201` 서비스 불가(유효한 사용자 정보가 아님)
+  - 인터넷지로 32: `311` 고지내역 없음 / `312` 납부내역 없음 / `313` 납부 처리 중 (납부 불가) / `314` 취소 처리 중 (납부 불가) /
+    `315` 자동이체분 (납부 불가) / `321` 조회 가능 기간 경과 / `324` 지로 번호 오류 / `325` 해당 이용기관 정보 없음 /
+    `331` 기 납부 내역임 / `332` (조회) 원거래 없음 / `334` ‘납부 처리 중’으로 납부 불가 / `335` ‘취소 처리 중’으로 납부 불가 /
+    `336` ‘자동이체분’으로 납부 불가 / `337` 거래 일자(수납 일자) 틀림 / `338` 출금은행 점별 코드 틀림 / `339` 발행기관 분류코드 틀림 /
+    `340` 주민(사업자)등록번호 틀림 / `341` 전자(인터넷)납부번호 틀림 / `342` 고객관리번호 틀림 / `343` 납부 금액 틀림 /
+    `344` ‘장기 연체자(기타 사유 등)’ 납부 불가 / `345` 납부 금액 틀림 (원 단위 금액 포함) / `360` ‘자진 납부 대상’ 아님 /
+    `361` ‘징수관 계좌번호’ 틀림 / `362` ‘소계정’ 틀림 / `363` ‘회계 년도’ 틀림 / `364` ‘납부 기한’ 경과로 수납 불가 /
+    `365` ‘세목’ 틀림 / `366` 입력 내역 불충분으로 수납 불가 / `367` 창구나 해당 기관을 이용하여 납부 /
+    `368` 입력 내역 불충분으로 조회 불가(연대 납부) / `369` 입력 내역 불충분으로 수납 불가(연대 납부)
+    (따옴표는 SPEC의 ‘ ’(U+2018/U+2019) 그대로)
+  - KFTCVAN 중계 3: `M01` API 오류 (세부 응답코드 필드 참조) / `N01` 납부가능 시간 아님 / `N02` 납부 불가 카드사
+  - 원캡 E 12: `E01` 사용자 취소 / `E02` Timeout / `E03` **설정 화면 사용 중** / `E04` 리더기 미설정(사용 가능한 리더기 없음) /
+    `E05` 리더기 무결성 체크 실패 / `E06` 키오스크 ID 불일치 / `E07` 조회한 원거래 없음(직전 전문 확인 요청 관련) /
+    `E40` 요청 전문 길이 불일치 / `E41` 알 수 없는 거래 구분 코드 / `E42` 전문 식별 불가(본문이 16바이트 미만이라 #4조차 읽지 못함) /
+    `E43` 전문 형식 오류(길이 필드가 깨져 프레이밍 자체가 불가) / `E99` 원캡 내부 오류(그 외 처리 중 예외)
+  - 원캡 R 33: `R00`~`R23` = 현 `LogCodeCatalog.ReaderBusinessCodeDescriptions` 문구 그대로 / `R24` 리더기 포트가 열려 있지 않은 상태에서
+    명령 시도 / `R25` 리더기 명령 송신 실패 / `R26` 리더기가 다른 명령 처리 중 / `R27` 지정한 COM 포트를 찾을 수 없음 /
+    `R28` 리더기 포트 오픈 실패 / `R29` 허용되지 않는 명령 / `R30` 리더기 응답 수신 중 통신 오류 /
+    `R31` 그 외 리더기 DLL 연동 오류(위 항목에 해당하지 않는 경우) / `R32` 리더기 실패 원인을 특정할 수 없는 경우
+  - 원캡 D 2: `D01` VAN DLL 로드 실패 / `D02` VAN DLL 호출 자체 실패(서버 거절과는 다른, 통신 실패)
+  - 800000 `#27` 고정 20: `000` 정상 처리 / `R9999` 유효하지 않은 API / `R2000` JSON 파싱 오류 / `R2101` 요청 header 오류 /
+    `R2102` 요청 body 오류 / `R3000` 복호화 오류 / `R4000` 인코딩 오류 / `R5000` 조회 내역 없음 / `R6000` 기타 오류 / `R8000` 포맷 오류 /
+    `PAY001` 전자납부번호 형식 오류 / `PAY207` 타인내역 납부 불가 / `PAY501` 납부불가 금융기관 / `PAY502` 납부가능 일자 아님 /
+    `PAY503` 납부가능 시간 경과 / `PAY504` 일괄납부 가능 건수 초과 / `M0089` VAN 이용 불가 / `M1100` 존재하지 않는 지로번호 오류 /
+    `M1101` 이용기관 정보 오류 / `M1102` 요금 종류 오류. 접두 규칙 2: `M22`+2자(길이 5) 국세 자진납부 입력 항목 관련 오류,
+    `M23`+2자(길이 5) 납부금액 검증 관련 오류. (SPEC 표기 `M22[XX]`의 XX는 2자로 본다 — 정확히 5자일 때만 매칭)
+- 같은 문자열 리터럴을 Flow 쪽(`Services/Payment/`)에 새로 두지 않는다(코드 생성은 계속 `PosResultCodeMapper`가 한다).
+
+## P45-3. 로그 설명 줄
+
+- `LogCodeCatalog.Describe(code)`: `S`계열(`InternalFaultCodes`) → 기존 표 문구 그대로(출처 없음). `"000"` → `null`(설명 줄 없음).
+  그 외 → `PosResponseCodeCatalog.Describe`가 `IsKnown`이면 `"{내용} · {출처}"`, 아니면 `null`. 기존 E/R/D·`031` 개별 표는 삭제한다
+  (카탈로그로 일원화 — R24~R32 문구가 DLL 상수명에서 SPEC 문구로 바뀌는 것은 의도된 변경). 클래스 주석 갱신.
+- `LogRecord`에 선택 속성 `string? DetailCode`(생성자 마지막 선택 매개변수, 기본 `null`) — 기존 4개 호출부는 그대로 컴파일돼야 한다.
+  `FileLogger`에 `internal static void Info(LogCategory category, string message, string? code, string? transactionId, string? detailCode)`
+  오버로드 하나만 추가.
+- `FileLogSink.BuildCodeNoteBytes(LogRecord)`(자가진단용 `internal`): 기존 설명 줄 + `record.DetailCode != null`이면 다음 줄
+  `    └ 세부 코드: {값} = {세부 내용}` / 값이 공백이면 `    └ 세부 코드: 없음` / 표에 없으면 `    └ 세부 코드: {값} = 정의되지 않은 코드`.
+  세부 줄은 설명 줄이 없어도(이론상) 단독으로 찍힌다. 두 줄은 기존처럼 레코드와 같은 락 안에서 함께 쓴다.
+- `PaymentOrchestrator` "거래 확정": `#7`을 읽고, `PosResponseCodeCatalog.HasCardInfoDetail(request.TransactionTypeCode, code)`이면
+  `response.Read(PosResponseCodeCatalog.CardInfoDetailFieldNumber)`를 detail로, 아니면 `null` → 새 오버로드로 기록. 이 외
+  `PaymentOrchestrator` 변경 없음. 다른 로그 싱크가 있으면 `DetailCode`를 무시해도 되는지 확인.
+
+## P45-4. 결제창 배지·해설띠
+
+- **ViewModel**(`PaymentTelegramTabViewModel`): 불변 클래스 `ResponseCodeBand`(`ViewModels/Payment/ResponseCodeBand.cs` — `IsSuccess`,
+  `Headline`, `Detail`(null 가능), `SourceLabel`, `Code`) + `[ObservableProperty] ResponseCodeBand? responseCodeBand`.
+  - 응답 파싱 성공 시: `info = Describe(#7)` → `Headline = $"{info.DisplayCode} · {info.DisplayDescription}"`, `SourceLabel = info.SourceLabel`,
+    `Detail`은 `HasCardInfoDetail(TransactionTypeCode, #7)`일 때만 — `#27` 공백이면 `"세부 코드 없음"`, 아니면
+    `$"세부 {값} · {DescribeCardInfoDetail(값) ?? "정의되지 않은 코드"}"`.
+  - 전송 시작, `Regenerate`, 파싱 실패, 전송 예외에서 `null`로 비운다(`_lastResponseTelegram`을 비우는 지점과 같은 곳).
+  - 배지: 응답 수신 분기에서 `ResponseCodeBand`가 있으면 `IsSuccess` → `"정상"`(Positive), 아니면 `"거절 " + DisplayCode`(Error).
+    `ResponseCodeBand` 변경 시 배지 갱신이 따라오게 한다. 미전송/전송 중/오류 분기는 그대로.
+- **XAML**(`PaymentScreenWindow.xaml` 응답 패널): 헤더 `Grid` 다음에 `DockPanel.Dock="Top"` `Border`(PRD §17.2 표 수치·토큰 그대로).
+  `ResponseCodeBand == null`이면 Collapsed(기존 컨버터 재사용 또는 `HasResponseCodeBand` bool). 아이콘은 텍스트 글리프(✓ / !)
+  — 새 이미지 파일을 만들지 않는다. ①②③은 `TextWrapping="Wrap"`, ②는 `Detail == null`이면 Collapsed. `#7` 행 템플릿은 건드리지 않는다.
+- **시연 모드 `--response-band-demo`**(`App.xaml.cs`, 개발용): `PaymentScreenWindow`를 `transportOverride` 주입 VM으로 단독으로 연다
+  (필요하면 VM을 받는 `internal` 생성자 추가). 주입 전송은 요청 본문을 복제해 `#7`(그리고 800000이면 `#27`)만 바꾼 응답을 돌려주며,
+  탭별로 전송할 때마다 시나리오를 순환한다 — 501008: `000`, `311`, `030`, `X12` / 800000: `000`, `M01`+`PAY502`, `M01`+`M2207`,
+  `M01`+공백, `M01`+`Z999`, `N01` / 902614: `000`, `V51`, `VA8`, `VZZ`(미정의), `E03`, `R02`, `D02`. 실 소켓·리더기·VAN을 쓰지 않는다.
+  창 제목이나 상태 메시지에 "시연 모드"를 표시한다.
+
+## P45-5. KioskSim
+
+- `KioskSim/Protocol/ResponseCodeCatalog`를 P45-2와 같은 분류·표·출처로 다시 쓴다(본 앱 참조 금지, 생성된 `KftcVanApprovalCodeTable` 사용).
+  `Describe(code)` 반환: 알면 `"{내용} · {출처}"`, 모르면 `"정의되지 않은 코드 · {출처}"`, 빈 값은 `"정의되지 않은 코드(빈 값)"`.
+  `DescribeCardInfoDetail` 추가. 기존 R 이중 해석 로직은 삭제(값 공간이 분리됨).
+- `MainForm.cs` 1362행 경로: 800000이고 `#7 == "M01"`이면 라벨 끝에 ` / 세부 {#27} · {세부 내용}`(공백이면 ` / 세부 코드 없음`).
+  1292행(짧은 응답)은 `#27`이 없으므로 그대로.
+
+## P45-6. 자가진단 `--response-code-test`
+
+`Services/Diagnostics/ResponseCodeSelfTest.cs` + `App.xaml.cs`(기존 `--field-chain-converter-test` 형태 — 홈 화면 + `Task.Run(RunAll)`,
+결과는 `FileLogger`로 `[PASS]/[FAIL]` + 합계). 검사:
+
+1. 개수: 공통 8, 인터넷지로 32, 중계 3, E 12, R 33(`R00`~`R32` 전부 IsKnown), D 2, `#27` 고정 20 + 접두 2, 별첨1 `Count == 474 == Entries.Count`.
+2. 표본 문구 정확 일치: `000` 정상, `311` 고지내역 없음, `364` ‘납부 기한’ 경과로 수납 불가, `369`, `N02`, `V51` 주민(사업자)번호 상이,
+   `VEN` 무통장거래횟수초과(1588-4500), `VJ1` 현장할인무료제공이용불가가맹점및카드, `VC2` 인증세선 불일치, `VS6`, `E03` 설정 화면 사용 중,
+   `R02`, `R32`, `D02`, `#27` `PAY502`·`M2207`·`M2300`.
+3. 분류·출처: 각 Source 대표 1개씩 + `ServerUnknown`(`111` — 1012판 코드가 이제 미정의인지), `M99`/`N03`(중계·미정의), `VZZ`(승인·미정의),
+   `E50`(원캡·미정의), `X12`·`""`·`null`·`" V51 "`(Trim)·`"v51"`(Ordinal이라 Unknown).
+4. 성공 판정: `000`만 `IsSuccess`, `V00`은 아님. `HasCardInfoDetail`: (`800000`,`M01`) 참, (`902614`,`M01`)·(`800000`,`N01`) 거짓.
+   `DescribeCardInfoDetail`: `M22`(길이 3)·`M220`(4)·`M22000`(6)은 null.
+5. 로그: `LogCodeCatalog.Describe("000") == null`, `("V51")` = `주민(사업자)번호 상이 · KFTCVAN 승인 응답 (별첨1)`, `("S01")` 출처 없음,
+   `("X12") == null`. `BuildCodeNoteBytes`: M01 + `PAY502` → 두 줄, M01 + `""` → `세부 코드: 없음`, M01 + `Z999` → 정의되지 않은 코드, `000` + null → 줄 없음.
+6. 결제창 VM(`transportOverride`): 902614 `000` → 배지 "정상"·Band IsSuccess·Detail null / `V51` → "거절 V51"·Headline·SourceLabel /
+   800000 `M01`+`PAY502` → Detail `세부 PAY502 · 납부가능 일자 아님` / 전송 예외 → Band null·배지 "오류" / 재생성 → Band null.
+   (`TelegramOutcome`이 `000`일 때만 Success인 것도 회귀 확인.)
+
+- **완료 조건**: Release 빌드 경고 0, `--response-code-test` 전부 PASS, 회귀 `--payment-flow-test`·`--log-file-reader-test`·
+  `--field-chain-converter-test` PASS(로그로 확인), KioskSim 빌드 경고 0.
+
+## 체크포인트 1 — `checkpoint-reviewer` (P45-2~P45-6 직후)
+
+중립 프롬프트(diff 범위 + 이 절 + PRD §17 경로만). 특히: 카탈로그 문구가 SPEC·TSV와 같은지(표본이 아니라 전수 대조), POS 응답·
+`TelegramOutcome`·`FaultAlertJudge`에 영향이 없는지, `#7` 행에 해설이 새지 않았는지, 로그 5슬롯 포맷 불변, KioskSim이 본 앱을 참조하지 않는지.
+
+## P45-7. 실화면 확인 (Opus + 사용자)
+
+`--response-band-demo`로 시나리오별 해설띠를 캡처해 PRD §17.2 수치·색과 대조 → 사용자 확인. 실서버 501008 전송으로 `311` 해설띠와
+로그 설명 줄 확인. KioskSim 라벨 확인.
+
+## Phase 45 결과 (2026-10-14)
+
+**구현·검증**
+- Release 빌드(본 앱 + KioskSim) 경고 0·오류 0. `--response-code-test` 84/84(정식 CLI 경로, 임시 asInvoker).
+  회귀 `--payment-flow-test`(구현 중 193건, 체크포인트 재실행 192건, 실패 0)·`--field-chain-converter-test` 통과.
+- 인터넷지로 서버 코드는 32개다(계획서 초안의 34개는 오기 — 구현 중 발견해 정정).
+
+**체크포인트 1**(`checkpoint-reviewer`) — High·Medium 0건. 카탈로그 110개·별첨1 474개·KioskSim 표 문구를 SPEC 원문과 전수
+대조해 일치. POS 응답·`TelegramOutcome`·`FaultAlertJudge` 무영향, 로그 5슬롯 포맷 불변 확인. Low 3건:
+- L-1 자가진단 주석 "34개" 오기 → 수정.
+- L-2 SPEC E42 원문은 닫는 괄호 앞에 공백(`읽지 못함 )`)이 있고 코드는 공백 없음 → 유지(사용자 확정, 다음 SPEC 개정 때 원문 정리).
+- L-3 시연 모드가 `%TEMP%\p45-demo-*.db`를 남기고 실제 PosServer(8002)도 띄움 → 유지(사용자 확정, 개발용).
+
+**P45-7 실화면 확인**
+- 시연 모드 해설띠 6종: 501008 `000`(초록 "정상"), `311`, 800000 `M01`+`PAY502`(세부 줄), 902614 `V51`, `VA8`(긴 문구 한 줄),
+  `VZZ`(정의되지 않은 코드) — PRD §17.2대로. `#7` 행은 원문 값만.
+- **사용자 요청 추가 변경**: 응답 패널 바깥 테두리와 "응답 정보" 앞 세로줄이 상태와 무관하게 초록이던 것을 배지 색조에
+  맞췄다 — 성공 초록, 실패 빨강, 미전송·전송 중은 일반색(`CardBorderBrush` / `Blue500Brush`). PRD §17.2 갱신. 시연 모드로
+  미전송(일반색)·`000`(초록)·`311`(빨강)·미전송 탭으로 전환(일반색 복귀) 4장면 확인.
+- 실서버(OT, 사용자가 띄운 Release 앱 + KioskSim): 501008 전송에 서버가 `341`로 응답 —
+  로그 `└ 코드 설명: 341 = 전자(인터넷)납부번호 틀림 · 인터넷지로 응답`("거래 확정"·POS 응답 송신 두 줄),
+  KioskSim 라벨 `#7 응답 코드: "341" — 전자(인터넷)납부번호 틀림 · 인터넷지로 응답`. 서버가 20261013판 코드(`3xx`)를 이미 쓴다.
+- 검증용 asInvoker는 확인 직후 원복(requireAdministrator)하고 다시 빌드해 exe에 들어간 것을 확인.
+
+**함께 고친 기존 결함** — `--log-file-reader-test` 4통과·13실패(이번 변경 전 코드에서도 같음). 2026-09-17 로그 파일명이
+`KFTCTaxCAP{yyMMdd}.log`로 바뀔 때 테스트의 합성 파일명(`yyyy-MM-dd.log`) 두 곳이 그대로 남아 리더가 파일을 못 찾았다.
+`LogPaths.BuildFileName`을 쓰도록 고쳐 17/17 통과, 합성 파일 잔여 없음.
+
+## 열린 항목
+
+- 리더기 설정 화면 키다운로드(Bitmap `P-39` 2자리)의 별첨1 해설 — 범위 밖(PRD §17.5).

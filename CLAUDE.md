@@ -54,7 +54,7 @@ KioskSim은 범위 밖. 원본 캡처는 `docs/alert_dialog/screenshots/`(캡처
 자산은 바꾸지 않는다. 문서는 `PRD.md` → `ROADMAP.md`이고, 실행계획서 없이 사용자와 실화면 확인으로 확정해 그 결과를
 **PRD §7 표**에 기록했다(§2 제안·§3 유지 항목보다 우선). Phase 41~43 완료(2026-10-12, 실기 E2E 포함) — 6차 범위 종료. Win7 실기는 미확인.
 
-**Phase 번호는 여섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32·40·44(`docs/payment_relay/ROADMAP.md` — Phase 44는 902614 `#51` 비밀번호 SEED 암호화, 마스터키 `vendor/KftcMasterKey/MASTKEY2.key`), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~39(`docs/alert_dialog/ROADMAP.md`), 6차 41~43(`docs/payment_alert_ui/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
+**Phase 번호는 여섯 ROADMAP에 걸쳐 이어진다** — 1차 0~6(`docs/home_reader_setup/ROADMAP.md`), 2차 7~21·26·29~30·32·40·44·45(`docs/payment_relay/ROADMAP.md` — Phase 44는 902614 `#51` 비밀번호 SEED 암호화, 마스터키 `vendor/KftcMasterKey/MASTKEY2.key`. Phase 45는 응답코드 해설 — 결제창 배지·해설띠, 로그 코드 설명 줄, KioskSim 라벨, PRD §17), 3차 22~25·27~28·31(`docs/operations/ROADMAP.md`), 4차 33~37(`docs/receipt_print/ROADMAP.md`), 5차 38~39(`docs/alert_dialog/ROADMAP.md`), 6차 41~43(`docs/payment_alert_ui/ROADMAP.md`). 같은 앱을 계속 확장하는 것이므로 번호를 새로 시작하지 않는다. Phase 31(가맹점 설정 화면의 전표 설정 섹션 추가, 홈 화면 카드 4개→3개 축소)은 2026-09-29 완료됐다.
 
 ## 원본 MFC 소스 (참고용, 이 저장소 밖)
 
@@ -70,8 +70,11 @@ KioskSim은 범위 밖. 원본 캡처는 `docs/alert_dialog/screenshots/`(캡처
 - `.claude/agents/reader-pinpad-spec-expert.md` — 리더기/핀패드 SPEC 원문 및 `ReaderSerial.dll` API 계약 확인 전담(아래 "리더기 연동 DLL" 절 참고).
 - `.claude/agents/reader-dll-integration-developer.md` — `ReaderSerial.dll` P/Invoke 연동 개발 전담(아래 "리더기 연동 DLL" 절 참고).
 - `.claude/agents/pos-onecap-spec-expert.md` — POS ↔ KFTCTaxCAP 간 전문(telegram) SPEC 확인 전담. 근거 문서는
-  `docs/payment_relay/spec/국세 베리어프리 키오스크용 전산설계서(POS-원캡)_20261012.pdf`(hwp 원본은 DRM
-  배포용 문서 래퍼라 열 수 없음, PDF가 유일하게 파싱 가능 — **2026-10-12판이 최신 정본**이다. 이 판은 필드 표
+  `docs/payment_relay/spec/국세 베리어프리 키오스크용 전산설계서(POS-원캡)_20261013.pdf`(hwp 원본은 DRM
+  배포용 문서 래퍼라 열 수 없음, PDF가 유일하게 파싱 가능 — **2026-10-13판이 최신 정본**이다. 이 판은 필드 표
+  무변경이고 응답코드 장을 개편했다 — 인터넷지로 서버 코드 `111`~`191` → `311`~`369`, 800000 `V01`/`V02` →
+  `N01`/`N02`, VAN 승인(902614·키다운로드) 거절 코드는 같은 폴더 `(별첨1)응답코드표_20240131.pdf`의 2자리 앞에
+  `V`(정상은 `000`), TCP/IP Bitmap 전문 장 삭제, p.19 `#51` 오기 정정 — PRD §3.3.1-e. 직전 2026-10-12판은 필드 표
   무변경이고 902614 `#51` 암호화된 비밀번호 정보의 SEED 구성 설명(p.19 — 절 제목 `(#46)`·"BASE64"는 오기, 실제는
   `#51`·HEX), 키다운로드 TCP/IP Bitmap 전문 장, 800000 `V02`·`#27` API 세부 응답코드를 추가했다 — PRD §3.3.1-d,
   `#51` 암호화 방식 정본은 PRD §16(Phase 44). 직전 2026-09-30판의 변경은 800000 `#14`가 `BIN`(AN8) →

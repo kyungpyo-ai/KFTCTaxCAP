@@ -458,6 +458,26 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(TelegramFieldChainConverterSelfTest.RunAll);
         }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--response-code-test")
+        {
+            // 개발/회귀 검증용(docs/payment_relay/development_plan.md P45-6 완료 조건, 최종 산출물 아님):
+            // 응답코드 카탈로그(PosResponseCodeCatalog)·로그 설명 줄(LogCodeCatalog/FileLogSink)·결제창 해설띠
+            // (PaymentTelegramTabViewModel)를 확인한다. 소켓·리더기 불필요. UI는 홈 화면을 그대로 띄운다.
+            StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
+            System.Threading.Tasks.Task.Run(ResponseCodeSelfTest.RunAll);
+        }
+        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--response-band-demo")
+        {
+            // 개발용 시연(docs/payment_relay/development_plan.md P45-4, 최종 산출물 아님): 결제 화면을 전송 함수를
+            // 바꿔 끼운 ViewModel로 단독으로 연다 — 탭별로 전송할 때마다 응답코드 시나리오를 순환해 해설띠·배지를
+            // 눈으로 확인한다. 실 소켓·리더기·VAN·프린터를 쓰지 않는다.
+            var demoWindow = new PaymentScreenWindow(null, ResponseBandDemo.CreateViewModel())
+            {
+                Title = "결제 — 시연 모드 (응답코드 해설, 실제 전송 아님)",
+            };
+            MainWindow = demoWindow;
+            demoWindow.Show();
+        }
         else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--log-file-reader-test")
         {
             // 개발/회귀 검증용(docs/operations/development_plan.md P27-4 완료 조건, 최종 산출물

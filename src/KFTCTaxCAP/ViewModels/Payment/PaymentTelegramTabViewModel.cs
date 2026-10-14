@@ -187,6 +187,18 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
     [ObservableProperty]
     private bool statusBadgeIsError;
 
+    /// <summary>
+    /// Phase 45(PRD §17.2) — 응답 파싱 성공 시의 응답코드 해설띠. 전송 시작·<see cref="Regenerate"/>·파싱 실패·전송 예외에서
+    /// <see langword="null"/>로 비운다. 표시 전용이라 <see cref="SendCompleted"/> 판정(<c>#7 == "000"</c>)에는 영향이 없다.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasResponseCodeBand))]
+    private ResponseCodeBand? responseCodeBand;
+
+    public bool HasResponseCodeBand => ResponseCodeBand is not null;
+
+    partial void OnResponseCodeBandChanged(ResponseCodeBand? value) => RefreshStatusBadge();
+
     public IRelayCommand RegenerateCommand { get; }
 
     public IAsyncRelayCommand SendCommand { get; }
@@ -240,6 +252,13 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
             StatusBadgeText = "미전송";
             StatusBadgeIsPositive = false;
             StatusBadgeIsError = false;
+        }
+        else if (ResponseCodeBand is { } band)
+        {
+            // Phase 45(PRD §17.2) — 응답 파싱에 성공하면 #7 == "000"만 정상, 그 외는 코드를 달아 거절로 표시한다.
+            StatusBadgeText = band.IsSuccess ? "정상" : "거절 " + band.Code;
+            StatusBadgeIsPositive = band.IsSuccess;
+            StatusBadgeIsError = !band.IsSuccess;
         }
         else
         {
@@ -312,6 +331,7 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         // _lastResponseTelegram을 비운다 — HasResponse=false인데 이전 응답이 캐시에 남아 있으면 다른
         // 탭이 그 값을 계속 읽어가는 모순이 생긴다(PRD §13.6).
         _lastResponseTelegram = null;
+        ResponseCodeBand = null;
 
         ResponseRows.Clear();
         HasResponse = false;
@@ -508,6 +528,7 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         // — 전송 중에는 "아직 이번 전송의 새 응답이 없다"는 상태가 맞다.
         HasResponse = false;
         _lastResponseTelegram = null;
+        ResponseCodeBand = null;
 
         // Phase 40 P40-3 — SendCompleted를 정확히 한 번만 올리기 위한 표지. 응답이 온 경로는 아래 try 안에서
         // HasResponse=true 직전에 올리고, 그 전에(요청 직렬화·연결·전송·수신) 던진 예외는 catch에서 올린다.
@@ -543,6 +564,7 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                 PosTelegram responseTelegram = PosTelegram.FromBytes(_schema, responseBody);
                 _lastResponseTelegram = responseTelegram; // PRD §13.6 — 창 생존 기간 동안만 메모리 캐시.
                 RebuildResponseRows(responseTelegram);
+                ResponseCodeBand = BuildResponseCodeBand(responseTelegram);
                 StatusMessage = "전송 완료 — 응답 수신됨";
                 IsStatusError = false;
 
@@ -560,6 +582,7 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
                 // _lastResponseTelegram은 비어 있는 채로 남는다 — 파싱에 실패한 응답으로 연쇄를 적용하면
                 // 안 되므로 의도된 동작이다.
                 ResponseRows.Clear();
+                ResponseCodeBand = null;
                 StatusMessage = $"응답 필드 파싱 실패(길이 불일치): {ex.Message}";
                 IsStatusError = true;
             }
@@ -573,6 +596,7 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            ResponseCodeBand = null;
             StatusMessage = $"전송 실패: {ex.Message}";
             IsStatusError = true;
 
@@ -588,6 +612,25 @@ public sealed partial class PaymentTelegramTabViewModel : ObservableObject
         {
             IsSending = false;
         }
+    }
+
+    /// <summary>Phase 45(PRD §17.2) — 응답 <c>#7</c>(과 800000 <c>M01</c>의 <c>#27</c>)을 해설띠 값으로 만든다.</summary>
+    private ResponseCodeBand BuildResponseCodeBand(PosTelegram responseTelegram)
+    {
+        string rawCode = responseTelegram.Read(ResponseCodeFieldNumber);
+        PosResponseCodeInfo info = PosResponseCodeCatalog.Describe(rawCode);
+
+        string? detail = null;
+        if (PosResponseCodeCatalog.HasCardInfoDetail(TransactionTypeCode, rawCode))
+        {
+            string detailCode = responseTelegram.Read(PosResponseCodeCatalog.CardInfoDetailFieldNumber).Trim();
+            detail = detailCode.Length == 0
+                ? "세부 코드 없음"
+                : $"세부 {detailCode} · {PosResponseCodeCatalog.DescribeCardInfoDetail(detailCode) ?? "정의되지 않은 코드"}";
+        }
+
+        return new ResponseCodeBand(
+            info.IsSuccess, info.DisplayCode, $"{info.DisplayCode} · {info.DisplayDescription}", detail, info.SourceLabel);
     }
 
     /// <summary>응답 패널 = kiosk 외 주체가 하나라도 있는 필드 중 원캡 담당은 제외(800000 #14 예외

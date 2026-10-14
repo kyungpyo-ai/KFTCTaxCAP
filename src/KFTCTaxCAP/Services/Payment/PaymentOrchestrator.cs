@@ -198,7 +198,12 @@ internal sealed class PaymentOrchestrator
             // PosResponseTelegram 한 개로 수렴하는 이 지점에서 한 번만 남긴다 — 분기마다 흩어 찍지 않는다
             // (§1.5 "분량 감각" 위반 방지). 결과코드는 #7(응답 전문 공통부, 3전문 동일 POSITION)을 그대로
             // 읽는다 — PosResultCodeMapper가 이미 만든 값이라 여기서 새로 매핑하지 않는다.
-            FileLogger.Info(LogCategory.Payment, "[PaymentOrchestrator] 거래 확정", response.Read(ResultCodeFieldNumber), txId);
+            // Phase 45(PRD §17.3) — 800000 #7 = M01이면 API 세부 응답코드(#27)를 로그 설명 줄에 싣는다.
+            string resultCode = response.Read(ResultCodeFieldNumber);
+            string? detailCode = PosResponseCodeCatalog.HasCardInfoDetail(request.TransactionTypeCode, resultCode)
+                ? response.Read(PosResponseCodeCatalog.CardInfoDetailFieldNumber)
+                : null;
+            FileLogger.Info(LogCategory.Payment, "[PaymentOrchestrator] 거래 확정", resultCode, txId, detailCode);
             return response;
         }
         catch (Exception)

@@ -83,7 +83,7 @@ internal static class LogFileReaderTestScenarios
     private static string WriteLinesToFile(DateTime date, IReadOnlyList<string> lines)
     {
         Directory.CreateDirectory(LogPaths.LogDirectory);
-        string path = Path.Combine(LogPaths.LogDirectory, $"{date:yyyy-MM-dd}.log");
+        string path = Path.Combine(LogPaths.LogDirectory, LogPaths.BuildFileName(date));
         string content = string.Join(Environment.NewLine, lines) + Environment.NewLine;
         File.WriteAllBytes(path, Encoding.UTF8.GetBytes(content));
         CreatedFiles.Add(path);
@@ -315,7 +315,7 @@ internal static class LogFileReaderTestScenarios
 
     private static int CountMarkerLinesInTodayFileRaw(string marker)
     {
-        string path = Path.Combine(LogPaths.LogDirectory, $"{DateTime.Now:yyyy-MM-dd}.log");
+        string path = Path.Combine(LogPaths.LogDirectory, LogPaths.BuildFileName(DateTime.Now));
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);

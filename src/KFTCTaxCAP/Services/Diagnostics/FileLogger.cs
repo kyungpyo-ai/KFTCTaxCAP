@@ -91,6 +91,13 @@ public static class FileLogger
     /// </summary>
     public static void Info(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Info, category, code, transactionId, message);
 
+    /// <summary>
+    /// Phase 45(PRD §17.3) — 800000 <c>M01</c> "거래 확정" 로그가 API 세부 응답코드(<c>#27</c>)를 함께 싣는 오버로드.
+    /// <paramref name="detailCode"/>가 <see langword="null"/>이면 세부 줄을 찍지 않는다(공백 문자열은 "없음"으로 찍는다).
+    /// </summary>
+    internal static void Info(LogCategory category, string message, string? code, string? transactionId, string? detailCode) =>
+        Write(LogLevel.Info, category, code, transactionId, message, detailCode);
+
     public static void Warn(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Warn, category, code, transactionId, message);
 
     public static void Error(LogCategory category, string message, string? code, string? transactionId) => Write(LogLevel.Error, category, code, transactionId, message);
@@ -199,11 +206,11 @@ public static class FileLogger
         }
     }
 
-    private static void Write(LogLevel level, LogCategory? category, string? code, string? transactionId, string message)
+    private static void Write(LogLevel level, LogCategory? category, string? code, string? transactionId, string message, string? detailCode = null)
     {
         try
         {
-            var record = new LogRecord(DateTime.Now, level, category, code, transactionId, message);
+            var record = new LogRecord(DateTime.Now, level, category, code, transactionId, message, detailCode);
             Dispatch(record);
         }
         catch

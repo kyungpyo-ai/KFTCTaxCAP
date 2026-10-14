@@ -22,7 +22,7 @@ namespace KFTCTaxCAP.Views;
 /// </summary>
 public partial class PaymentScreenWindow : Window
 {
-    public PaymentScreenViewModel ViewModel { get; } = new();
+    public PaymentScreenViewModel ViewModel { get; }
 
     /// <summary>
     /// StartupUri(<c>--payment-screen-test</c> 진단 인자, App.xaml.cs)가 요구하는 공개 매개변수 없는
@@ -46,8 +46,16 @@ public partial class PaymentScreenWindow : Window
     /// 이미 위치 계산이 끝난 뒤라 마찬가지로 소용없다. Owner를 생성자 매개변수로 받아 이 본문 안에서
     /// 대입하면, 아래 판정 시점에 Owner가 이미 최종값으로 확정돼 있다.
     /// </summary>
-    public PaymentScreenWindow(Window? owner)
+    public PaymentScreenWindow(Window? owner) : this(owner, new PaymentScreenViewModel())
     {
+    }
+
+    /// <summary>
+    /// Phase 45 <c>--response-band-demo</c> 전용 — 전송 함수를 바꿔 끼운 ViewModel을 받는다. 운영 경로는 위 생성자만 쓴다.
+    /// </summary>
+    internal PaymentScreenWindow(Window? owner, PaymentScreenViewModel viewModel)
+    {
+        ViewModel = viewModel;
         InitializeComponent();
         DataContext = ViewModel;
 

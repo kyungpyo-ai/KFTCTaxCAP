@@ -24,7 +24,8 @@ public sealed class LogRecord
         LogCategory? category,
         string? code,
         string? transactionId,
-        string message)
+        string message,
+        string? detailCode = null)
     {
         Timestamp = timestamp;
         Level = level;
@@ -32,6 +33,7 @@ public sealed class LogRecord
         Code = code;
         TransactionId = transactionId;
         Message = message ?? string.Empty;
+        DetailCode = detailCode;
     }
 
     /// <summary>로컬 시각(<c>DateTime.Now</c> 기준, PRD.md §1.3-b).</summary>
@@ -52,4 +54,10 @@ public sealed class LogRecord
     /// <summary>사람이 읽는 메시지. 개행이 포함될 수 있다(예: 예외 스택 트레이스) — 렌더링 시
     /// 이스케이프된다(<see cref="LogLineRenderer"/>).</summary>
     public string Message { get; }
+
+    /// <summary>
+    /// Phase 45(PRD §17.3) — 800000 <c>#7 = M01</c>일 때의 API 세부 응답코드(<c>#27</c>). 다른 슬롯에 남지 않는 값이라
+    /// 설명 줄(<see cref="FileLogSink"/>)에서만 쓴다. 대부분의 레코드는 <see langword="null"/>이며, 렌더링 형식은 바뀌지 않는다.
+    /// </summary>
+    public string? DetailCode { get; }
 }

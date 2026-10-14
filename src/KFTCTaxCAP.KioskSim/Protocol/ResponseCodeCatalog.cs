@@ -4,132 +4,245 @@ using System.Collections.Generic;
 namespace KFTCTaxCAP.KioskSim.Protocol
 {
     /// <summary>
-    /// 응답 전문 <c>#7 응답 코드</c>(3자리 문자열)를 사람이 읽는 설명으로 풀어주는 표.
+    /// 응답 전문 <c>#7 응답 코드</c>를 사람이 읽는 설명으로 풀어주는 표 (Phase 45, PRD §17.1/§17.4).
     ///
-    /// Phase 19 실행계획서(docs/payment_relay/development_plan.md) P19-6: 여기 적힌 문자열은
-    /// 본 앱(KFTCTaxCAP) <c>Services/Payment/PosResultCodeMapper.cs</c>와
-    /// <c>docs/reader_dll/API명세서.md</c> §9(리더기 업무 응답코드 00~23 표)를 **참고용으로 읽고
-    /// 값만 옮겨 적은 것**이다 — P19-2와 같은 원칙대로 그 파일들을 참조/의존하지 않는다(코드 공유 0).
-    /// 두 파일이 나중에 바뀌어도 이 표는 자동으로 따라가지 않으므로, 실제 코드 체계가 바뀌면 이
-    /// 표도 사람이 다시 옮겨 적어야 한다.
+    /// 본 앱(KFTCTaxCAP)의 <c>PosResponseCodeCatalog</c>와 같은 분류·표·출처로 **따로 옮겨 적은 것**이다 —
+    /// P19-2와 같은 원칙대로 본 앱 코드를 참조/의존하지 않는다(코드 공유 0). 한쪽만 바뀌면 사람이 손으로 맞춰야 한다.
+    /// KFTCVAN 승인 응답(<c>V</c> + 2자리)의 내용은 생성된 <see cref="KftcVanApprovalCodeTable"/>을 쓴다.
+    /// 모르는 코드는 추측하지 않고 "정의되지 않은 코드"로 알린다. 문구는 SPEC 20261013판 3장 원문 그대로(‘ ’ 포함).
     /// </summary>
     public static class ResponseCodeCatalog
     {
-        /// <summary>정확히 일치하는 코드에 대한 설명(<c>000</c>/<c>E</c>계열/<c>D</c>계열).</summary>
-        private static readonly Dictionary<string, string> Exact = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly Dictionary<string, string> CommonTable = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["000"] = "정상",
+            ["030"] = "전문 오류 (FORMAT ERROR)",
+            ["031"] = "전문 전송 일자 오류",
+            ["091"] = "Time-Over",
+            ["092"] = "서비스 시간 아님",
+            ["093"] = "시스템 오류",
+            ["094"] = "해당 기관 사정으로 조회 불가",
+            ["201"] = "서비스 불가(유효한 사용자 정보가 아님)",
+        };
+
+        private static readonly Dictionary<string, string> InternetGiroTable = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["311"] = "고지내역 없음",
+            ["312"] = "납부내역 없음",
+            ["313"] = "납부 처리 중 (납부 불가)",
+            ["314"] = "취소 처리 중 (납부 불가)",
+            ["315"] = "자동이체분 (납부 불가)",
+            ["321"] = "조회 가능 기간 경과",
+            ["324"] = "지로 번호 오류",
+            ["325"] = "해당 이용기관 정보 없음",
+            ["331"] = "기 납부 내역임",
+            ["332"] = "(조회) 원거래 없음",
+            ["334"] = "‘납부 처리 중’으로 납부 불가",
+            ["335"] = "‘취소 처리 중’으로 납부 불가",
+            ["336"] = "‘자동이체분’으로 납부 불가",
+            ["337"] = "거래 일자(수납 일자) 틀림",
+            ["338"] = "출금은행 점별 코드 틀림",
+            ["339"] = "발행기관 분류코드 틀림",
+            ["340"] = "주민(사업자)등록번호 틀림",
+            ["341"] = "전자(인터넷)납부번호 틀림",
+            ["342"] = "고객관리번호 틀림",
+            ["343"] = "납부 금액 틀림",
+            ["344"] = "‘장기 연체자(기타 사유 등)’ 납부 불가",
+            ["345"] = "납부 금액 틀림 (원 단위 금액 포함)",
+            ["360"] = "‘자진 납부 대상’ 아님",
+            ["361"] = "‘징수관 계좌번호’ 틀림",
+            ["362"] = "‘소계정’ 틀림",
+            ["363"] = "‘회계 년도’ 틀림",
+            ["364"] = "‘납부 기한’ 경과로 수납 불가",
+            ["365"] = "‘세목’ 틀림",
+            ["366"] = "입력 내역 불충분으로 수납 불가",
+            ["367"] = "창구나 해당 기관을 이용하여 납부",
+            ["368"] = "입력 내역 불충분으로 조회 불가(연대 납부)",
+            ["369"] = "입력 내역 불충분으로 수납 불가(연대 납부)",
+        };
+
+        private static readonly Dictionary<string, string> KftcVanRelayTable = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["M01"] = "API 오류 (세부 응답코드 필드 참조)",
+            ["N01"] = "납부가능 시간 아님",
+            ["N02"] = "납부 불가 카드사",
+        };
+
+        private static readonly Dictionary<string, string> OneCapTable = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
             ["E01"] = "사용자 취소",
             ["E02"] = "Timeout",
             ["E03"] = "설정 화면 사용 중",
-            ["E04"] = "리더기 미설정",
-            ["E05"] = "무결성 실패",
-            ["E06"] = "Kiosk ID 불일치",
-            ["E07"] = "거래 상태 조회 — 일치하는 원거래 없음(Phase 26, PRD §3.4.6)",
-            ["E40"] = "길이 불일치",
-            ["E41"] = "알 수 없는 거래구분",
-            ["E42"] = "전문 식별 불가(본문이 16바이트 미만이라 #4를 읽지 못함, Phase 27 P27-8-f)",
-            ["E43"] = "전문 형식 오류(길이 필드 파손으로 프레이밍 자체가 깨짐, Phase 27 P27-8-f)",
-            ["E99"] = "내부 오류",
+            ["E04"] = "리더기 미설정(사용 가능한 리더기 없음)",
+            ["E05"] = "리더기 무결성 체크 실패",
+            ["E06"] = "키오스크 ID 불일치",
+            ["E07"] = "조회한 원거래 없음(직전 전문 확인 요청 관련)",
+            ["E40"] = "요청 전문 길이 불일치",
+            ["E41"] = "알 수 없는 거래 구분 코드",
+            ["E42"] = "전문 식별 불가(본문이 16바이트 미만이라 #4조차 읽지 못함)",
+            ["E43"] = "전문 형식 오류(길이 필드가 깨져 프레이밍 자체가 불가)",
+            ["E99"] = "원캡 내부 오류(그 외 처리 중 예외)",
+        };
+
+        private static readonly Dictionary<string, string> OneCapReaderTable = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["R00"] = "리더기 상태 정상",
+            ["R01"] = "리더기 무결성 오류",
+            ["R02"] = "Reader Error(카드 리딩 도중 제거)",
+            ["R03"] = "사용자 취소(단말기/멀티패드 종료 버튼)",
+            ["R04"] = "거래요청 Timeout",
+            ["R05"] = "금액 요청 IC",
+            ["R06"] = "IC 카드 거래 불가(카드매체 불량)",
+            ["R07"] = "FallBack(MS가능한 거래)",
+            ["R08"] = "IC 카드 삽입되어있음(카드제거 요청)",
+            ["R09"] = "상황에 맞지 않는 명령",
+            ["R10"] = "상호인증오류(Key 상호인증 시)",
+            ["R11"] = "암호화/복호화오류(Key 다운로드 시)",
+            ["R12"] = "MS거래 불가! IC카드로 진행",
+            ["R13"] = "리더기 KEY 다운로드 요망",
+            ["R14"] = "MS카드를 넣어주세요(MS전용카드 시)",
+            ["R15"] = "RF카드 리딩 에러",
+            ["R16"] = "비정상 RF카드 접촉",
+            ["R17"] = "음성/동영상 파일 번호 없음",
+            ["R18"] = "현금IC 카드 복수 계좌 거래 불가",
+            ["R19"] = "사용자 확인(입력 버튼)",
+            ["R20"] = "2차 검증 데이터 오류(EMV 데이터 오류)",
+            ["R21"] = "정의되지 않은 전문 코드",
+            ["R22"] = "지원되지 않는 전문 코드(해당 리더기 미지원)",
+            ["R23"] = "필드값 오류",
+            ["R24"] = "리더기 포트가 열려 있지 않은 상태에서 명령 시도",
+            ["R25"] = "리더기 명령 송신 실패",
+            ["R26"] = "리더기가 다른 명령 처리 중",
+            ["R27"] = "지정한 COM 포트를 찾을 수 없음",
+            ["R28"] = "리더기 포트 오픈 실패",
+            ["R29"] = "허용되지 않는 명령",
+            ["R30"] = "리더기 응답 수신 중 통신 오류",
+            ["R31"] = "그 외 리더기 DLL 연동 오류(위 항목에 해당하지 않는 경우)",
+            ["R32"] = "리더기 실패 원인을 특정할 수 없는 경우",
+        };
+
+        private static readonly Dictionary<string, string> OneCapVanDllTable = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
             ["D01"] = "VAN DLL 로드 실패",
-            ["D02"] = "VAN 통신 실패",
+            ["D02"] = "VAN DLL 호출 자체 실패(서버 거절과는 다른, 통신 실패)",
         };
 
-        /// <summary>
-        /// 리더기 SPEC 공통 "업무 응답 코드"(00~23, ASCII 2자리) — 원캡이 이 값을 그대로
-        /// "R"+2자리로 옮겨 <c>R0x</c> 계열 코드를 만든다(<c>PosResultCodeMapper.
-        /// FormatReaderBusinessFailureCode</c>). 출처: <c>docs/reader_dll/API명세서.md</c> §9 표.
-        /// </summary>
-        private static readonly Dictionary<string, string> ReaderBusinessCode = new Dictionary<string, string>
+        private static readonly Dictionary<string, string> CardInfoDetailTable = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["00"] = "리더기 상태 정상",
-            ["01"] = "리더기 무결성 오류(무결성 체크 오류)",
-            ["02"] = "Reader Error(IC카드를 넣어주세요) — 카드 리딩 도중 제거",
-            ["03"] = "사용자 취소(단말기/멀티패드 종료 버튼)",
-            ["04"] = "거래요청 Timeout",
-            ["05"] = "금액 요청 IC",
-            ["06"] = "IC 카드 거래 불가(카드매체 불량)",
-            ["07"] = "FallBack(MS가능한 거래)",
-            ["08"] = "IC 카드 삽입되어있음(카드제거 요청)",
-            ["09"] = "상황에 맞지 않는 명령(2차검증 대기 중 부적절 요청 등)",
-            ["10"] = "상호인증오류(Key 상호인증 시)",
-            ["11"] = "암호화/복호화오류(Key 다운로드 시)",
-            ["12"] = "MS거래 불가! IC카드로 진행(IC카드를 MS로 Swipe)",
-            ["13"] = "리더기 KEY 다운로드 요망",
-            ["14"] = "MS카드를 넣어주세요(MS전용카드 시)",
-            ["15"] = "RF카드 리딩 에러",
-            ["16"] = "비정상 RF카드 접촉",
-            ["17"] = "음성/동영상 파일 번호 없음",
-            ["18"] = "현금IC 카드 복수 계좌 거래 불가",
-            ["19"] = "사용자 확인(입력 버튼)",
-            ["20"] = "2차 검증 데이터 오류(EMV 데이터 오류)",
-            ["21"] = "정의되지 않은 전문 코드",
-            ["22"] = "지원되지 않는 전문 코드(정의는 되어 있으나 해당 리더기 미지원)",
-            ["23"] = "필드값 오류",
+            ["000"] = "정상 처리",
+            ["R9999"] = "유효하지 않은 API",
+            ["R2000"] = "JSON 파싱 오류",
+            ["R2101"] = "요청 header 오류",
+            ["R2102"] = "요청 body 오류",
+            ["R3000"] = "복호화 오류",
+            ["R4000"] = "인코딩 오류",
+            ["R5000"] = "조회 내역 없음",
+            ["R6000"] = "기타 오류",
+            ["R8000"] = "포맷 오류",
+            ["PAY001"] = "전자납부번호 형식 오류",
+            ["PAY207"] = "타인내역 납부 불가",
+            ["PAY501"] = "납부불가 금융기관",
+            ["PAY502"] = "납부가능 일자 아님",
+            ["PAY503"] = "납부가능 시간 경과",
+            ["PAY504"] = "일괄납부 가능 건수 초과",
+            ["M0089"] = "VAN 이용 불가",
+            ["M1100"] = "존재하지 않는 지로번호 오류",
+            ["M1101"] = "이용기관 정보 오류",
+            ["M1102"] = "요금 종류 오류",
         };
 
-        /// <summary>
-        /// 리더기 DLL(ReaderSerial.dll) 연동 레벨 실패(<c>R24</c>~<c>R32</c>). 출처:
-        /// <c>Services/Payment/PosResultCodeMapper.cs</c>의 <c>DllCallFailure</c> 분기(값만 옮김).
-        /// 2026-09-14: 원래 <c>R20</c>~<c>R29</c>였으나 리더기 업무 응답코드(<c>R00</c>~<c>R23</c>)와
-        /// 값이 겹쳐 24부터 재배치했다(development_plan.md P27-9 (a-0), fault_alert_catalog.md §7).
-        /// </summary>
-        private static readonly Dictionary<string, string> ReaderDllFailureCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["R24"] = "READER_ERR_PORT_NOT_OPEN(포트가 열려 있지 않은 상태에서 명령을 시도함)",
-            ["R25"] = "READER_ERR_SEND_FAIL(명령 송신 자체가 실패함)",
-            ["R26"] = "READER_ERR_BUSY(리더기가 이미 다른 명령을 처리 중)",
-            ["R27"] = "READER_ERR_PORT_NOT_FOUND(지정한 COM 포트를 찾을 수 없음)",
-            ["R28"] = "READER_ERR_PORT_OPEN_FAIL(포트 오픈 실패)",
-            ["R29"] = "READER_ERR_COMMAND_NOT_ALLOWED(허용되지 않는 명령)",
-            ["R30"] = "CommunicationError(응답 수신 중 통신 오류)",
-            ["R31"] = "그 외 DLL 연동 오류 catch-all(PORT_CONFIG_FAIL/PORT_CLOSING/PORT_ALREADY_OPEN/" +
-                      "INVALID_LENGTH/BUFFER_OVERFLOW/INTERNAL/INVALID_ARGUMENT/MAX_READER_COUNT/" +
-                      "INVALID_READER_ID/PINPAD_NOT_SUPPORTED 등 — 결제 흐름 중 실관찰 없음)",
-            ["R32"] = "리더기 응답을 특정할 수 없는 방어적 실패(참여 리더기 전원 송신 실패 / 성공인데 " +
-                      "카드데이터가 빈 방어 경로 / 07·12 재시도 상한 초과 중 하나 — 원인 구분은 로그가 담당)",
-        };
+        private const string DetailM22Description = "국세 자진납부 입력 항목 관련 오류";
+        private const string DetailM23Description = "납부금액 검증 관련 오류";
+
+        /// <summary>800000 응답에서 API 세부 응답코드를 담는 필드 번호(<c>#27</c>).</summary>
+        public const int CardInfoDetailFieldNumber = 27;
 
         /// <summary>
-        /// 응답 코드 문자열을 사람이 읽는 설명으로 바꾼다. 모르는 코드는 절대 추측해서 채우지
-        /// 않고 "정의되지 않은 코드"라고 정직하게 알린다(development_plan.md P19-6 요구사항).
+        /// 응답 코드를 <c>{내용} · {출처}</c>로 바꾼다. 표에 없으면 <c>정의되지 않은 코드 · {출처}</c>,
+        /// 빈 값은 <c>정의되지 않은 코드(빈 값)</c>.
         /// </summary>
         public static string Describe(string? code)
         {
-            if (code == null)
-                return "정의되지 않은 코드(값 없음)";
-
-            string trimmed = code.Trim();
+            string trimmed = code == null ? string.Empty : code.Trim();
             if (trimmed.Length == 0)
                 return "정의되지 않은 코드(빈 값)";
 
-            if (Exact.TryGetValue(trimmed, out var exact))
-                return exact;
+            string? description = null;
+            string source = "출처를 알 수 없음";
 
-            // R 계열: "R"+2자리. 리더기 업무 응답코드(R0x, 00~23 전체를 그대로 옮김)와
-            // 리더기 DLL 연동 실패(R24~R32)는 2026-09-14 재배치 이후 값 공간이 분리되어 더 이상
-            // 겹치지 않는다(development_plan.md P27-9 (a-0)). 과거(R20~R29 시절)에는 두 체계가
-            // 같은 문자열을 공유해 아래처럼 두 가능성을 모두 보여줘야 했으나, 지금은 이론상 항상
-            // 한쪽만 매치된다 — 그래도 방어적으로 두 사전을 모두 조회하는 구조는 유지한다.
-            if (trimmed.Length == 3 && (trimmed[0] == 'R' || trimmed[0] == 'r'))
+            if (trimmed.Length == 3)
             {
-                string digits = trimmed.Substring(1);
-                bool hasBusiness = ReaderBusinessCode.TryGetValue(digits, out var businessDesc);
-                bool hasDllFailure = ReaderDllFailureCode.TryGetValue("R" + digits, out var dllDesc);
-
-                if (hasBusiness && hasDllFailure)
+                char c0 = trimmed[0];
+                if (IsDigit(c0) && IsDigit(trimmed[1]) && IsDigit(trimmed[2]))
                 {
-                    return $"[리더기 업무 응답코드 실패(R0x)일 경우] {businessDesc} / " +
-                           $"[리더기 DLL 연동 실패(R24~R32)일 경우] {dllDesc} " +
-                           "— 코드 문자열만으로는 두 체계 중 어느 쪽인지 구분되지 않는다(로그 대조 필요).";
+                    if (CommonTable.TryGetValue(trimmed, out string? common))
+                    {
+                        description = common;
+                        source = "공통 응답";
+                    }
+                    else if (InternetGiroTable.TryGetValue(trimmed, out string? giro))
+                    {
+                        description = giro;
+                        source = "인터넷지로 응답";
+                    }
+                    else
+                    {
+                        source = "서버 응답";
+                    }
                 }
-                if (hasBusiness)
-                    return $"리더기 업무 응답코드 실패(R0x): {businessDesc}";
-                if (hasDllFailure)
-                    return $"리더기 DLL 연동 실패(R24~R32): {dllDesc}";
+                else if ((c0 == 'M' || c0 == 'N') && IsUpperAlnum(trimmed[1]) && IsUpperAlnum(trimmed[2]))
+                {
+                    KftcVanRelayTable.TryGetValue(trimmed, out description);
+                    source = "KFTCVAN 중계 응답";
+                }
+                else if (c0 == 'V' && IsUpperAlnum(trimmed[1]) && IsUpperAlnum(trimmed[2]))
+                {
+                    KftcVanApprovalCodeTable.Entries.TryGetValue(trimmed.Substring(1), out description);
+                    source = "KFTCVAN 승인 응답 (별첨1)";
+                }
+                else if (c0 == 'E' && IsDigit(trimmed[1]) && IsDigit(trimmed[2]))
+                {
+                    OneCapTable.TryGetValue(trimmed, out description);
+                    source = "원캡 응답";
+                }
+                else if (c0 == 'R' && IsDigit(trimmed[1]) && IsDigit(trimmed[2]))
+                {
+                    OneCapReaderTable.TryGetValue(trimmed, out description);
+                    source = "원캡 응답 · 리더기";
+                }
+                else if (c0 == 'D' && IsDigit(trimmed[1]) && IsDigit(trimmed[2]))
+                {
+                    OneCapVanDllTable.TryGetValue(trimmed, out description);
+                    source = "원캡 응답 · VAN DLL";
+                }
             }
 
-            return "정의되지 않은 코드";
+            return (description ?? "정의되지 않은 코드") + " · " + source;
         }
+
+        /// <summary>800000 API 세부 응답코드(<c>#27</c>)의 내용. 없으면 null(공백 처리는 호출자).</summary>
+        public static string? DescribeCardInfoDetail(string? detailCode)
+        {
+            string trimmed = detailCode == null ? string.Empty : detailCode.Trim();
+            if (trimmed.Length == 0)
+                return null;
+
+            if (CardInfoDetailTable.TryGetValue(trimmed, out string? fixedText))
+                return fixedText;
+
+            if (trimmed.Length == 5)
+            {
+                if (trimmed.StartsWith("M22", StringComparison.Ordinal))
+                    return DetailM22Description;
+                if (trimmed.StartsWith("M23", StringComparison.Ordinal))
+                    return DetailM23Description;
+            }
+
+            return null;
+        }
+
+        private static bool IsDigit(char c) => c >= '0' && c <= '9';
+
+        private static bool IsUpperAlnum(char c) => IsDigit(c) || (c >= 'A' && c <= 'Z');
     }
 }

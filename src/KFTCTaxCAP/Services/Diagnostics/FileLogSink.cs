@@ -46,7 +46,7 @@ public sealed class FileLogSink : ILogSink
     public void Write(LogRecord record)
     {
         byte[] recordBytes = RenderRecordBytes(record);
-        byte[]? noteBytes = BuildCodeNoteBytes(record.Code);
+        byte[]? noteBytes = BuildCodeNoteBytes(record);
 
         lock (SyncRoot)
         {
@@ -74,15 +74,49 @@ public sealed class FileLogSink : ILogSink
     /// 이 줄을 별도 레코드로 매치하지 않지만, 앞 레코드와 같은 시각 범위 안에 있어 슬라이스 결과에는
     /// 그대로 함께 포함된다(경계선이 포함되는 것과 동일).
     /// </summary>
-    private static byte[]? BuildCodeNoteBytes(string? code)
+    internal static byte[]? BuildCodeNoteBytes(LogRecord record)
     {
+        string? code = record.Code;
         string? description = LogCodeCatalog.Describe(code);
-        if (description is null)
+        string? detailLine = BuildDetailLine(record.DetailCode);
+        if (description is null && detailLine is null)
         {
             return null;
         }
 
-        return Encoding.UTF8.GetBytes($"    └ 코드 설명: {code} = {description}{Environment.NewLine}");
+        var text = new StringBuilder();
+        if (description is not null)
+        {
+            text.Append($"    └ 코드 설명: {code} = {description}{Environment.NewLine}");
+        }
+
+        if (detailLine is not null)
+        {
+            text.Append(detailLine).Append(Environment.NewLine);
+        }
+
+        return Encoding.UTF8.GetBytes(text.ToString());
+    }
+
+    /// <summary>
+    /// Phase 45(PRD §17.3) 800000 <c>M01</c> 세부 코드 줄. null이면 세부 줄 없음, 공백이면 "없음",
+    /// 표에 없으면 "정의되지 않은 코드".
+    /// </summary>
+    private static string? BuildDetailLine(string? detailCode)
+    {
+        if (detailCode is null)
+        {
+            return null;
+        }
+
+        string trimmed = detailCode.Trim();
+        if (trimmed.Length == 0)
+        {
+            return "    └ 세부 코드: 없음";
+        }
+
+        string meaning = KFTCTaxCAP.Protocol.Pos.PosResponseCodeCatalog.DescribeCardInfoDetail(trimmed) ?? "정의되지 않은 코드";
+        return $"    └ 세부 코드: {trimmed} = {meaning}";
     }
 
     /// <summary>
