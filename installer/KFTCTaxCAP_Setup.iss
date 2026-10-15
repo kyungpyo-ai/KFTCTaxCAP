@@ -30,7 +30,9 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=..\delivery
 OutputBaseFilename=KFTCTaxCAP_Setup_{#AppVersion}
-SetupIconFile=..\src\KFTCTaxCAP\Assets\Icons\KFTCTaxCAP.ico
+; 설치 파일(setup.exe) 아이콘 — 원캡 설치 파일과 같은 setupico.ico(D:\OneCap\RELEASE\KFTCOneCAP\, 16~256px 9종)를 복사해 뒀다.
+; 앱 아이콘(KFTCTaxCAP.ico)과는 별개다 — 설치된 프로그램·바로가기·제거 항목은 계속 앱 아이콘을 쓴다.
+SetupIconFile=setupico.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2
 SolidCompression=yes
