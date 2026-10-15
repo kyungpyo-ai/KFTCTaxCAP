@@ -300,6 +300,10 @@ internal static class AlertFixedPhraseSelfTest
             // ReaderSetupViewModel 고정 문구 2개.
             new() { Source = "ReaderSetupViewModel.DuplicatePortMessage", Text = ReaderSetupViewModel.DuplicatePortMessage },
             new() { Source = "ReaderSetupViewModel.DiscardChangesQuestion", Text = ReaderSetupViewModel.DiscardChangesQuestion },
+
+            // HomeViewModel "준비 중" 안내 2개(2026-10-15).
+            new() { Source = "HomeViewModel.LogSendNotReadyMessage", Text = HomeViewModel.LogSendNotReadyMessage },
+            new() { Source = "HomeViewModel.UpdateNotReadyMessage", Text = HomeViewModel.UpdateNotReadyMessage },
         };
 
         // BuildReceiptPrintFailureMessage / BuildReceiptPrintWarningMessage — None 제외 사유 전부(9종). 전부

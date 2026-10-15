@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using KFTCTaxCAP.ViewModels;
+using KFTCTaxCAP.Views.Dialogs;
 
 namespace KFTCTaxCAP.Views;
 
@@ -43,6 +44,7 @@ public partial class HomeWindow : Window
         ViewModel.ReaderSetupRequested += OnReaderSetupRequested;
         ViewModel.ShopSetupRequested += OnShopSetupRequested;
         ViewModel.PaymentScreenRequested += OnPaymentScreenRequested;
+        ViewModel.AlertRequested += (_, m) => AlertDialog.Show(this, m.Text, "KFTCTaxCAP", m.Kind);
         SourceInitialized += HomeWindow_SourceInitialized;
     }
 

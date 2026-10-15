@@ -33,6 +33,28 @@
       리소스로 읽는다(HomeWindow.EnsureTrayIcon).
     -->
     <ApplicationIcon>Assets\Icons\KFTCTaxCAP.ico</ApplicationIcon>
+    <!--
+      2026-10-15: 앱 버전의 유일한 정본(docs/home_reader_setup/PRD_WPF.md §3.2). 실행 파일 버전·홈 화면 표기·설치 파일
+      이름(scripts/make_installer.ps1이 여기서 읽는다)이 모두 이 값을 쓴다. 주.부.수정 세 자리로 올린다.
+      KftcReleaseLabel이 비어 있지 않으면 화면 버전 뒤에 "(값)"으로 붙는다 — 정식 배포 때 비운다.
+    -->
+    <Version>1.0.0</Version>
+    <KftcReleaseLabel>테스트</KftcReleaseLabel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>KftcReleaseLabel</_Parameter1>
+      <_Parameter2>$(KftcReleaseLabel)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    2026-10-15: 배포본 표시. scripts/make_installer.ps1이 -p:KftcDistribution=true로 켜며, 켜지면 App.OnStartup이
+    개발용 진단 인자(dash-dash 하네스 인자 전부)를 무시한다. 개발 PC의 Debug/Release 빌드는 영향 없다.
+  -->
+  <PropertyGroup Condition="'$(KftcDistribution)' == 'true'">
+    <DefineConstants>$(DefineConstants);KFTC_DISTRIBUTION</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

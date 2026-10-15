@@ -15,3 +15,7 @@ docs/payment_relay/images/_preview_crop/
 # (VAN 서버 IP/포트가 평문으로 남는다). 이 앱 코드가 만드는 로그(C:\KFTC_PosAgent\KFTCTaxLog\)와
 # 무관한 DLL 내부 산출물이라 커밋 대상이 아니다.
 /log/
+
+# 설치 파일 생성기(scripts/make_installer.ps1)가 받는 VC++ 런타임 — Microsoft 배포 바이너리라 커밋하지 않는다.
+installer/redist/
+installer/build/

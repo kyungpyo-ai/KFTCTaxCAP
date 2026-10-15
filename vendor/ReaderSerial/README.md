@@ -4,6 +4,10 @@
 2026-08-13 기준). 이 저장소가 소스를 소유하지 않는다 — 갱신이 필요하면 원본 저장소에서 새 `package/`를 받아
 이 폴더 전체를 덮어쓴다.
 
+- 2026-10-15: `ReaderSerial.dll`만 파일 버전 리소스(1.0.0.0)가 들어간 빌드로 교체했다. 공개 헤더·API는 2026-10-08
+  스냅샷과 같다(헤더 바이트 일치 확인). 홈 화면의 "리더기 모듈 Ver"가 이 파일 버전을 읽는다
+  (`docs/home_reader_setup/PRD_WPF.md` §3.2).
+
 - `ReaderSerial.dll` / `.lib` / `.h` — 배포 바이너리 및 공개 API 헤더(5개 함수: `Reader_OpenPort`/
   `Reader_ClosePort`/`Reader_IsPortOpen`/`Reader_SendCommand`/`Pinpad_SendCommand`).
 - `CSharpSample/` — 원본 저장소의 `src/ReaderSerialCSharpSample/` 예제 소스(참조용, 이 프로젝트 솔루션에

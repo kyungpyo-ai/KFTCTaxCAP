@@ -55,6 +55,9 @@
         <Setter Property="Foreground" Value="{StaticResource SubTextBrush}"/>
     </Style>
 
+    <!-- 서브타이틀의 버전 부분(2026-10-15) : 일반 모드 14와 같은 비율(13.33/17.33)로 축소 -->
+    <sys:Double x:Key="HomeSubtitleVersionFontSize">10.67</sys:Double>
+
     <!-- 카드 제목 : PRD 컴팩트 12pt → 16px -->
     <Style x:Key="HomeCardTitleTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>

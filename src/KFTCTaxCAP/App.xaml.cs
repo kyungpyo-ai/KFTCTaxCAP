@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Threading;
 using System.Windows;
 using KFTCTaxCAP.Protocol.Pos.Schemas;
+using KFTCTaxCAP.Services;
 using KFTCTaxCAP.Services.Diagnostics;
 using KFTCTaxCAP.Services.Payment;
 using KFTCTaxCAP.Services.Pos;
@@ -75,6 +76,16 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // 배포본(KFTC_DISTRIBUTION — scripts/make_installer.ps1이 켠다, 2026-10-15)은 개발용 진단 인자를 전부
+        // 무시하고 인자 없는 정상 기동과 똑같이 동작한다. 하네스 중에는 실 VAN 호출·반복 거래처럼 현장에서
+        // 실수로 돌면 안 되는 것이 있고, 인자가 있으면 아래 단일 인스턴스 가드도 건너뛰기 때문이다.
+        // 개발 PC의 Debug/Release 빌드(--memory-clear-test 등 Release 증적 포함)는 그대로 인자를 받는다.
+        string[] args = e.Args;
+#if KFTC_DISTRIBUTION
+        string[] ignoredArgs = args;
+        args = Array.Empty<string>();
+#endif
+
         // 단일 인스턴스 가드(docs/operations/development_plan.md P22-0 보강, 2026-09-01): 로그 싱크
         // 구성보다도 먼저 체크한다 — 이미 살아있는 인스턴스가 있으면 이 프로세스는 로그 한 줄 남기지
         // 않고 조용히 즉시 종료한다(살아있는 인스턴스가 있다면 그쪽 로그에 흔적을 남기는 편이 더
@@ -82,7 +93,7 @@ public partial class App : Application
         // 등, 아래 분기 참고)가 있을 때는 가드를 건너뛴다 — 프로덕션 기동은 인자 없이 이뤄지므로,
         // 인자가 있으면 개발자가 의도적으로 여러 인스턴스/여러 하네스를 동시에 띄우는 상황으로
         // 간주한다.
-        if (e.Args.Length == 0 && !TryAcquireSingleInstance())
+        if (args.Length == 0 && !TryAcquireSingleInstance())
         {
             Shutdown();
             return;
@@ -94,6 +105,11 @@ public partial class App : Application
         // (RingBufferSink, 제거됨) 대신 LogFileReader가 파일을 직접 슬라이스하는 방식으로 대체됐다.
         // 장래 원격 싱크는 여기에 인자를 추가하는 것만으로 병렬 연결된다.
         FileLogger.ConfigureSinks(new FileLogSink());
+
+        // 2026-10-15(외부 업체 테스트 배포 전): 처리되지 않은 예외의 원인(종류·메시지·호출 위치)을 로그에 남긴다.
+        // 그전에는 앱이 기록 없이 꺼졌다. 종료 동작은 바꾸지 않는다 — 기록만 하고, 죽을 예외는 예전처럼 죽는다.
+        // 죽은 뒤 자동 재실행(watchdog)은 후속 작업이다(docs/home_reader_setup/PRD_WPF.md §1.3).
+        RegisterUnhandledExceptionLogging();
 
         // Phase 22(docs/operations/development_plan.md P22-5, PRD.md §1.2): 90일 보관 정리를 앱 기동
         // 시 1회 백그라운드로 수행한다(기동 경로를 블로킹하지 않음). 날짜가 바뀌어 새 로그 파일을
@@ -107,6 +123,14 @@ public partial class App : Application
         // 시작됐다"를 한눈에 알아볼 수 있도록, 기동 로그의 맨 앞에 눈에 띄는 구분선을 남긴다.
         FileLogger.WriteStartupBanner();
         FileLogger.Info(LogCategory.App, "애플리케이션 기동 시작");
+        FileLogger.Info(LogCategory.App,
+            $"[버전] KFTCTaxCAP {AppVersionInfo.InformationalVersion}" +
+            (AppVersionInfo.ReleaseLabel.Length > 0 ? $" ({AppVersionInfo.ReleaseLabel})" : string.Empty) +
+            $" | ReaderSerial.dll {AppVersionInfo.ReaderModuleFileVersion}");
+#if KFTC_DISTRIBUTION
+        if (ignoredArgs.Length > 0)
+            FileLogger.Warn(LogCategory.App, $"배포본이라 실행 인자를 무시함: {string.Join(" ", ignoredArgs)}", code: null, transactionId: null);
+#endif
 
         // 2026-09-17 사용자 요청 — 기동 시점에 레지스트리에 저장된 설정값을 로그 한 줄로 남긴다.
         // 실기 테스트/장애 재현 시 "이번 실행이 어떤 설정으로 동작했는지"를 레지스트리를 직접 열어
@@ -147,7 +171,7 @@ public partial class App : Application
 
         // 개발/검증용(docs/alert_dialog/development_plan.md P38-5): `--alert-gallery compact`는 화면 높이와
         // 무관하게 컴팩트 리소스로 띄운다 — 개발 PC(1080)에서 컴팩트 모드(Malgun Gothic) 알림창을 확인하기 위함.
-        if (e.Args.Length > 1 && e.Args[0].ToLowerInvariant() == "--alert-gallery" && e.Args[1].ToLowerInvariant() == "compact")
+        if (args.Length > 1 && args[0].ToLowerInvariant() == "--alert-gallery" && args[1].ToLowerInvariant() == "compact")
             isCompact = true;
 
         var typographySource = isCompact
@@ -207,15 +231,15 @@ public partial class App : Application
         PosServer = new PosSocketServer(PaymentQueue);
         PosServer.Start();
 
-        if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--gallery")
+        if (args.Length > 0 && args[0].ToLowerInvariant() == "--gallery")
         {
             StartupUri = new Uri("Views/StyleGalleryWindow.xaml", UriKind.Relative);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--home")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--home")
         {
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--shop-setup")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--shop-setup")
         {
             // 개발/회귀 검증용(P23-3 완료 조건, 최종 산출물 아님) — app.manifest가
             // requireAdministrator라 UIPI 때문에 자동화 클릭으로 홈 화면 카드를 눌러 이 창을 여는
@@ -223,7 +247,7 @@ public partial class App : Application
             // 패턴으로 이 창을 직접 띄워 스크린샷 대조가 가능하게 한다.
             StartupUri = new Uri("Views/ShopSetupWindow.xaml", UriKind.Relative);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--home-notice-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--home-notice-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P13-4): 홈 화면을 먼저 띄운 뒤
             // 2초 후 알림창을 같은 프로세스에서 띄워, "알림창이 홈 화면을 전면에 끌어올리지 않는다"를
@@ -237,7 +261,7 @@ public partial class App : Application
             };
             timer.Start();
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--notice-van-processing-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--notice-van-processing-test")
         {
             // 개발/회귀 검증용(P13-5 완료 조건 "VanProcessing 중 ESC를 눌러도 취소가 발생하지 않음"):
             // 3초 자동 순환 데모(PaymentNoticeWindow())는 상태가 계속 바뀌어 타이밍을 맞추기 어려우므로,
@@ -255,7 +279,7 @@ public partial class App : Application
             // "여전히 취소 가능한지"(_canceled가 실제로는 false인지)를 눈으로 구분할 수 있게 한다.
             // 화면 확인용: `--notice-van-processing-test hold`는 IC로 전환하지 않고 거래중을 계속 유지한다
             // (Phase 42, 실제 결제 흐름에서는 거래중이 너무 빨리 지나가 눈으로 보기 어려워 추가).
-            bool hold = e.Args.Length > 1 && e.Args[1].ToLowerInvariant() == "hold";
+            bool hold = args.Length > 1 && args[1].ToLowerInvariant() == "hold";
             if (!hold)
             {
                 var revealTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
@@ -267,7 +291,7 @@ public partial class App : Application
                 revealTimer.Start();
             }
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--notice-pin-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--notice-pin-test")
         {
             // 개발/회귀 검증용(P18-2 완료 조건 "PIN 상태로 띄워 스크린샷 대조"): State를 PinEntry로
             // 고정한 채(순환 없이) 띄워 레이아웃을 확인한다. --notice-van-processing-test와 같은 패턴.
@@ -278,7 +302,7 @@ public partial class App : Application
             vm.Canceled += (_, _) => window.Close();
             window.Show();
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--presenter-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--presenter-test")
         {
             // 개발/회귀 검증용(P13-6 완료 조건): IPaymentNoticePresenter의 모든 메서드를 백그라운드
             // 스레드에서 호출해 예외 없이 동작하는지, 닫힌 뒤 ChangeState/Close가 조용히 무시되는지,
@@ -330,7 +354,7 @@ public partial class App : Application
                 }
             });
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--esc-hook-stress-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--esc-hook-stress-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P13-5 완료 조건 "10회 연속
             // 열고 닫은 뒤에도 훅이 남아 있지 않음"): 알림창을 같은 프로세스에서 10회 연속 열고 닫아
@@ -348,7 +372,7 @@ public partial class App : Application
             FileLogger.Info("ESC 훅 스트레스 테스트(알림창 10회 연속 열고 닫기) 완료 — 예외 없음");
             Shutdown();
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--pos-client-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--pos-client-test")
         {
             // 개발/회귀 검증용(P14-3/P14-4/P14-5 완료 조건, 최종 산출물 아님): 소켓 서버가 이미
             // 기동돼 있으므로(위에서 Start() 완료) 백그라운드에서 이 프로세스 자신에게 클라이언트로
@@ -356,7 +380,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(PosClientTestScenarios.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--repeat-transactions-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--repeat-transactions-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P21-4 완료 조건, 최종 산출물
             // 아님): 501008(카드리딩 없음)을 50회 반복 처리하며 이 프로세스의 핸들/WorkingSet 추이를
@@ -364,7 +388,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(RepeatedTransactionResourceTest.Run);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--payment-flow-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--payment-flow-test")
         {
             // 개발/회귀 검증용(P15-10 완료 조건, 최종 산출물 아님): PaymentOrchestrator(P15-6~P15-9)를
             // FakeReaderEndpoint 등 가짜 부품으로 감싼 별도 인스턴스를 만들어 실장비 없이 15개
@@ -373,7 +397,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(PaymentFlowTestScenarios.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--van-call-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--van-call-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P20-3 완료 조건, 최종 산출물
             // 아님): VanService(Phase 20)를 직접 만들어 FNAISCRDVAN을 실제로 호출한다. App.Orchestrator
@@ -383,7 +407,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(VanCallTestScenarios.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--keydown-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--keydown-test")
         {
             // 개발/회귀 검증용(docs/operations/development_plan.md P24-5 완료 조건, 최종 산출물
             // 아님): KeyDownloadService(P24-4)를 FakeKeyDownloadReaderEndpoint/FakeKeyDownloadVanClient
@@ -393,7 +417,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(KeyDownloadTestScenarios.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--secure-clear-self-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--secure-clear-self-test")
         {
             // 개발/회귀 검증용(docs/operations/development_plan.md P25-1 완료 조건, 최종 산출물
             // 아님): SecureClear(Phase 25) 자체가 Release 빌드에서 JIT 최적화(dead store
@@ -402,7 +426,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(SecureClearSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--pin-encryption-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--pin-encryption-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P44-4 완료 조건, 최종 산출물
             // 아님): 902614 #51 SEED 암호화(SeedCipher RFC 4269 벡터, MASTKEY2.key 로드, 기존 시스템
@@ -411,7 +435,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(PinEncryptionSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--memory-clear-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--memory-clear-test")
         {
             // 개발/회귀 검증용(docs/operations/development_plan.md P25-9 완료 조건, 최종 산출물
             // 아님): 카드리딩 데이터(CardReadData)·PIN 버퍼·POS 전문 본문(PosTelegram)·키다운로드
@@ -422,7 +446,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(MemoryClearTestScenarios.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--pos-client-resilience-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--pos-client-resilience-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P29-5 완료 조건, 최종 산출물
             // 아님): PosClient(P29-5)가 902614 타임아웃 여유(구조적 확인)와 서버 무응답 종료 내성(가짜
@@ -431,7 +455,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(PosClientResilienceSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--random-value-generator-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--random-value-generator-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P29-4 완료 조건, 최종 산출물
             // 아님): PosRandomValueGenerator가 501008/800000/902614 실제 스키마와 합성 홀수 길이 AHN
@@ -440,7 +464,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(PosRandomValueGeneratorSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--realistic-test-value-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--realistic-test-value-test")
         {
             // 개발/회귀 검증용(docs/receipt_print/development_plan.md P37-1 완료 조건, 최종 산출물 아님):
             // RealisticTestValueGenerator(결제창·VAN 스텁 테스트값)의 규칙 커버리지·금액 정합·날짜·카드사 쌍과
@@ -449,7 +473,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(RealisticTestValueGeneratorSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--field-chain-converter-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--field-chain-converter-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P30-3 완료 조건, 최종 산출물
             // 아님): TelegramFieldChainConverter의 절삭(반글자 방지)·합산 경계 케이스를 확인한다.
@@ -458,7 +482,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(TelegramFieldChainConverterSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--response-code-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--response-code-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P45-6 완료 조건, 최종 산출물 아님):
             // 응답코드 카탈로그(PosResponseCodeCatalog)·로그 설명 줄(LogCodeCatalog/FileLogSink)·결제창 해설띠
@@ -466,7 +490,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(ResponseCodeSelfTest.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--response-band-demo")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--response-band-demo")
         {
             // 개발용 시연(docs/payment_relay/development_plan.md P45-4, 최종 산출물 아님): 결제 화면을 전송 함수를
             // 바꿔 끼운 ViewModel로 단독으로 연다 — 탭별로 전송할 때마다 응답코드 시나리오를 순환해 해설띠·배지를
@@ -478,7 +502,7 @@ public partial class App : Application
             MainWindow = demoWindow;
             demoWindow.Show();
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--log-file-reader-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--log-file-reader-test")
         {
             // 개발/회귀 검증용(docs/operations/development_plan.md P27-4 완료 조건, 최종 산출물
             // 아님): LogFileReader(P27-2/P27-3)와 LogLineParser(P27-1)를 합성 로그 파일(2005년대
@@ -487,7 +511,7 @@ public partial class App : Application
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
             System.Threading.Tasks.Task.Run(LogFileReaderTestScenarios.RunAll);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--payment-screen-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--payment-screen-test")
         {
             // 개발/회귀 검증용(docs/payment_relay/development_plan.md P29-6 완료 조건, 최종 산출물
             // 아님): 결제 화면(P29-6)을 홈 화면 없이 직접 띄운다. 홈 카드(P29-7)에서 여는 정상 경로는
@@ -495,7 +519,7 @@ public partial class App : Application
             // 등록하지 않음)와 무관하게 화면 단독 동작(요청 표 임의값 채움, 전송, 응답 표시)만 확인한다.
             StartupUri = new Uri("Views/PaymentScreenWindow.xaml", UriKind.Relative);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--receipt-print-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--receipt-print-test")
         {
             // 개발/회귀 검증용(docs/receipt_print/development_plan.md P33-1~P33-4 완료 조건, 최종
             // 산출물 아님): Protocol/Printer/(CP949 폭 계산·줄바꿈·인코더·상태 파서)와 Services/Printer/
@@ -503,7 +527,7 @@ public partial class App : Application
             // (self/dump/print/status). UI는 홈 화면을 그대로 띄운다.
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
 
-            string mode = e.Args.Length > 1 ? e.Args[1].ToLowerInvariant() : string.Empty;
+            string mode = args.Length > 1 ? args[1].ToLowerInvariant() : string.Empty;
             if (mode == "self")
             {
                 System.Threading.Tasks.Task.Run(ReceiptPrintSelfTest.RunAll);
@@ -512,16 +536,16 @@ public partial class App : Application
             {
                 System.Threading.Tasks.Task.Run(ReceiptPrintDiagnosticHarness.RunDump);
             }
-            else if (mode == "print" && e.Args.Length > 3)
+            else if (mode == "print" && args.Length > 3)
             {
-                string portArg = e.Args[2];
-                string speedArg = e.Args[3];
+                string portArg = args[2];
+                string speedArg = args[3];
                 System.Threading.Tasks.Task.Run(() => ReceiptPrintDiagnosticHarness.RunPrint(portArg, speedArg));
             }
-            else if (mode == "status" && e.Args.Length > 3)
+            else if (mode == "status" && args.Length > 3)
             {
-                string portArg = e.Args[2];
-                string speedArg = e.Args[3];
+                string portArg = args[2];
+                string speedArg = args[3];
                 System.Threading.Tasks.Task.Run(() => ReceiptPrintDiagnosticHarness.RunStatus(portArg, speedArg));
             }
             else
@@ -532,21 +556,21 @@ public partial class App : Application
                     "print <포트번호> <속도> | status <포트번호> <속도>");
             }
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--alert-gallery")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--alert-gallery")
         {
             // 개발/검증용(docs/alert_dialog/development_plan.md P38-2~P38-4 화면 검증, 최종 산출물 아님):
             // 원본 캡처와 같은 문구, 조합 선택(5종 × 본문 길이 × 버튼 구성), PRD §4.2 실제 문구 14행,
             // 특수 경우(백그라운드 스레드·owner 없음·owner 최소화·닫힌 owner)를 띄우고 반환 결과를 화면에 표시한다.
             StartupUri = new Uri("Views/Dialogs/AlertGalleryWindow.xaml", UriKind.Relative);
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--alert-dialog-test")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--alert-dialog-test")
         {
             // 개발/회귀 검증용(docs/alert_dialog/development_plan.md P38-1/P38-4 완료 조건, 최종 산출물
             // 아님): AlertTextSplitter/AlertBehavior/AlertDialogViewModel을 창을 띄우지 않고 순수 로직으로
             // 검증한다. 모드는 두 번째 인자(self). UI는 홈 화면을 그대로 띄운다.
             StartupUri = new Uri("Views/HomeWindow.xaml", UriKind.Relative);
 
-            string alertTestMode = e.Args.Length > 1 ? e.Args[1].ToLowerInvariant() : string.Empty;
+            string alertTestMode = args.Length > 1 ? args[1].ToLowerInvariant() : string.Empty;
             if (alertTestMode == "self")
             {
                 // Phase 39 P39-4(docs/alert_dialog/development_plan.md) — 종류·문구 대조 + 제목·본문 줄
@@ -570,7 +594,7 @@ public partial class App : Application
                 FileLogger.Info("[alert-dialog-test] 사용법: --alert-dialog-test self");
             }
         }
-        else if (e.Args.Length > 0 && e.Args[0].ToLowerInvariant() == "--notice-demo")
+        else if (args.Length > 0 && args[0].ToLowerInvariant() == "--notice-demo")
         {
             // 개발용 결제 알림창 실시간 애니메이션 데모(수동 실행 전용). 예전엔 인자 없는 기본
             // 실행이 곧장 이 데모로 갔는데(Opus 검증 리뷰 2026-08-24, H-2), 그러면 배포 빌드에서
@@ -585,6 +609,24 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+    }
+
+    /// <summary>
+    /// 전역 예외 기록(2026-10-15). UI 스레드·그 밖의 스레드·관찰되지 않은 Task 예외를 각각 ERROR/WARN으로 남긴다.
+    /// <c>e.Handled</c>나 <c>SetObserved</c>를 건드리지 않으므로 앱이 계속 도는지 죽는지는 예전과 같다.
+    /// FileLogSink는 동기 기록이라 프로세스가 곧 끝나도 이 줄은 파일에 남는다.
+    /// </summary>
+    private void RegisterUnhandledExceptionLogging()
+    {
+        DispatcherUnhandledException += (_, e) =>
+            FileLogger.Error(LogCategory.App, $"[처리되지 않은 예외] UI 스레드 — {e.Exception}");
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            FileLogger.Error(LogCategory.App,
+                $"[처리되지 않은 예외] {(e.IsTerminating ? "프로세스 종료" : "계속 실행")} — {e.ExceptionObject}");
+
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+            FileLogger.Warn(LogCategory.App, $"[관찰되지 않은 Task 예외] {e.Exception}");
     }
 
     /// <summary>Phase 12(P12-1)/Phase 14(P14-2/P14-3) — 앱 종료 시 리소스를 정리한다(PRD §9).</summary>

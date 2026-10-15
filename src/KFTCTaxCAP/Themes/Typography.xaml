@@ -35,6 +35,9 @@
         <Setter Property="Foreground" Value="{StaticResource SubTextBrush}"/>
     </Style>
 
+    <!-- 서브타이틀의 버전 부분(2026-10-15, PRD_WPF.md §3.2) : 10.5pt — 프로그램 설명(13pt)보다 작게 -->
+    <sys:Double x:Key="HomeSubtitleVersionFontSize">14</sys:Double>
+
     <!-- 카드 제목 : 15pt / Bold -->
     <Style x:Key="HomeCardTitleTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource PretendardFontFamily}"/>
