@@ -169,6 +169,8 @@
 
     <!-- info 버튼 — PRD 2.3 "18~22px" 양쪽 모드 공통 해석, 유지 -->
     <sys:Double x:Key="ReaderInfoButtonSize">18</sys:Double>
+    <!-- "?" 설명 팝업 최대 폭 — Layout.xaml 같은 키 주석 참고(두 모드 같은 값). -->
+    <sys:Double x:Key="FieldInfoPopupMaxWidth">320</sys:Double>
 
     <!-- "포트 열기" 토글 자리(Hidden 플레이스홀더) — 폭 비율(0.854) 적용 -->
     <sys:Double x:Key="ReaderPortOpenPlaceholderWidth">126</sys:Double>

@@ -222,6 +222,10 @@
 
     <!-- info 버튼(CInfoIconButton 대응) — PRD 2.3: 18~22px 원형, 축소 보정 -->
     <sys:Double x:Key="ReaderInfoButtonSize">18</sys:Double>
+    <!-- "?" 설명 팝업 최대 폭(가맹점 설정·리더기 설정 공용, 2026-10-15). 260(글자 영역 약 230)이면 안내 문장 끝의 한두
+         어절만 다음 줄로 넘어가 어색했다 — 가장 긴 줄(자동 업데이트 "kftc_updater.exe…" 269px, Pretendard 13.33)이 한 줄에
+         들어가도록 320(패딩 28·테두리 2 제외 글자 영역 약 290)으로 넓혔다. 컴팩트 모드 글꼴(Malgun 11.11)은 더 좁아 같은 값. -->
+    <sys:Double x:Key="FieldInfoPopupMaxWidth">320</sys:Double>
 
     <!--
         "포트 열기" 토글 자리 — 실제 배선(확인창→백그라운드 처리→레지스트리 저장, PRD 4.8)은
