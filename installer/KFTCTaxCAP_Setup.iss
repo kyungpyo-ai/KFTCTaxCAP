@@ -43,6 +43,9 @@ PrivilegesRequired=admin
 MinVersion=6.1sp1
 ; 실행 중인 앱은 PrepareToInstall에서 직접 종료한다.
 CloseApplications=no
+; 설치 끝에 재시작을 묻지 않는다(2026-10-15). VC++ 런타임이 쓰는 중인 DLL을 "재부팅 때 교체"로 걸어 두면 Inno가
+; 기본값(yes)으로 재시작을 권하는데, 앱은 기존 런타임으로도 동작하고 재부팅 없이 바로 실행·상주한다.
+RestartIfNeededByRun=no
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
